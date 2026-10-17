@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-normalizer/tui"
 )
 
 var version = "0.1.0"
@@ -19,11 +20,12 @@ var version = "0.1.0"
 const usage = `sermon-normalizer: processes sermon recordings (raw + edit -> master.flac, mp3, opus)
 
 Usage:
+  sermon-normalizer tui [folder] [flags]   interactive: pick a folder, cut, set options, run
   sermon-normalizer run <folder> [flags]   run the whole flow for a date folder
   sermon-normalizer measure <file>...      measure LUFS / true peak / LRA
   sermon-normalizer version
 
-Run "sermon-normalizer run -h" for flags.
+Run "sermon-normalizer run -h" or "sermon-normalizer tui -h" for flags.
 `
 
 func main() {
@@ -38,6 +40,8 @@ func main() {
 	switch os.Args[1] {
 	case "run":
 		err = cmdRun(ctx, os.Args[2:])
+	case "tui":
+		err = cmdTUI(ctx, os.Args[2:])
 	case "measure":
 		err = cmdMeasure(ctx, os.Args[2:])
 	case "version", "--version":
@@ -140,6 +144,27 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	p := &normalizer.Pipeline{P: paths, Opt: opt, FF: ff, Out: os.Stdout}
 	return p.Run(ctx)
+}
+
+func cmdTUI(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("tui", flag.ContinueOnError)
+	archive := fs.String("archive", "", "default archive folder (can be changed in the options)")
+	ffBin := fs.String("ffmpeg", "ffmpeg", "path to ffmpeg (ffplay is looked for next to it, for playback)")
+	if err := fs.Parse(reorder(fs, args)); err != nil {
+		return err
+	}
+	if fs.NArg() > 1 {
+		return errors.New("give at most one folder: sermon-normalizer tui [folder]")
+	}
+	dir := "."
+	if fs.NArg() == 1 {
+		dir = fs.Arg(0)
+	}
+	ff, err := newFFmpeg(*ffBin)
+	if err != nil {
+		return err
+	}
+	return tui.Run(ctx, tui.Config{Dir: dir, Archive: *archive, FFmpeg: ff, Options: normalizer.DefaultOptions()})
 }
 
 func timeFlag(dst *float64) func(string) error {
