@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/gunnaringe/sermon-normalizer/normalizer"
 )
 
@@ -31,17 +33,21 @@ func findFFplay(ff normalizer.FFmpeg) string {
 	return ""
 }
 
+// playDoneMsg reports that a clip has finished or was stopped.
+type playDoneMsg struct{ cmd *exec.Cmd }
+
 func (p *player) available() bool { return p.bin != "" }
 
 func (p *player) playing() bool { return p.cmd != nil }
 
 // play plays path from start for dur seconds (0 = to the end), stopping
 // whatever is playing. ffplay gets no stdin/stdout/stderr so it can never
-// draw over the TUI.
-func (p *player) play(path string, start, dur float64) error {
+// draw over the TUI. The returned command waits for ffplay to exit and
+// reports it, so a clip that ends by itself no longer counts as playing.
+func (p *player) play(path string, start, dur float64) (tea.Cmd, error) {
 	p.stop()
 	if !p.available() {
-		return nil
+		return nil, nil
 	}
 	args := []string{"-nodisp", "-autoexit", "-loglevel", "quiet", "-ss", secs(start)}
 	if dur > 0 {
@@ -49,11 +55,20 @@ func (p *player) play(path string, start, dur float64) error {
 	}
 	cmd := exec.Command(p.bin, append(args, path)...)
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, err
 	}
 	p.cmd = cmd
-	go cmd.Wait() // reap; stop() may kill it first
-	return nil
+	return func() tea.Msg {
+		cmd.Wait()
+		return playDoneMsg{cmd}
+	}, nil
+}
+
+// done handles playDoneMsg: only the clip still playing is cleared.
+func (p *player) done(msg playDoneMsg) {
+	if p.cmd == msg.cmd {
+		p.cmd = nil
+	}
 }
 
 func (p *player) stop() {

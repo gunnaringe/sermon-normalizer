@@ -352,26 +352,28 @@ func (m cutModel) timelineKey(k string) (cutModel, tea.Cmd) {
 	case " ":
 		if m.player.playing() {
 			m.player.stop()
-		} else {
-			m.play(m.cursor, 0)
+			return m, nil
 		}
+		return m, m.play(m.cursor, 0)
 	case "S":
-		m.play(m.start, 5)
+		return m, m.play(m.start, 5)
 	case "E":
-		m.play(math.Max(m.endOrDuration()-5, 0), 5)
+		return m, m.play(math.Max(m.endOrDuration()-5, 0), 5)
 	}
 	m.follow()
 	return m, nil
 }
 
-func (m *cutModel) play(from, dur float64) {
+func (m *cutModel) play(from, dur float64) tea.Cmd {
 	if !m.player.available() {
 		m.msg = "Playback unavailable: ffplay not found."
-		return
+		return nil
 	}
-	if err := m.player.play(m.src.Raw, from, dur); err != nil {
+	cmd, err := m.player.play(m.src.Raw, from, dur)
+	if err != nil {
 		m.msg = "Playback failed: " + err.Error()
 	}
+	return cmd
 }
 
 // zoom scales the visible span around the cursor.

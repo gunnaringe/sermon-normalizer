@@ -172,6 +172,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenRun
 		return m, cmd
 
+	case playDoneMsg:
+		m.player.done(msg)
+		return m, nil
+
 	case levelsMsg, editLengthMsg:
 		var cmd tea.Cmd
 		m.cut, cmd = m.cut.update(msg)

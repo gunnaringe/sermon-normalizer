@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -435,4 +436,30 @@ func TestOptionsRemembered(t *testing.T) {
 	if got.Outputs != opt.Outputs || got.FadeIn != 2 || got.Force || got.Start != 0 || nm.archive != "arkiv" {
 		t.Errorf("remembered %+v archive %q", got, nm.archive)
 	}
+}
+
+// A clip that ends by itself no longer counts as playing, so the next space
+// plays again instead of stopping a process that has already exited.
+func TestPlayerClearsFinishedClip(t *testing.T) {
+	bin, err := exec.LookPath("true")
+	if err != nil {
+		t.Skip("no true binary")
+	}
+	p := &player{bin: bin}
+	cmd, err := p.play("x.flac", 0, 5)
+	if err != nil || cmd == nil || !p.playing() {
+		t.Fatalf("cmd %v err %v playing %v", cmd, err, p.playing())
+	}
+	done := run[playDoneMsg](t, cmd) // waits for the process to exit
+	p.done(done)
+	if p.playing() {
+		t.Error("still playing after the clip ended")
+	}
+	// A late message from an earlier clip must not clear the current one.
+	p.play("x.flac", 0, 5)
+	p.done(done)
+	if !p.playing() {
+		t.Error("an old clip's message cleared the new one")
+	}
+	p.stop()
 }
