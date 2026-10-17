@@ -33,7 +33,25 @@ Bygget kjører `go vet` og `go test`, og sjekker at ffmpeg har libopus og libmp3
 
 ## Bruk
 
-Legg kilden i datomappen. Både **WAV og FLAC** godtas, for både raw og klippet versjon:
+Legg opptaket av hele gudstjenesten i datomappen, og oppgi hvor talen starter og slutter:
+
+```
+2026-10-04/
+  2026-10-04_raw.wav          (eller _raw.flac)    hele opptaket
+```
+
+```bash
+talenorm run /sti/til/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
+```
+
+Tidene kan skrives som `t:mm:ss`, `mm:ss` eller sekunder, med desimaler om nødvendig (`41:20.5`).
+Uten `--start` klippes det fra begynnelsen, uten `--end` til slutten.
+Verktøyet klipper `arkiv/<dato>_edit.flac` fra raw og fortsetter med master, MP3 og Opus.
+For å klippe på nytt med andre tider, kjør igjen med `--force`.
+
+**Mer enn ett stykke** (for eksempel en sang midt i talen som skal bort): klipp selv i et
+lydprogram og legg resultatet i mappen. Da brukes det i stedet, og `--start`/`--end` utelates
+(begge samtidig gir feil). WAV og FLAC godtas:
 
 ```
 2026-10-04/
@@ -66,6 +84,8 @@ Flagg for `run` (kan stå før eller etter mappen):
 
 | Flagg | Standard | |
 |---|---|---|
+| `--start` | | start på talen i raw (klipper edit automatisk) |
+| `--end` | | slutt på talen i raw |
 | `--target-lufs` | -19 | -19 for mono, -16 for stereo |
 | `--true-peak` | -1.5 | maks true peak for master |
 | `--mp3-bitrate` | 96k | |

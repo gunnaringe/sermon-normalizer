@@ -152,3 +152,69 @@ func TestReorder(t *testing.T) {
 		t.Errorf("fikk %v", got)
 	}
 }
+
+func TestParseTime(t *testing.T) {
+	ok := map[string]float64{
+		"2480": 2480, "41:20": 2480, "1:12:05": 4325, "41:20.5": 2480.5, "0:00:07": 7, "90": 90,
+	}
+	for in, want := range ok {
+		if got, err := parseTime(in); err != nil || got != want {
+			t.Errorf("parseTime(%q) = %v, %v; vil ha %v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "abc", "1:2:3:4", "41:60", "-5", "1.5:00", "1:-1"} {
+		if _, err := parseTime(in); err == nil {
+			t.Errorf("parseTime(%q): forventet feil", in)
+		}
+	}
+}
+
+func TestFormatTime(t *testing.T) {
+	for in, want := range map[float64]string{2480: "0:41:20", 4325: "1:12:05", 2480.5: "0:41:20.500"} {
+		if got := formatTime(in); got != want {
+			t.Errorf("formatTime(%v) = %q, vil ha %q", in, got, want)
+		}
+	}
+}
+
+// Med --start/--end og en egen _edit-fil i mappen er det uklart hva som gjelder.
+func TestCutEditConflictsWithManualEdit(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "2026-10-04")
+	os.Mkdir(dir, 0o755)
+	paths, _ := NewPaths(dir)
+	os.MkdirAll(paths.Arkiv, 0o755)
+	os.WriteFile(paths.RawFlac, []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "2026-10-04_edit.flac"), []byte("x"), 0o644)
+
+	opt := defaultOptions()
+	opt.Start = 60
+	p := &Pipeline{P: paths, Opt: opt, Out: io.Discard}
+	if err := p.stepEdit(context.Background()); err == nil || !strings.Contains(err.Error(), "bare det ene") {
+		t.Errorf("forventet konflikt-feil, fikk %v", err)
+	}
+}
+
+// Finnes edit allerede i arkiv/, klippes det ikke paa nytt uten --force (ingen ffmpeg trengs).
+func TestCutEditSkipsExisting(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "2026-10-04")
+	os.Mkdir(dir, 0o755)
+	paths, _ := NewPaths(dir)
+	os.MkdirAll(paths.Arkiv, 0o755)
+	os.WriteFile(paths.RawFlac, []byte("x"), 0o644)
+	os.WriteFile(paths.EditDst, []byte("x"), 0o644)
+
+	opt := defaultOptions()
+	opt.End = 60
+	p := &Pipeline{P: paths, Opt: opt, Out: io.Discard}
+	if err := p.stepEdit(context.Background()); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestReorderStartEnd(t *testing.T) {
+	got := reorder([]string{"mappe", "--start", "41:20", "--end=1:12:05"})
+	want := []string{"--start", "41:20", "--end=1:12:05", "mappe"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("fikk %v", got)
+	}
+}

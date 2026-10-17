@@ -104,9 +104,14 @@ func cmdRun(ctx context.Context, args []string) error {
 	fs.IntVar(&opt.NoiseReduction, "noise-reduction", opt.NoiseReduction, "stoyfjerning i dB (0 = av)")
 	fs.BoolVar(&opt.KeepWav, "keep-wav", false, "ikke slett WAV etter verifisering")
 	fs.BoolVar(&opt.Force, "force", false, "lag resultatfilene paa nytt")
+	fs.Func("start", "klipp edit fra raw: start paa talen (t:mm:ss, mm:ss eller sekunder)", timeFlag(&opt.Start))
+	fs.Func("end", "klipp edit fra raw: slutt paa talen (t:mm:ss, mm:ss eller sekunder)", timeFlag(&opt.End))
 	ffBin := fs.String("ffmpeg", "ffmpeg", "sti til ffmpeg")
 	if err := fs.Parse(reorder(args)); err != nil {
 		return err
+	}
+	if opt.End > 0 && opt.End <= opt.Start {
+		return errors.New("--end maa vaere etter --start")
 	}
 	if fs.NArg() != 1 {
 		return errors.New("oppgi noyaktig en mappe: talenorm run <mappe>")
@@ -121,6 +126,14 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	p := &Pipeline{P: paths, Opt: opt, FF: ff, Out: os.Stdout}
 	return p.Run(ctx)
+}
+
+func timeFlag(dst *float64) func(string) error {
+	return func(s string) error {
+		v, err := parseTime(s)
+		*dst = v
+		return err
+	}
 }
 
 func cmdMeasure(ctx context.Context, args []string) error {

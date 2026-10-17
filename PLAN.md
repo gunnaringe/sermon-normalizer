@@ -60,6 +60,7 @@ talenorm measure <fil>...        mål LUFS / true peak / LRA
 talenorm version
 
 run-flagg:
+  --start / --end          klipp edit fra raw (ett stykke); ellers leveres _edit selv
   --target-lufs  -19       -19 for mono, -16 for stereo
   --true-peak    -1.5
   --mp3-bitrate  96k

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 )
@@ -22,7 +23,11 @@ type Options struct {
 	NoiseReduction int // afftdn nr i dB; 0 = av
 	KeepWav        bool
 	Force          bool
+	Start, End     float64 // klipp raw til edit (sekunder); 0 = fra start / til slutt
 }
+
+// cutting sier om edit skal klippes fra raw i stedet for aa leveres ferdig.
+func (o Options) cutting() bool { return o.Start > 0 || o.End > 0 }
 
 func defaultOptions() Options {
 	return Options{
@@ -213,14 +218,80 @@ func (p *Pipeline) sameAudio(ctx context.Context, a, b string) (bool, error) {
 
 func (p *Pipeline) stepEdit(ctx context.Context) error {
 	p.step("2. Klippet versjon")
+	if p.Opt.cutting() {
+		return p.cutEdit(ctx)
+	}
 	ok, err := p.ingest(ctx, p.P.EditDst, "{d}_edit", "{d}_2-edit")
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("mangler %s_edit.flac (eller .wav): klipp opptaket og lagre det i %s", p.P.Date, p.P.Folder)
+		return fmt.Errorf("mangler %s_edit.flac (eller .wav): bruk --start/--end, eller klipp opptaket selv og lagre det i %s", p.P.Date, p.P.Folder)
 	}
 	return nil
+}
+
+// cutEdit lager edit fra raw med --start/--end (ett sammenhengende stykke).
+// Trengs flere stykker, klipper man selv og leverer _edit-filen som foer.
+func (p *Pipeline) cutEdit(ctx context.Context) error {
+	manual := p.inFolder("{d}_edit.flac", "{d}_edit.wav", "{d}_2-edit.flac", "{d}_2-edit.wav")
+	if src := firstExisting(manual...); src != "" {
+		return fmt.Errorf("%s finnes og --start/--end er oppgitt: bruk bare det ene", filepath.Base(src))
+	}
+	if !exists(p.P.RawFlac) {
+		return fmt.Errorf("mangler %s, trengs for aa klippe med --start/--end", filepath.Base(p.P.RawFlac))
+	}
+	if exists(p.P.EditDst) && !p.Opt.Force {
+		p.logf("%s finnes, hopper over (bruk --force for aa klippe paa nytt).", filepath.Base(p.P.EditDst))
+		return nil
+	}
+	// -ss/-to foer -i: ffmpeg dekoder og kaster lyden foer start, saa klippet er nøyaktig.
+	args := []string{"-y"}
+	from, to := "start", "slutt"
+	if p.Opt.Start > 0 {
+		args = append(args, "-ss", secs(p.Opt.Start))
+		from = formatTime(p.Opt.Start)
+	}
+	if p.Opt.End > 0 {
+		args = append(args, "-to", secs(p.Opt.End))
+		to = formatTime(p.Opt.End)
+	}
+	args = append(args, "-i", p.P.RawFlac, "-c:a", "flac", p.P.EditDst)
+	if _, err := p.FF.Run(ctx, args...); err != nil {
+		return err
+	}
+	p.logf("Klippet %s fra %s til %s.", filepath.Base(p.P.EditDst), from, to)
+	return nil
+}
+
+func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
+
+// parseTime tolker 1:12:05, 41:20, 2480 eller 41:20.5 som sekunder.
+func parseTime(s string) (float64, error) {
+	parts := strings.Split(s, ":")
+	if len(parts) > 3 || s == "" {
+		return 0, fmt.Errorf("ugyldig tid %q (bruk t:mm:ss, mm:ss eller sekunder)", s)
+	}
+	var total float64
+	for i, part := range parts {
+		last := i == len(parts)-1
+		v, err := strconv.ParseFloat(part, 64)
+		if err != nil || v < 0 || (!last && v != math.Trunc(v)) || (i > 0 && v >= 60) {
+			return 0, fmt.Errorf("ugyldig tid %q (bruk t:mm:ss, mm:ss eller sekunder)", s)
+		}
+		total = total*60 + v
+	}
+	return total, nil
+}
+
+func formatTime(s float64) string {
+	h, rest := int(s)/3600, s-float64(int(s)/3600*3600)
+	m := int(rest) / 60
+	sec := rest - float64(m*60)
+	if sec == math.Trunc(sec) {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, int(sec))
+	}
+	return fmt.Sprintf("%d:%02d:%06.3f", h, m, sec)
 }
 
 // --- 3. master ------------------------------------------------------------
