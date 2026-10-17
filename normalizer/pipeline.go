@@ -24,6 +24,8 @@ type Options struct {
 	KeepWav        bool
 	Force          bool
 	Start, End     float64 // cut raw to edit (seconds); 0 = from the beginning / to the end
+	FadeIn         float64 // seconds at the start of the sermon; 0 = off
+	FadeOut        float64 // seconds at the end of the sermon; 0 = off
 }
 
 // cutting reports whether the edit is cut from raw rather than supplied by hand.
@@ -319,7 +321,9 @@ func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
 
 // --- 3. master ------------------------------------------------------------
 
-func (p *Pipeline) masterFilter() string {
+// masterFilter is the filter chain for the master; length (seconds) is only
+// needed for a fade-out.
+func (p *Pipeline) masterFilter(length float64) string {
 	// Downmix first, whatever the input has (mono, stereo, more), so the
 	// rest of the chain works on the mono signal that gets published.
 	f := []string{"aformat=channel_layouts=mono"}
@@ -331,6 +335,13 @@ func (p *Pipeline) masterFilter() string {
 		fmt.Sprintf("loudnorm=I=%g:TP=%g:LRA=11", p.Opt.TargetLUFS, p.Opt.TruePeak),
 		"aresample=48000",
 	)
+	// Fades come last: dynaudnorm and loudnorm would otherwise lift them again.
+	if p.Opt.FadeIn > 0 {
+		f = append(f, fmt.Sprintf("afade=t=in:d=%g", p.Opt.FadeIn))
+	}
+	if p.Opt.FadeOut > 0 {
+		f = append(f, fmt.Sprintf("afade=t=out:st=%.3f:d=%g", length-p.Opt.FadeOut, p.Opt.FadeOut))
+	}
 	return strings.Join(f, ",")
 }
 
@@ -340,14 +351,40 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		p.logf("Already exists, skipping (use --force).")
 		return nil
 	}
+	var length float64
+	if p.Opt.FadeIn > 0 || p.Opt.FadeOut > 0 {
+		var err error
+		if length, err = p.sermonLength(ctx); err != nil {
+			return err
+		}
+		if p.Opt.FadeIn+p.Opt.FadeOut > length {
+			return fmt.Errorf("fades (%g s + %g s) are longer than the sermon (%.1f s)", p.Opt.FadeIn, p.Opt.FadeOut, length)
+		}
+		p.logf("Fade in %g s, fade out %g s (sermon is %s).", p.Opt.FadeIn, p.Opt.FadeOut, FormatTime(math.Round(length)))
+	}
 	var args []string
 	if p.edit != "" {
 		args = []string{"-i", p.edit}
 	} else {
 		args = append(p.cutArgs(), "-i", p.raw)
 	}
-	args = append(args, "-af", p.masterFilter(), "-c:a", "flac", "-sample_fmt", "s32")
+	args = append(args, "-af", p.masterFilter(length), "-c:a", "flac", "-sample_fmt", "s32")
 	return p.FF.RunTo(ctx, p.P.Master, args...)
+}
+
+// sermonLength is the length in seconds of what goes into the master.
+func (p *Pipeline) sermonLength(ctx context.Context) (float64, error) {
+	if p.edit != "" {
+		return p.FF.Duration(ctx, p.edit)
+	}
+	end, err := p.FF.Duration(ctx, p.raw)
+	if err != nil {
+		return 0, err
+	}
+	if p.Opt.End > 0 && p.Opt.End < end {
+		end = p.Opt.End // --end past the end of the recording just runs to the end
+	}
+	return end - p.Opt.Start, nil
 }
 
 // --- 4. mp3 + opus --------------------------------------------------------

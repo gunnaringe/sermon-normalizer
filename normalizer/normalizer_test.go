@@ -205,15 +205,37 @@ func TestNoArchiveCutWritesNoEdit(t *testing.T) {
 
 func TestMasterFilter(t *testing.T) {
 	p := &Pipeline{Opt: DefaultOptions()}
-	f := p.masterFilter()
+	f := p.masterFilter(0)
 	for _, want := range []string{"aformat=channel_layouts=mono", "afftdn=nr=12", "dynaudnorm", "loudnorm=I=-19:TP=-1.5", "aresample=48000"} {
 		if !strings.Contains(f, want) {
 			t.Errorf("%q missing from %q", want, f)
 		}
 	}
+	if strings.Contains(f, "afade") {
+		t.Error("no fades by default")
+	}
 	p.Opt.NoiseReduction = 0
-	if strings.Contains(p.masterFilter(), "afftdn") {
+	if strings.Contains(p.masterFilter(0), "afftdn") {
 		t.Error("afftdn should be off")
+	}
+}
+
+func TestMasterFilterFades(t *testing.T) {
+	p := &Pipeline{Opt: DefaultOptions()}
+	p.Opt.FadeIn, p.Opt.FadeOut = 2, 3.5
+	f := p.masterFilter(600)
+	if !strings.HasSuffix(f, ",aresample=48000,afade=t=in:d=2,afade=t=out:st=596.500:d=3.5") {
+		t.Errorf("fades should come last, after loudnorm: %q", f)
+	}
+}
+
+func TestParseDuration(t *testing.T) {
+	got, err := parseDuration("  Duration: 01:12:05.50, start: 0.000000, bitrate: 1411 kb/s")
+	if err != nil || got != 4325.5 {
+		t.Errorf("got %v, %v", got, err)
+	}
+	if _, err := parseDuration("nothing"); err == nil {
+		t.Error("expected an error")
 	}
 }
 

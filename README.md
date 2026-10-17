@@ -65,6 +65,10 @@ Times can be written as `h:mm:ss`, `mm:ss` or seconds, with decimals if needed (
 Without `--start` the cut starts at the beginning, without `--end` it runs to the end.
 To cut again with different times, run again with `--force`.
 
+Add `--fade-in 1 --fade-out 2` (seconds) to fade the sermon in and out instead of starting
+and stopping abruptly at the cut points. The fades are applied last, after the loudness
+processing, so they stay intact in the master, MP3 and Opus.
+
 **More than one segment** (for example a song in the middle of the sermon that should go):
 cut it yourself in an audio editor and put the result in the folder as `<date>_edit.flac`
 (or `.wav`). It is then used instead, and `--start`/`--end` is left out (giving both is an error).
@@ -105,6 +109,8 @@ Flags for `run` (may go before or after the folder):
 |---|---|---|
 | `--start` | | where the sermon starts in raw (cuts the edit automatically) |
 | `--end` | | where the sermon ends in raw |
+| `--fade-in` | 0 | seconds of fade in at the start of the sermon, 0 = off |
+| `--fade-out` | 0 | seconds of fade out at the end of the sermon, 0 = off |
 | `--archive` | | keep the sources as FLAC in this folder (default: leave them in place) |
 | `--target-lufs` | -19 | -19 for mono, -16 for stereo |
 | `--true-peak` | -1.5 | max true peak for the master |

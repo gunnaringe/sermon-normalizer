@@ -288,3 +288,57 @@ func TestIntegrationInterrupted(t *testing.T) {
 	}
 	checkOutputs(t, ff, dir, 100)
 }
+
+// maxVolume is the peak level in dB of dur seconds from start.
+func maxVolume(t *testing.T, ff FFmpeg, path string, start, dur float64) float64 {
+	t.Helper()
+	res, err := ff.Run(context.Background(), "-ss", secs(start), "-t", secs(dur), "-i", path,
+		"-af", "volumedetect", "-f", "null", "-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, ok := strings.Cut(res.Stderr, "max_volume: ")
+	if !ok {
+		t.Fatalf("no max_volume in:\n%s", res.Stderr)
+	}
+	v, err := strconv.ParseFloat(strings.Fields(after)[0], 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+// Fades with a cut that runs to the end of the recording (length from the file).
+func TestIntegrationFades(t *testing.T) {
+	ff := requireFFmpeg(t)
+	dir := dateFolder(t)
+	service(t, ff, filepath.Join(dir, date+"_raw.flac"), 2)
+
+	opt := DefaultOptions()
+	opt.Start, opt.FadeIn, opt.FadeOut = 20, 3, 3
+	if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+		t.Fatal(err)
+	}
+	master := filepath.Join(dir, date+".flac")
+	if d := probeFile(t, master).duration; !near(d, 80, 0.1) {
+		t.Fatalf("master: %.2f s, want 80", d)
+	}
+	head := maxVolume(t, ff, master, 0, 0.5)
+	speech := maxVolume(t, ff, master, 10, 1)
+	music := maxVolume(t, ff, master, 70, 1)
+	tail := maxVolume(t, ff, master, 79.5, 0.5)
+	t.Logf("head %.1f dB, speech %.1f dB, music %.1f dB, tail %.1f dB", head, speech, music, tail)
+	// The first and last 0.5 s of a 3 s linear fade are at most 1/6 gain (-15.6 dB).
+	if head > speech-10 {
+		t.Errorf("fade in: head %.1f dB vs speech %.1f dB", head, speech)
+	}
+	if tail > music-10 {
+		t.Errorf("fade out: tail %.1f dB vs music %.1f dB", tail, music)
+	}
+
+	// Fades longer than the sermon are an error.
+	opt.Force, opt.FadeIn, opt.FadeOut = true, 50, 50
+	if err := run(t, context.Background(), ff, dir, "", opt); err == nil || !strings.Contains(err.Error(), "longer than the sermon") {
+		t.Errorf("expected a fade length error, got %v", err)
+	}
+}

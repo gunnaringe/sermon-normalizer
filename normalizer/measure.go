@@ -45,6 +45,28 @@ func parseEbur128(stderr string) (Loudness, error) {
 	return l, nil
 }
 
+var reDuration = regexp.MustCompile(`Duration: (\d+):(\d+):(\d+(?:\.\d+)?)`)
+
+// Duration returns the length of a file in seconds, from the header ffmpeg prints.
+func (f FFmpeg) Duration(ctx context.Context, path string) (float64, error) {
+	res, err := f.Run(ctx, "-i", path, "-t", "0", "-f", "null", "-")
+	if err != nil {
+		return 0, err
+	}
+	return parseDuration(res.Stderr)
+}
+
+func parseDuration(stderr string) (float64, error) {
+	m := reDuration.FindStringSubmatch(stderr)
+	if m == nil {
+		return 0, fmt.Errorf("no duration found in ffmpeg output")
+	}
+	h, _ := strconv.ParseFloat(m[1], 64)
+	min, _ := strconv.ParseFloat(m[2], 64)
+	s, _ := strconv.ParseFloat(m[3], 64)
+	return h*3600 + min*60 + s, nil
+}
+
 // Measure measures loudness with ebur128 (much faster than loudnorm).
 func (f FFmpeg) Measure(ctx context.Context, path string) (Loudness, error) {
 	res, err := f.Run(ctx, "-i", path, "-af", "ebur128=peak=true:framelog=quiet", "-f", "null", "-")
