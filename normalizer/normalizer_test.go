@@ -206,7 +206,7 @@ func TestNoArchiveCutWritesNoEdit(t *testing.T) {
 func TestMasterFilter(t *testing.T) {
 	p := &Pipeline{Opt: DefaultOptions()}
 	f := p.masterFilter()
-	for _, want := range []string{"pan=mono", "afftdn=nr=12", "dynaudnorm", "loudnorm=I=-19:TP=-1.5", "aresample=48000"} {
+	for _, want := range []string{"aformat=channel_layouts=mono", "afftdn=nr=12", "dynaudnorm", "loudnorm=I=-19:TP=-1.5", "aresample=48000"} {
 		if !strings.Contains(f, want) {
 			t.Errorf("%q missing from %q", want, f)
 		}

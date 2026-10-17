@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/gunnaringe/sermon-normalizer/normalizer"
@@ -64,36 +65,36 @@ func newFFmpeg(bin string) (normalizer.FFmpeg, error) {
 	return normalizer.FFmpeg{Bin: path}, nil
 }
 
-// reorder lets flags go both before and after the folder name.
-func reorder(args []string) []string {
+// reorder lets flags go both before and after the positional arguments.
+func reorder(fs *flag.FlagSet, args []string) []string {
 	var flags, rest []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if len(a) > 1 && a[0] == '-' {
-			flags = append(flags, a)
-			// flags with a value (not bool) take the next argument
-			switch a {
-			case "--keep-wav", "-keep-wav", "--force", "-force":
-			default:
-				if !containsEq(a) && i+1 < len(args) {
-					i++
-					flags = append(flags, args[i])
-				}
-			}
-		} else {
+		if len(a) < 2 || a[0] != '-' {
 			rest = append(rest, a)
+			continue
+		}
+		if a == "--" {
+			flags = append(flags, "--")
+			return append(append(flags, rest...), args[i+1:]...)
+		}
+		flags = append(flags, a)
+		name, _, hasValue := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if !hasValue && !isBoolFlag(fs, name) && i+1 < len(args) {
+			i++
+			flags = append(flags, args[i])
 		}
 	}
 	return append(flags, rest...)
 }
 
-func containsEq(s string) bool {
-	for _, c := range s {
-		if c == '=' {
-			return true
-		}
+func isBoolFlag(fs *flag.FlagSet, name string) bool {
+	f := fs.Lookup(name)
+	if f == nil {
+		return false
 	}
-	return false
+	b, ok := f.Value.(interface{ IsBoolFlag() bool })
+	return ok && b.IsBoolFlag()
 }
 
 func cmdRun(ctx context.Context, args []string) error {
@@ -110,7 +111,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	fs.Func("end", "cut the sermon from raw: where it ends (h:mm:ss, mm:ss or seconds)", timeFlag(&opt.End))
 	archive := fs.String("archive", "", "archive the sources (raw, edit) as FLAC in this folder, relative to the date folder\n(default: no archive, sources are left in place)")
 	ffBin := fs.String("ffmpeg", "ffmpeg", "path to ffmpeg")
-	if err := fs.Parse(reorder(args)); err != nil {
+	if err := fs.Parse(reorder(fs, args)); err != nil {
 		return err
 	}
 	if opt.End > 0 && opt.End <= opt.Start {
@@ -140,14 +141,19 @@ func timeFlag(dst *float64) func(string) error {
 }
 
 func cmdMeasure(ctx context.Context, args []string) error {
-	if len(args) == 0 {
+	fs := flag.NewFlagSet("measure", flag.ContinueOnError)
+	ffBin := fs.String("ffmpeg", "ffmpeg", "path to ffmpeg")
+	if err := fs.Parse(reorder(fs, args)); err != nil {
+		return err
+	}
+	if fs.NArg() == 0 {
 		return errors.New("give at least one file: sermon-normalizer measure <file>...")
 	}
-	ff, err := newFFmpeg("ffmpeg")
+	ff, err := newFFmpeg(*ffBin)
 	if err != nil {
 		return err
 	}
-	for _, f := range args {
+	for _, f := range fs.Args() {
 		m, err := ff.Measure(ctx, f)
 		if err != nil {
 			return fmt.Errorf("%s: %w", f, err)

@@ -202,7 +202,7 @@ func (p *Pipeline) ingest(ctx context.Context, dst string, bases ...string) (boo
 	}
 
 	if !exists(dst) || p.Opt.Force {
-		if _, err := p.FF.Run(ctx, "-y", "-i", wav, "-c:a", "flac", dst); err != nil {
+		if err := p.FF.RunTo(ctx, dst, "-i", wav, "-c:a", "flac"); err != nil {
 			return false, err
 		}
 	}
@@ -296,9 +296,8 @@ func (p *Pipeline) cutEdit(ctx context.Context) error {
 		p.logf("%s exists, skipping (use --force to cut again).", filepath.Base(dst))
 		return nil
 	}
-	args := append([]string{"-y"}, p.cutArgs()...)
-	args = append(args, "-i", p.raw, "-c:a", "flac", dst)
-	if _, err := p.FF.Run(ctx, args...); err != nil {
+	args := append(p.cutArgs(), "-i", p.raw, "-c:a", "flac")
+	if err := p.FF.RunTo(ctx, dst, args...); err != nil {
 		return err
 	}
 	p.logf("Cut %s from %s to %s.", filepath.Base(dst), p.cutFrom(), p.cutTo())
@@ -337,7 +336,9 @@ func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
 // --- 3. master ------------------------------------------------------------
 
 func (p *Pipeline) masterFilter() string {
-	f := []string{"pan=mono|c0=0.5*c0+0.5*c1"}
+	// Downmix first, whatever the input has (mono, stereo, more), so the
+	// rest of the chain works on the mono signal that gets published.
+	f := []string{"aformat=channel_layouts=mono"}
 	if p.Opt.NoiseReduction > 0 {
 		f = append(f, fmt.Sprintf("afftdn=nr=%d", p.Opt.NoiseReduction))
 	}
@@ -355,15 +356,14 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		p.logf("Already exists, skipping (use --force).")
 		return nil
 	}
-	args := []string{"-y"}
+	var args []string
 	if p.edit != "" {
-		args = append(args, "-i", p.edit)
+		args = []string{"-i", p.edit}
 	} else {
-		args = append(append(args, p.cutArgs()...), "-i", p.raw)
+		args = append(p.cutArgs(), "-i", p.raw)
 	}
-	args = append(args, "-af", p.masterFilter(), "-c:a", "flac", "-sample_fmt", "s32", p.P.Master)
-	_, err := p.FF.Run(ctx, args...)
-	return err
+	args = append(args, "-af", p.masterFilter(), "-c:a", "flac", "-sample_fmt", "s32")
+	return p.FF.RunTo(ctx, p.P.Master, args...)
 }
 
 // --- 4. mp3 + opus --------------------------------------------------------
@@ -384,14 +384,11 @@ func (p *Pipeline) encodeLossy(ctx context.Context, name, dst string, codec []st
 		return nil
 	}
 	enc := func(gain *float64) error {
-		args := []string{"-y", "-i", p.P.Master}
+		args := []string{"-i", p.P.Master}
 		if gain != nil {
 			args = append(args, "-af", fmt.Sprintf("volume=%.2fdB", *gain))
 		}
-		args = append(args, codec...)
-		args = append(args, dst)
-		_, err := p.FF.Run(ctx, args...)
-		return err
+		return p.FF.RunTo(ctx, dst, append(args, codec...)...)
 	}
 	if err := enc(nil); err != nil {
 		return err

@@ -92,7 +92,9 @@ sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
 ### Notes
 
 - MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or the loudness is off.
-- Existing output files are skipped without `--force`.
+- Existing output files are skipped without `--force`. Output is written to a `.partial` file and
+  renamed when done, so an interrupted run never leaves a half-written file behind.
+- Mono and stereo recordings both work; everything is mixed down to mono first.
 - The old names `_1-raw.*` and `_2-edit.*` are accepted.
 
 Flags for `run` (may go before or after the folder):
@@ -116,3 +118,5 @@ Measuring files:
 ```bash
 sermon-normalizer measure file1.mp3 file2.flac
 ```
+
+`measure` also takes `--ffmpeg`.
