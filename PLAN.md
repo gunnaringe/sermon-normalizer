@@ -44,9 +44,13 @@ Go also fits since it was already chosen, and it is easy to extend later
 
 ## Architecture
 
-Module `github.com/gunnaringe/sermon-normalizer`, standard library only (no external dependencies).
+Module `github.com/gunnaringe/sermon-normalizer`. The `normalizer` package uses the standard library
+only; the TUI uses Bubble Tea, Bubbles and Lip Gloss.
 
 - `cmd/sermon-normalizer/main.go`: CLI (subcommands, flags, Ctrl+C cancels cleanly)
+- `tui/`: the interactive front end (folders, cut, options, run)
+- `normalizer/levels.go`: volume per 100 ms and silence detection, for the TUI timeline
+- `normalizer/outputs.go`: which outputs to make (`--formats`)
 - `normalizer/ffmpeg.go`: thin wrapper around `ffmpeg` (`-nostdin`, captures stdout and stderr)
 - `normalizer/measure.go`: measurement with `ebur128` and parsing of the summary (LUFS, true peak, LRA)
 - `normalizer/pipeline.go`: the steps (raw, edit, master, lossy, report)
@@ -56,6 +60,7 @@ Module `github.com/gunnaringe/sermon-normalizer`, standard library only (no exte
 ## CLI
 
 ```
+sermon-normalizer tui [folder] [flags]   interactive: pick a folder, cut, set options, run
 sermon-normalizer run <folder> [flags]   run the whole flow for a date folder
 sermon-normalizer measure <file>...      measure LUFS / true peak / LRA
 sermon-normalizer version

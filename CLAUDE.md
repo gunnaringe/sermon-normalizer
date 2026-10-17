@@ -1,6 +1,6 @@
 # sermon-normalizer
 
-Go CLI that turns a church service recording into publish-ready sermon files
+Go CLI and TUI that turn a church service recording into publish-ready sermon files
 (cut, mono, loudness-normalised FLAC/MP3/Opus). `README.md` covers usage,
 `PLAN.md` the background and design decisions.
 
@@ -9,7 +9,11 @@ Go CLI that turns a church service recording into publish-ready sermon files
 - `cmd/sermon-normalizer/`: CLI only (flags, usage, Ctrl+C). Keep logic out of it.
 - `normalizer/`: the pipeline as an importable package. All audio work is
   ffmpeg, called with an argument list via `FFmpeg.Run`/`RunTo`, never a shell.
-- Standard library only; no external Go dependencies.
+- `tui/`: Bubble Tea front end over `normalizer` (screens: browser, cut,
+  options, run). It finds sources with `Paths.Sources` and reports through
+  `Pipeline.OnStep`/`OnProgress` and `Out`; nothing may write to the
+  terminal directly while it runs.
+- `normalizer/` stays standard library only; dependencies belong in `tui/`.
 
 ## Rules that matter
 
@@ -33,6 +37,14 @@ podman run --rm -v $PWD:/src:Z -w /src docker.io/library/golang:1.25-alpine3.22 
 ```
 
 Integration tests (`normalizer/integration_test.go`) skip without ffmpeg/ffprobe.
+TUI end to end (tmux + ffmpeg in the container):
+
+```bash
+podman run --rm -v $PWD:/src:Z -w /src docker.io/library/golang:1.25-alpine3.22 sh scripts/tui-e2e.sh
+```
+
+Bubble Tea v1 delivers keys typed faster than a redraw as one multi-rune
+message; the top-level model splits them, so tests can send `keys("]]s")`.
 Unit tests that don't need ffmpeg run anywhere with `go test ./...`.
 
 There is no CI or deploy yet.

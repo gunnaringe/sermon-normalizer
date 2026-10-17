@@ -9,7 +9,8 @@ See `PLAN.md` for background and design decisions.
 ## Requirements
 
 - `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`, Windows: `winget install Gyan.FFmpeg`)
-- Go 1.22+ to build (no external Go dependencies)
+- Go 1.24+ to build
+- Optional: `ffplay` (ships with ffmpeg on Windows and most Linux packages) for playback in the TUI
 
 ## Build
 
@@ -25,6 +26,7 @@ PowerShell: set `$env:GOOS="linux"; $env:GOARCH="amd64"` before `go build`.
 `go test ./...` runs the unit tests everywhere, and the integration tests (the whole pipeline
 with real ffmpeg on synthetic recordings) when `ffmpeg` and `ffprobe` are in PATH.
 `docker build .` always runs both. `go test -short ./...` skips the integration tests.
+`scripts/tui-e2e.sh` drives the TUI in tmux with real ffmpeg (see the script for the command).
 
 ## Docker (ffmpeg included)
 
@@ -37,6 +39,33 @@ docker run --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data sermon-normalizer
 
 `-u` makes the created files owned by your user, not root.
 The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and libmp3lame.
+
+## TUI
+
+```bash
+sermon-normalizer tui /path/to/Taler/2026      # a folder of date folders
+sermon-normalizer tui /path/to/Taler/2026/2026-10-04
+```
+
+1. **Folders:** date folders, newest first, with what they contain (`raw`, `edit`, `✓ flac mp3 opus`).
+2. **Cut:** choose how to cut out the sermon (tab switches):
+   - **Timeline:** the volume of the whole recording. Music is louder than speech, so the sermon
+     stands out; `·` marks silences. Move with ←/→ (shift for 1 s, PgUp/PgDn for a minute), zoom
+     with `+`/`-`, jump between silences with `[`/`]`, mark with `s` (start) and `e` (end).
+     With `ffplay` available, `space` plays from the cursor and `S`/`E` play around the marks.
+   - **Enter times:** type the start and end. Marks set on the timeline show up here and vice versa.
+   - **Edit file:** cut in your own audio editor; the screen shows where to save `<date>_edit.flac`,
+     and `r` looks for it again.
+3. **Options:** which outputs to make (FLAC master, MP3, Opus; all by default), fades and the other
+   flags, with the equivalent `run` command. Your choices carry over to the next folder (except Force).
+4. **Run:** progress per step, then the files made. Cancelling leaves nothing half-written.
+
+`--archive <folder>` sets the default archive folder, `--ffmpeg` the ffmpeg to use (`ffplay` is looked
+for next to it). In Docker the TUI works with `-it`, but without playback:
+
+```bash
+docker run -it --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data sermon-normalizer tui /data/2026
+```
 
 ## Usage
 
