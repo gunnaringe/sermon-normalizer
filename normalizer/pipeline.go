@@ -94,6 +94,11 @@ type Pipeline struct {
 	FF  FFmpeg
 	Out io.Writer
 
+	// Optional hooks for a UI: OnStep gets each step title, OnProgress the
+	// fraction (0..1) done of the current ffmpeg encode.
+	OnStep     func(title string)
+	OnProgress func(fraction float64)
+
 	raw     string   // the whole recording, if any
 	edit    string   // the sermon as a file; "" when the master is cut straight from raw
 	master  string   // the master that MP3/Opus are made from
@@ -101,7 +106,12 @@ type Pipeline struct {
 }
 
 func (p *Pipeline) logf(format string, a ...any) { fmt.Fprintf(p.Out, format+"\n", a...) }
-func (p *Pipeline) step(title string)            { p.logf("\n== %s", title) }
+func (p *Pipeline) step(title string) {
+	p.logf("\n== %s", title)
+	if p.OnStep != nil {
+		p.OnStep(title)
+	}
+}
 func (p *Pipeline) warnf(format string, a ...any) {
 	p.logf("WARNING: "+format, a...)
 }
@@ -113,8 +123,52 @@ func (p *Pipeline) inFolder(suffix string) string {
 
 // findSource returns the source with the given name in the folder,
 // preferring FLAC over WAV, or "".
-func (p *Pipeline) findSource(name string) string {
-	return firstExisting(p.inFolder(name+".flac"), p.inFolder(name+".wav"))
+func (p *Pipeline) findSource(name string) string { return p.P.findSource(name) }
+
+func (p Paths) findSource(name string) string {
+	in := func(ext string) string { return filepath.Join(p.Folder, p.Date+name+ext) }
+	return firstExisting(in(".flac"), in(".wav"))
+}
+
+// Sources are the inputs a run would use, found the same way as the pipeline:
+// in the date folder first, then in the archive (if any).
+type Sources struct {
+	Raw          string // the whole recording, or ""
+	Edit         string // the hand-cut sermon (or an earlier cut), or ""
+	EditInFolder bool   // Edit is in the date folder, i.e. supplied by hand
+}
+
+func (p Paths) Sources() Sources {
+	var s Sources
+	s.Raw = p.findSource(rawName)
+	if s.Raw == "" && p.Archive != "" && exists(p.RawArchive()) {
+		s.Raw = p.RawArchive()
+	}
+	s.Edit = p.findSource(editName)
+	s.EditInFolder = s.Edit != ""
+	if s.Edit == "" && p.Archive != "" && exists(p.EditArchive()) {
+		s.Edit = p.EditArchive()
+	}
+	return s
+}
+
+// runTo runs ffmpeg into dst, reporting progress against total seconds when
+// OnProgress is set and total is known.
+func (p *Pipeline) runTo(ctx context.Context, dst string, total float64, args ...string) error {
+	if p.OnProgress == nil || total <= 0 {
+		return p.FF.RunTo(ctx, dst, args...)
+	}
+	p.OnProgress(0)
+	return p.FF.RunToProgress(ctx, dst, func(s float64) { p.OnProgress(math.Min(s/total, 1)) }, args...)
+}
+
+// lengthFor is the length of path in seconds if progress is reported, else 0.
+func (p *Pipeline) lengthFor(ctx context.Context, path string) float64 {
+	if p.OnProgress == nil {
+		return 0
+	}
+	d, _ := p.FF.Duration(ctx, path)
+	return d
 }
 
 // Run runs the whole flow.
@@ -197,7 +251,7 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 	}
 
 	if !exists(dst) || p.Opt.Force {
-		if err := p.FF.RunTo(ctx, dst, "-i", wav, "-c:a", "flac"); err != nil {
+		if err := p.runTo(ctx, dst, p.lengthFor(ctx, wav), "-i", wav, "-c:a", "flac"); err != nil {
 			return false, err
 		}
 	}
@@ -286,15 +340,20 @@ func (p *Pipeline) stepEdit(ctx context.Context) error {
 // supply the _edit file as before.
 func (p *Pipeline) cutEdit(ctx context.Context) error {
 	dst := p.P.EditArchive()
-	p.edit = dst
 	if exists(dst) && !p.Opt.Force {
+		p.edit = dst
 		p.logf("%s exists, skipping (use --force to cut again).", filepath.Base(dst))
 		return nil
 	}
+	var total float64
+	if p.OnProgress != nil {
+		total, _ = p.sermonLength(ctx) // before p.edit is set: the length of the cut
+	}
 	args := append(p.cutArgs(), "-i", p.raw, "-c:a", "flac")
-	if err := p.FF.RunTo(ctx, dst, args...); err != nil {
+	if err := p.runTo(ctx, dst, total, args...); err != nil {
 		return err
 	}
+	p.edit = dst
 	p.logf("Cut %s from %s to %s.", filepath.Base(dst), p.cutFrom(), p.cutTo())
 	return nil
 }
@@ -399,7 +458,10 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		args = append(p.cutArgs(), "-i", p.raw)
 	}
 	args = append(args, "-af", p.masterFilter(length), "-c:a", "flac", "-sample_fmt", "s32")
-	return p.FF.RunTo(ctx, p.master, args...)
+	if length == 0 && p.OnProgress != nil {
+		length, _ = p.sermonLength(ctx)
+	}
+	return p.runTo(ctx, p.master, length, args...)
 }
 
 // sermonLength is the length in seconds of what goes into the master.
@@ -434,12 +496,13 @@ func (p *Pipeline) encodeLossy(ctx context.Context, name, dst string, codec []st
 		p.logf("%s exists, skipping.", name)
 		return nil
 	}
+	total := p.lengthFor(ctx, p.master)
 	enc := func(gain *float64) error {
 		args := []string{"-i", p.master}
 		if gain != nil {
 			args = append(args, "-af", fmt.Sprintf("volume=%.2fdB", *gain))
 		}
-		return p.FF.RunTo(ctx, dst, append(args, codec...)...)
+		return p.runTo(ctx, dst, total, append(args, codec...)...)
 	}
 	if err := enc(nil); err != nil {
 		return err

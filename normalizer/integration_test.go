@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/md5"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -389,4 +390,68 @@ func TestIntegrationTemporaryMasterRemovedOnError(t *testing.T) {
 		t.Fatal("expected the MP3 encode to fail")
 	}
 	wantFiles(t, dir, date+"_edit.flac")
+}
+
+// serviceWithGaps is service() with 2 s of silence at both transitions,
+// as between the parts of a real service.
+func serviceWithGaps(t *testing.T, ff FFmpeg, path string) {
+	t.Helper()
+	expr := "if(between(t,19,21)+between(t,79,81), 0, if(between(t,21,79), 0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t)), 0.5*sin(2*PI*440*t)))"
+	if _, err := ff.Run(context.Background(), "-y", "-f", "lavfi", "-i",
+		"aevalsrc=exprs='"+expr+"|"+expr+"':s=48000:d=100", "-c:a", "flac", path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIntegrationLevelsAndSilences(t *testing.T) {
+	ff := requireFFmpeg(t)
+	path := filepath.Join(t.TempDir(), "service.flac")
+	serviceWithGaps(t, ff, path)
+
+	levels, err := ff.Levels(context.Background(), path, 0.1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(levels) != 1000 {
+		t.Fatalf("%d levels, want 1000 (100 s / 0.1 s)", len(levels))
+	}
+	music, speech, gap := levels[100], levels[500], levels[200]
+	t.Logf("music %.1f dB, speech %.1f dB, gap %.1f dB", music, speech, gap)
+	if music < speech+10 || gap != SilenceFloor {
+		t.Errorf("music %.1f, speech %.1f, gap %.1f: want music well above speech, gap silent", music, speech, gap)
+	}
+	got := Silences(levels, 0.1, 1)
+	if len(got) != 2 || !near(got[0].Start, 19, 0.15) || !near(got[0].End, 21, 0.15) ||
+		!near(got[1].Start, 79, 0.15) || !near(got[1].End, 81, 0.15) {
+		t.Errorf("silences %v, want ~[19 21] and ~[79 81]", got)
+	}
+}
+
+func TestIntegrationProgressEvents(t *testing.T) {
+	ff := requireFFmpeg(t)
+	dir := dateFolder(t)
+	sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
+	paths, _ := NewPaths(dir, "")
+	var steps []string
+	var fractions []float64
+	p := &Pipeline{P: paths, Opt: DefaultOptions(), FF: ff, Out: io.Discard,
+		OnStep:     func(s string) { steps = append(steps, s) },
+		OnProgress: func(f float64) { fractions = append(fractions, f) },
+	}
+	if err := p.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 5 || !strings.HasPrefix(steps[2], "3. Master") || !strings.HasPrefix(steps[4], "Result") {
+		t.Errorf("steps: %q", steps)
+	}
+	var reachedEnd bool
+	for i, f := range fractions {
+		if f < 0 || f > 1 {
+			t.Errorf("fraction %d out of range: %v", i, f)
+		}
+		reachedEnd = reachedEnd || f > 0.95
+	}
+	if len(fractions) < 3 || !reachedEnd {
+		t.Errorf("fractions %v: want several, reaching ~1", fractions)
+	}
 }

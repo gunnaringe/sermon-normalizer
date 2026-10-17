@@ -1,10 +1,13 @@
 package normalizer
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -327,5 +330,63 @@ func TestParseOutputs(t *testing.T) {
 	}
 	if s := (Outputs{Flac: true, Opus: true}).String(); s != "flac,opus" {
 		t.Errorf("String() = %q", s)
+	}
+}
+
+func TestReadLevels(t *testing.T) {
+	// 4 samples at full scale, 4 at half, 2 of silence: windows of 4.
+	var pcm []byte
+	for _, v := range []int16{32767, -32767, 32767, -32767, 16384, -16384, 16384, -16384, 0, 0} {
+		pcm = append(pcm, byte(v), byte(uint16(v)>>8))
+	}
+	got, err := readLevels(bytes.NewReader(pcm), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []float64{0, -6.02, SilenceFloor}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if math.Abs(got[i]-want[i]) > 0.01 {
+			t.Errorf("level %d: %.2f, want %.2f", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSilences(t *testing.T) {
+	// 0.5 s windows: loud, a 1.5 s gap, quieter speech, a 0.5 s pause, a 2 s gap at the end.
+	levels := []float64{-10, -10, -10, -70, -70, -70, -30, -30, -30, -30, -70, -30, -30, -30, -70, -70, -70, -70}
+	got := Silences(levels, 0.5, 1)
+	want := []Span{{1.5, 3}, {7, 9}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if Silences(nil, 0.5, 1) != nil {
+		t.Error("no levels, no silences")
+	}
+}
+
+func TestSources(t *testing.T) {
+	p := newTestPipeline(t, "arkiv", "2026-10-04_edit.wav")
+	os.WriteFile(p.P.RawArchive(), []byte("x"), 0o644)
+	s := p.P.Sources()
+	if s.Raw != p.P.RawArchive() || s.Edit != p.inFolder("_edit.wav") || !s.EditInFolder {
+		t.Errorf("got %+v", s)
+	}
+	// Without an archive, only the date folder counts.
+	noArchive, _ := NewPaths(p.P.Folder, "")
+	if s := noArchive.Sources(); s.Raw != "" || s.Edit != p.inFolder("_edit.wav") {
+		t.Errorf("no archive: %+v", s)
+	}
+}
+
+func TestProgressWriter(t *testing.T) {
+	var got []float64
+	w := &progressWriter{fn: func(s float64) { got = append(got, s) }}
+	w.Write([]byte("frame=1\nout_time_us=1500"))
+	w.Write([]byte("000\nout_time_us=N/A\nout_time_us=3000000\nprogress=end\n"))
+	if !reflect.DeepEqual(got, []float64{1.5, 3}) {
+		t.Errorf("got %v", got)
 	}
 }

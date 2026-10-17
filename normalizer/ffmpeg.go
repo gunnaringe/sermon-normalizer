@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -23,10 +24,22 @@ type Result struct {
 
 // Run runs ffmpeg. -nostdin stops ffmpeg from waiting for key presses.
 func (f FFmpeg) Run(ctx context.Context, args ...string) (Result, error) {
-	full := append([]string{"-nostdin", "-hide_banner", "-nostats"}, args...)
-	cmd := exec.CommandContext(ctx, f.Bin, full...)
+	return f.run(ctx, nil, args)
+}
+
+// run runs ffmpeg; with progress set, ffmpeg reports how many seconds of
+// output it has written, which are passed to progress as they arrive.
+func (f FFmpeg) run(ctx context.Context, progress func(seconds float64), args []string) (Result, error) {
+	full := []string{"-nostdin", "-hide_banner", "-nostats"}
+	if progress != nil {
+		full = append(full, "-progress", "pipe:1")
+	}
+	cmd := exec.CommandContext(ctx, f.Bin, append(full, args...)...)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
+	if progress != nil {
+		cmd.Stdout = &progressWriter{fn: progress}
+	}
 	cmd.Stderr = &errb
 	res := func() Result { return Result{Stdout: out.String(), Stderr: errb.String()} }
 	if err := cmd.Run(); err != nil {
@@ -42,13 +55,42 @@ func (f FFmpeg) Run(ctx context.Context, args ...string) (Result, error) {
 // file next to dst, which is renamed only on success, so an interrupted or
 // failed run never leaves a half-written dst that a later run would skip.
 func (f FFmpeg) RunTo(ctx context.Context, dst string, args ...string) error {
+	return f.RunToProgress(ctx, dst, nil, args...)
+}
+
+// RunToProgress is RunTo that reports the seconds of output written so far.
+func (f FFmpeg) RunToProgress(ctx context.Context, dst string, progress func(seconds float64), args ...string) error {
 	ext := filepath.Ext(dst) // ffmpeg picks the format from the extension
 	tmp := strings.TrimSuffix(dst, ext) + ".partial" + ext
-	if _, err := f.Run(ctx, append(append([]string{"-y"}, args...), tmp)...); err != nil {
+	if _, err := f.run(ctx, progress, append(append([]string{"-y"}, args...), tmp)); err != nil {
 		os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, dst)
+}
+
+// progressWriter reads ffmpeg's -progress output (key=value lines) and
+// passes out_time_us on as seconds.
+type progressWriter struct {
+	fn  func(seconds float64)
+	buf []byte
+}
+
+func (w *progressWriter) Write(b []byte) (int, error) {
+	w.buf = append(w.buf, b...)
+	for {
+		i := bytes.IndexByte(w.buf, '\n')
+		if i < 0 {
+			return len(b), nil
+		}
+		line := strings.TrimSpace(string(w.buf[:i]))
+		w.buf = w.buf[i+1:]
+		if v, ok := strings.CutPrefix(line, "out_time_us="); ok {
+			if us, err := strconv.ParseInt(v, 10, 64); err == nil && us >= 0 {
+				w.fn(float64(us) / 1e6)
+			}
+		}
+	}
 }
 
 func lastLines(s string, n int) string {
