@@ -47,38 +47,50 @@ Put the recording of the whole service in the date folder, and give where the se
 sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
 ```
 
-Times can be written as `h:mm:ss`, `mm:ss` or seconds, with decimals if needed (`41:20.5`).
-Without `--start` the cut starts at the beginning, without `--end` it runs to the end.
-The tool cuts `arkiv/<date>_edit.flac` from raw and continues with the master, MP3 and Opus.
-To cut again with different times, run again with `--force`.
-
-**More than one segment** (for example a song in the middle of the sermon that should go):
-cut it yourself in an audio editor and put the result in the folder. It is then used instead,
-and `--start`/`--end` is left out (giving both is an error). WAV and FLAC are accepted:
-
-```
-2026-10-04/
-  2026-10-04_raw.wav          (or _raw.flac)    the whole recording
-  2026-10-04_edit.flac        (or _edit.wav)    cut by you
-```
-
-```bash
-sermon-normalizer run /path/to/Taler/2026/2026-10-04
-```
-
 Result:
 
 ```
 2026-10-04/
+  2026-10-04_raw.wav   untouched
   2026-10-04.flac      master: mono, 48 kHz / 24-bit, -19 LUFS
   2026-10-04.mp3       mono, 96 kbps
   2026-10-04.opus      mono, 48 kbps
-  arkiv/
-    2026-10-04_raw.flac
-    2026-10-04_edit.flac
 ```
 
-- A WAV is converted to FLAC in `arkiv/`, the audio is verified with MD5, and **the WAV is deleted only if the audio is identical** (unless `--keep-wav`).
+Times can be written as `h:mm:ss`, `mm:ss` or seconds, with decimals if needed (`41:20.5`).
+Without `--start` the cut starts at the beginning, without `--end` it runs to the end.
+To cut again with different times, run again with `--force`.
+
+**More than one segment** (for example a song in the middle of the sermon that should go):
+cut it yourself in an audio editor and put the result in the folder as `<date>_edit.flac`
+(or `.wav`). It is then used instead, and `--start`/`--end` is left out (giving both is an error).
+
+### Archive
+
+With `--archive <folder>` the sources are kept as FLAC in an archive folder, and the date folder
+ends up with just the finished files. A relative path is relative to the date folder; an absolute
+path (e.g. on another disk) is used as is, and can be shared by all dates.
+
+```bash
+sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05 --archive arkiv
+```
+
+```
+2026-10-04/
+  2026-10-04.flac
+  2026-10-04.mp3
+  2026-10-04.opus
+  arkiv/
+    2026-10-04_raw.flac       the whole recording
+    2026-10-04_edit.flac      the sermon as cut, the input to the master
+```
+
+- A WAV is converted to FLAC in the archive, the audio is verified with MD5, and **the WAV is deleted only if the audio is identical** (unless `--keep-wav`). A FLAC is moved.
+- A file already in the archive is never replaced without `--force`.
+- Folders processed by older versions (raw already in `arkiv/`) need `--archive arkiv`.
+
+### Notes
+
 - MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or the loudness is off.
 - Existing output files are skipped without `--force`.
 - The old names `_1-raw.*` and `_2-edit.*` are accepted.
@@ -89,6 +101,7 @@ Flags for `run` (may go before or after the folder):
 |---|---|---|
 | `--start` | | where the sermon starts in raw (cuts the edit automatically) |
 | `--end` | | where the sermon ends in raw |
+| `--archive` | | keep the sources as FLAC in this folder (default: leave them in place) |
 | `--target-lufs` | -19 | -19 for mono, -16 for stereo |
 | `--true-peak` | -1.5 | max true peak for the master |
 | `--mp3-bitrate` | 96k | |

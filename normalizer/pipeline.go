@@ -39,19 +39,19 @@ func DefaultOptions() Options {
 	}
 }
 
-// Paths are the files in a date folder.
+// Paths are the files for one date folder.
 type Paths struct {
 	Folder  string
 	Date    string
-	Archive string
-	RawFlac string
-	EditDst string
+	Archive string // "" = no archive: sources stay where they are
 	Master  string
 	Mp3     string
 	Opus    string
 }
 
-func NewPaths(folder string) (Paths, error) {
+// NewPaths resolves the files for a date folder. A relative archive is taken
+// relative to the folder; "" means no archive.
+func NewPaths(folder, archive string) (Paths, error) {
 	abs, err := filepath.Abs(folder)
 	if err != nil {
 		return Paths{}, err
@@ -59,19 +59,29 @@ func NewPaths(folder string) (Paths, error) {
 	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
 		return Paths{}, fmt.Errorf("%s is not a directory", abs)
 	}
+	if archive != "" && !filepath.IsAbs(archive) {
+		archive = filepath.Join(abs, archive)
+	}
 	date := filepath.Base(abs)
-	archive := filepath.Join(abs, "arkiv")
 	return Paths{
 		Folder:  abs,
 		Date:    date,
 		Archive: archive,
-		RawFlac: filepath.Join(archive, date+"_raw.flac"),
-		EditDst: filepath.Join(archive, date+"_edit.flac"),
 		Master:  filepath.Join(abs, date+".flac"),
 		Mp3:     filepath.Join(abs, date+".mp3"),
 		Opus:    filepath.Join(abs, date+".opus"),
 	}, nil
 }
+
+// RawArchive and EditArchive are where the sources are kept when archiving.
+func (p Paths) RawArchive() string  { return filepath.Join(p.Archive, p.Date+"_raw.flac") }
+func (p Paths) EditArchive() string { return filepath.Join(p.Archive, p.Date+"_edit.flac") }
+
+// Source file names in the date folder ({d} = date), newest naming first.
+var (
+	rawBases  = []string{"{d}_raw", "{d}_1-raw"}
+	editBases = []string{"{d}_edit", "{d}_2-edit"}
+)
 
 // Pipeline runs the steps for one date folder.
 type Pipeline struct {
@@ -79,23 +89,15 @@ type Pipeline struct {
 	Opt Options
 	FF  FFmpeg
 	Out io.Writer
+
+	raw  string // the whole recording, if any
+	edit string // the sermon as a file; "" when the master is cut straight from raw
 }
 
 func (p *Pipeline) logf(format string, a ...any) { fmt.Fprintf(p.Out, format+"\n", a...) }
 func (p *Pipeline) step(title string)            { p.logf("\n== %s", title) }
 func (p *Pipeline) warnf(format string, a ...any) {
 	p.logf("WARNING: "+format, a...)
-}
-
-func exists(path string) bool { _, err := os.Stat(path); return err == nil }
-
-func firstExisting(paths ...string) string {
-	for _, s := range paths {
-		if exists(s) {
-			return s
-		}
-	}
-	return ""
 }
 
 func (p *Pipeline) inFolder(names ...string) []string {
@@ -106,10 +108,23 @@ func (p *Pipeline) inFolder(names ...string) []string {
 	return out
 }
 
+// findSource returns the first source in the folder with one of the base names,
+// preferring FLAC over WAV.
+func (p *Pipeline) findSource(bases []string) string {
+	var flacs, wavs []string
+	for _, b := range bases {
+		flacs = append(flacs, p.inFolder(b+".flac")...)
+		wavs = append(wavs, p.inFolder(b+".wav")...)
+	}
+	return firstExisting(append(flacs, wavs...)...)
+}
+
 // Run runs the whole flow.
 func (p *Pipeline) Run(ctx context.Context) error {
-	if err := os.MkdirAll(p.P.Archive, 0o755); err != nil {
-		return err
+	if p.P.Archive != "" {
+		if err := os.MkdirAll(p.P.Archive, 0o755); err != nil {
+			return err
+		}
 	}
 	if err := p.stepRaw(ctx); err != nil {
 		return err
@@ -130,11 +145,25 @@ func (p *Pipeline) Run(ctx context.Context) error {
 
 func (p *Pipeline) stepRaw(ctx context.Context) error {
 	p.step("1. Raw recording")
-	ok, err := p.ingest(ctx, p.P.RawFlac, "{d}_raw", "{d}_1-raw")
+	if p.P.Archive == "" {
+		p.raw = p.findSource(rawBases)
+		switch {
+		case p.raw != "":
+			p.logf("Using %s (no archive, left in place).", filepath.Base(p.raw))
+		case exists(filepath.Join(p.P.Folder, "arkiv")):
+			p.warnf("no raw file in the folder, but there is an arkiv/ folder: use --archive arkiv.")
+		default:
+			p.warnf("no raw file found.")
+		}
+		return nil
+	}
+	ok, err := p.ingest(ctx, p.P.RawArchive(), rawBases...)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	if ok {
+		p.raw = p.P.RawArchive()
+	} else {
 		p.warnf("no raw file found.")
 	}
 	return nil
@@ -155,11 +184,15 @@ func (p *Pipeline) ingest(ctx context.Context, dst string, bases ...string) (boo
 	}
 	wav, flac := firstExisting(wavs...), firstExisting(flacs...)
 
-	if flac != "" {
-		if err := os.Rename(flac, dst); err != nil {
+	switch {
+	case flac == "":
+	case exists(dst) && !p.Opt.Force:
+		p.warnf("%s is already in the archive; leaving %s in the folder (use --force to replace).", filepath.Base(dst), filepath.Base(flac))
+	default:
+		if err := moveFile(flac, dst); err != nil {
 			return false, err
 		}
-		p.logf("Moved %s to the archive.", filepath.Base(flac))
+		p.logf("Moved %s to %s.", filepath.Base(flac), dst)
 	}
 	if wav == "" {
 		if exists(dst) && flac == "" {
@@ -219,50 +252,84 @@ func (p *Pipeline) sameAudio(ctx context.Context, a, b string) (bool, error) {
 
 func (p *Pipeline) stepEdit(ctx context.Context) error {
 	p.step("2. Edit")
+	manual := p.findSource(editBases)
 	if p.Opt.cutting() {
+		if manual != "" {
+			return fmt.Errorf("%s exists and --start/--end is given: use only one of them", filepath.Base(manual))
+		}
+		if p.raw == "" {
+			return errors.New("no raw file to cut with --start/--end")
+		}
+		if p.P.Archive == "" {
+			p.logf("Cutting %s from %s to %s while making the master.", filepath.Base(p.raw), p.cutFrom(), p.cutTo())
+			return nil
+		}
 		return p.cutEdit(ctx)
 	}
-	ok, err := p.ingest(ctx, p.P.EditDst, "{d}_edit", "{d}_2-edit")
+	missing := fmt.Errorf("missing %s_edit.flac (or .wav): use --start/--end, or cut the recording yourself and save it in %s", p.P.Date, p.P.Folder)
+	if p.P.Archive == "" {
+		if manual == "" {
+			return missing
+		}
+		p.edit = manual
+		p.logf("Using %s (no archive, left in place).", filepath.Base(manual))
+		return nil
+	}
+	ok, err := p.ingest(ctx, p.P.EditArchive(), editBases...)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("missing %s_edit.flac (or .wav): use --start/--end, or cut the recording yourself and save it in %s", p.P.Date, p.P.Folder)
+		return missing
 	}
+	p.edit = p.P.EditArchive()
 	return nil
 }
 
-// cutEdit makes the edit from raw with --start/--end (one continuous segment).
-// If more than one segment is needed, cut by hand and supply the _edit file as before.
+// cutEdit writes the edit to the archive from raw with --start/--end (one
+// continuous segment). If more than one segment is needed, cut by hand and
+// supply the _edit file as before.
 func (p *Pipeline) cutEdit(ctx context.Context) error {
-	manual := p.inFolder("{d}_edit.flac", "{d}_edit.wav", "{d}_2-edit.flac", "{d}_2-edit.wav")
-	if src := firstExisting(manual...); src != "" {
-		return fmt.Errorf("%s exists and --start/--end is given: use only one of them", filepath.Base(src))
-	}
-	if !exists(p.P.RawFlac) {
-		return fmt.Errorf("missing %s, needed to cut with --start/--end", filepath.Base(p.P.RawFlac))
-	}
-	if exists(p.P.EditDst) && !p.Opt.Force {
-		p.logf("%s exists, skipping (use --force to cut again).", filepath.Base(p.P.EditDst))
+	dst := p.P.EditArchive()
+	p.edit = dst
+	if exists(dst) && !p.Opt.Force {
+		p.logf("%s exists, skipping (use --force to cut again).", filepath.Base(dst))
 		return nil
 	}
-	// -ss/-to before -i: ffmpeg decodes and discards the audio before start, so the cut is exact.
-	args := []string{"-y"}
-	from, to := "start", "end"
-	if p.Opt.Start > 0 {
-		args = append(args, "-ss", secs(p.Opt.Start))
-		from = FormatTime(p.Opt.Start)
-	}
-	if p.Opt.End > 0 {
-		args = append(args, "-to", secs(p.Opt.End))
-		to = FormatTime(p.Opt.End)
-	}
-	args = append(args, "-i", p.P.RawFlac, "-c:a", "flac", p.P.EditDst)
+	args := append([]string{"-y"}, p.cutArgs()...)
+	args = append(args, "-i", p.raw, "-c:a", "flac", dst)
 	if _, err := p.FF.Run(ctx, args...); err != nil {
 		return err
 	}
-	p.logf("Cut %s from %s to %s.", filepath.Base(p.P.EditDst), from, to)
+	p.logf("Cut %s from %s to %s.", filepath.Base(dst), p.cutFrom(), p.cutTo())
 	return nil
+}
+
+// cutArgs are the input options for --start/--end. Placed before -i, ffmpeg
+// decodes and discards the audio before start, so the cut is exact.
+func (p *Pipeline) cutArgs() []string {
+	var args []string
+	if p.Opt.Start > 0 {
+		args = append(args, "-ss", secs(p.Opt.Start))
+	}
+	if p.Opt.End > 0 {
+		args = append(args, "-to", secs(p.Opt.End))
+	}
+	return args
+}
+
+func (p *Pipeline) cutFrom() string {
+	if p.Opt.Start > 0 {
+		return FormatTime(p.Opt.Start)
+	}
+	return "the beginning"
+}
+
+func (p *Pipeline) cutTo() string {
+	if p.Opt.End > 0 {
+		return FormatTime(p.Opt.End)
+	}
+	return "the end"
 }
 
 func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
@@ -288,8 +355,14 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		p.logf("Already exists, skipping (use --force).")
 		return nil
 	}
-	_, err := p.FF.Run(ctx, "-y", "-i", p.P.EditDst, "-af", p.masterFilter(),
-		"-c:a", "flac", "-sample_fmt", "s32", p.P.Master)
+	args := []string{"-y"}
+	if p.edit != "" {
+		args = append(args, "-i", p.edit)
+	} else {
+		args = append(append(args, p.cutArgs()...), "-i", p.raw)
+	}
+	args = append(args, "-af", p.masterFilter(), "-c:a", "flac", "-sample_fmt", "s32", p.P.Master)
+	_, err := p.FF.Run(ctx, args...)
 	return err
 }
 
@@ -350,14 +423,18 @@ func (p *Pipeline) report(ctx context.Context) error {
 	p.step(fmt.Sprintf("Result (target: %g LUFS, max %g dBTP)", p.Opt.TargetLUFS, p.Opt.TruePeak))
 	tw := tabwriter.NewWriter(p.Out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "File\tLUFS\tTP\tLRA\tMB")
-	for _, f := range []string{p.P.EditDst, p.P.Master, p.P.Mp3, p.P.Opus} {
+	files := []string{p.P.Master, p.P.Mp3, p.P.Opus}
+	if p.edit != "" {
+		files = append([]string{p.edit}, files...)
+	}
+	for _, f := range files {
 		m, err := p.FF.Measure(ctx, f)
 		if err != nil {
 			return err
 		}
 		st, _ := os.Stat(f)
 		fmt.Fprintf(tw, "%s\t%.1f\t%.1f\t%.1f\t%.1f\n", filepath.Base(f), m.LUFS, m.TruePeak, m.LRA, float64(st.Size())/1048576)
-		if f == p.P.EditDst {
+		if f == p.edit {
 			continue
 		}
 		if m.TruePeak > -1.0 {

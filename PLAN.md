@@ -19,12 +19,13 @@ Must run on Linux (server), but must be testable on Windows.
   <date>.flac                master, mono, 48 kHz / 24-bit, -19 LUFS
   <date>.mp3                 mono, 96 kbps  (publishing)
   <date>.opus                mono, 48 kbps
-  arkiv\
+  arkiv\                     only with --archive arkiv
     <date>_raw.flac          the whole recording, unedited
     <date>_edit.flac         cut version (input to the master)
 ```
 
-Input placed in the folder: `<date>_raw.wav` (or `_raw.flac`) and `<date>_edit.flac`.
+Input placed in the folder: `<date>_raw.wav` (or `_raw.flac`), plus `<date>_edit.flac` unless `--start`/`--end` is used.
+Without `--archive` the sources stay in the date folder untouched.
 The old names `_1-raw.*` and `_2-edit.flac` are accepted.
 
 ## Choice of language
@@ -62,6 +63,7 @@ sermon-normalizer version
 
 run flags:
   --start / --end          cut the edit from raw (one segment); otherwise supply _edit yourself
+  --archive <folder>       keep raw and edit as FLAC there (default: sources stay in place)
   --target-lufs  -19       -19 for mono, -16 for stereo
   --true-peak    -1.5
   --mp3-bitrate  96k

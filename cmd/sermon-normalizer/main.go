@@ -108,6 +108,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	fs.BoolVar(&opt.Force, "force", false, "recreate output files")
 	fs.Func("start", "cut the sermon from raw: where it starts (h:mm:ss, mm:ss or seconds)", timeFlag(&opt.Start))
 	fs.Func("end", "cut the sermon from raw: where it ends (h:mm:ss, mm:ss or seconds)", timeFlag(&opt.End))
+	archive := fs.String("archive", "", "archive the sources (raw, edit) as FLAC in this folder, relative to the date folder\n(default: no archive, sources are left in place)")
 	ffBin := fs.String("ffmpeg", "ffmpeg", "path to ffmpeg")
 	if err := fs.Parse(reorder(args)); err != nil {
 		return err
@@ -122,7 +123,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	paths, err := normalizer.NewPaths(fs.Arg(0))
+	paths, err := normalizer.NewPaths(fs.Arg(0), *archive)
 	if err != nil {
 		return err
 	}

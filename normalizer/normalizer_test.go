@@ -68,22 +68,58 @@ func TestNewPaths(t *testing.T) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	p, err := NewPaths(dir)
+	p, err := NewPaths(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Date != "2026-10-04" ||
+	if p.Date != "2026-10-04" || p.Archive != "" ||
 		filepath.Base(p.Master) != "2026-10-04.flac" ||
 		filepath.Base(p.Mp3) != "2026-10-04.mp3" ||
-		filepath.Base(p.Opus) != "2026-10-04.opus" ||
-		filepath.Base(p.RawFlac) != "2026-10-04_raw.flac" ||
-		filepath.Base(p.EditDst) != "2026-10-04_edit.flac" ||
-		filepath.Base(filepath.Dir(p.RawFlac)) != "arkiv" {
+		filepath.Base(p.Opus) != "2026-10-04.opus" {
 		t.Errorf("unexpected paths: %+v", p)
 	}
-	if _, err := NewPaths(filepath.Join(dir, "missing")); err == nil {
+	if _, err := NewPaths(filepath.Join(dir, "missing"), ""); err == nil {
 		t.Error("expected an error for a missing folder")
 	}
+}
+
+func TestNewPathsArchive(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "2026-10-04")
+	os.Mkdir(dir, 0o755)
+	rel, _ := NewPaths(dir, "arkiv")
+	if rel.Archive != filepath.Join(dir, "arkiv") ||
+		rel.RawArchive() != filepath.Join(dir, "arkiv", "2026-10-04_raw.flac") ||
+		rel.EditArchive() != filepath.Join(dir, "arkiv", "2026-10-04_edit.flac") {
+		t.Errorf("relative archive: %+v", rel)
+	}
+	absDir := filepath.Join(t.TempDir(), "archive")
+	abs, _ := NewPaths(dir, absDir)
+	if abs.RawArchive() != filepath.Join(absDir, "2026-10-04_raw.flac") {
+		t.Errorf("absolute archive: %+v", abs)
+	}
+}
+
+// newTestPipeline makes a date folder with the given files and a pipeline for it.
+func newTestPipeline(t *testing.T, archive string, files ...string) *Pipeline {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "2026-10-04")
+	os.Mkdir(dir, 0o755)
+	paths, err := NewPaths(dir, archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if archive != "" {
+		os.MkdirAll(paths.Archive, 0o755)
+	}
+	for _, f := range files {
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(dir, f)
+		}
+		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return &Pipeline{P: paths, Opt: DefaultOptions(), Out: io.Discard}
 }
 
 func TestFirstExisting(t *testing.T) {
@@ -100,33 +136,70 @@ func TestFirstExisting(t *testing.T) {
 
 // A FLAC source is just moved to the archive (no ffmpeg needed).
 func TestIngestFlacMoves(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "2026-10-04")
-	os.Mkdir(dir, 0o755)
-	paths, err := NewPaths(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.MkdirAll(paths.Archive, 0o755)
-	src := filepath.Join(dir, "2026-10-04_2-edit.flac") // old name accepted
-	os.WriteFile(src, []byte("x"), 0o644)
-
-	p := &Pipeline{P: paths, Opt: DefaultOptions(), Out: io.Discard}
-	ok, err := p.ingest(context.Background(), paths.EditDst, "{d}_edit", "{d}_2-edit")
+	p := newTestPipeline(t, "arkiv", "2026-10-04_2-edit.flac") // old name accepted
+	src := p.inFolder("{d}_2-edit.flac")[0]
+	ok, err := p.ingest(context.Background(), p.P.EditArchive(), editBases...)
 	if err != nil || !ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
-	if exists(src) || !exists(paths.EditDst) {
+	if exists(src) || !exists(p.P.EditArchive()) {
 		t.Error("the file should have been moved to the archive")
 	}
 }
 
+// A FLAC already in the archive is not replaced without --force.
+func TestIngestFlacKeepsArchived(t *testing.T) {
+	p := newTestPipeline(t, "arkiv", "2026-10-04_raw.flac")
+	os.WriteFile(p.P.RawArchive(), []byte("archived"), 0o644)
+	if ok, err := p.ingest(context.Background(), p.P.RawArchive(), rawBases...); !ok || err != nil {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if b, _ := os.ReadFile(p.P.RawArchive()); string(b) != "archived" {
+		t.Error("the archived file was replaced")
+	}
+	if !exists(p.inFolder("{d}_raw.flac")[0]) {
+		t.Error("the source should be left in the folder")
+	}
+}
+
 func TestIngestNothing(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "2026-10-04")
-	os.Mkdir(dir, 0o755)
-	paths, _ := NewPaths(dir)
-	p := &Pipeline{P: paths, Opt: DefaultOptions(), Out: io.Discard}
-	if ok, err := p.ingest(context.Background(), paths.RawFlac, "{d}_raw"); ok || err != nil {
+	p := newTestPipeline(t, "arkiv")
+	if ok, err := p.ingest(context.Background(), p.P.RawArchive(), rawBases...); ok || err != nil {
 		t.Errorf("ok=%v err=%v", ok, err)
+	}
+}
+
+// Without an archive the sources are used where they are (no ffmpeg needed).
+func TestNoArchiveLeavesSources(t *testing.T) {
+	p := newTestPipeline(t, "", "2026-10-04_raw.wav", "2026-10-04_edit.flac")
+	ctx := context.Background()
+	if err := p.stepRaw(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.stepEdit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if p.raw != p.inFolder("{d}_raw.wav")[0] || p.edit != p.inFolder("{d}_edit.flac")[0] {
+		t.Errorf("raw=%q edit=%q", p.raw, p.edit)
+	}
+	if exists(filepath.Join(p.P.Folder, "arkiv")) {
+		t.Error("no archive folder should be created")
+	}
+}
+
+// Without an archive, --start/--end cuts straight into the master: no edit file.
+func TestNoArchiveCutWritesNoEdit(t *testing.T) {
+	p := newTestPipeline(t, "", "2026-10-04_raw.flac")
+	p.Opt.Start, p.Opt.End = 60, 120
+	ctx := context.Background()
+	if err := p.stepRaw(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.stepEdit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if p.edit != "" {
+		t.Errorf("edit=%q, want none", p.edit)
 	}
 }
 
@@ -170,34 +243,46 @@ func TestFormatTime(t *testing.T) {
 
 // With --start/--end and a hand-made _edit file in the folder it is unclear which applies.
 func TestCutEditConflictsWithManualEdit(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "2026-10-04")
-	os.Mkdir(dir, 0o755)
-	paths, _ := NewPaths(dir)
-	os.MkdirAll(paths.Archive, 0o755)
-	os.WriteFile(paths.RawFlac, []byte("x"), 0o644)
-	os.WriteFile(filepath.Join(dir, "2026-10-04_edit.flac"), []byte("x"), 0o644)
-
-	opt := DefaultOptions()
-	opt.Start = 60
-	p := &Pipeline{P: paths, Opt: opt, Out: io.Discard}
-	if err := p.stepEdit(context.Background()); err == nil || !strings.Contains(err.Error(), "only one of them") {
-		t.Errorf("expected a conflict error, got %v", err)
+	for _, archive := range []string{"", "arkiv"} {
+		p := newTestPipeline(t, archive, "2026-10-04_raw.flac", "2026-10-04_edit.flac")
+		p.raw = p.inFolder("{d}_raw.flac")[0]
+		p.Opt.Start = 60
+		if err := p.stepEdit(context.Background()); err == nil || !strings.Contains(err.Error(), "only one of them") {
+			t.Errorf("archive=%q: expected a conflict error, got %v", archive, err)
+		}
 	}
 }
 
 // If the edit already exists in the archive, it is not cut again without --force (no ffmpeg needed).
 func TestCutEditSkipsExisting(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "2026-10-04")
-	os.Mkdir(dir, 0o755)
-	paths, _ := NewPaths(dir)
-	os.MkdirAll(paths.Archive, 0o755)
-	os.WriteFile(paths.RawFlac, []byte("x"), 0o644)
-	os.WriteFile(paths.EditDst, []byte("x"), 0o644)
-
-	opt := DefaultOptions()
-	opt.End = 60
-	p := &Pipeline{P: paths, Opt: opt, Out: io.Discard}
+	p := newTestPipeline(t, "arkiv")
+	os.WriteFile(p.P.RawArchive(), []byte("x"), 0o644)
+	os.WriteFile(p.P.EditArchive(), []byte("x"), 0o644)
+	p.raw = p.P.RawArchive()
+	p.Opt.End = 60
 	if err := p.stepEdit(context.Background()); err != nil {
 		t.Error(err)
+	}
+	if p.edit != p.P.EditArchive() {
+		t.Errorf("edit=%q", p.edit)
+	}
+}
+
+func TestMoveFile(t *testing.T) {
+	dir := t.TempDir()
+	src, dst := filepath.Join(dir, "a"), filepath.Join(dir, "sub", "b")
+	os.WriteFile(src, []byte("data"), 0o644)
+	if err := moveFile(src, dst); err == nil {
+		t.Fatal("expected an error when the target folder is missing")
+	}
+	if !exists(src) {
+		t.Fatal("source must survive a failed move")
+	}
+	os.Mkdir(filepath.Join(dir, "sub"), 0o755)
+	if err := moveFile(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(dst); string(b) != "data" || exists(src) {
+		t.Error("move failed")
 	}
 }
