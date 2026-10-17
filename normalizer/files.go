@@ -1,6 +1,8 @@
 package normalizer
 
 import (
+	"bytes"
+	"crypto/md5"
 	"fmt"
 	"io"
 	"os"
@@ -29,22 +31,45 @@ func moveFile(src, dst string) error {
 		os.Remove(tmp)
 		return err
 	}
-	si, err := os.Stat(src)
+	// The source may be the only copy of the recording: verify before deleting it.
+	same, err := sameContent(src, tmp)
 	if err != nil {
-		return err
-	}
-	ti, err := os.Stat(tmp)
-	if err != nil {
-		return err
-	}
-	if si.Size() != ti.Size() {
 		os.Remove(tmp)
-		return fmt.Errorf("copy of %s is incomplete", filepath.Base(src))
+		return err
+	}
+	if !same {
+		os.Remove(tmp)
+		return fmt.Errorf("copy of %s differs from the original; the original is kept", filepath.Base(src))
 	}
 	if err := os.Rename(tmp, dst); err != nil {
 		return err
 	}
 	return os.Remove(src)
+}
+
+func sameContent(a, b string) (bool, error) {
+	ha, err := fileHash(a)
+	if err != nil {
+		return false, err
+	}
+	hb, err := fileHash(b)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(ha, hb), nil
+}
+
+func fileHash(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
 func copyFile(src, dst string) error {

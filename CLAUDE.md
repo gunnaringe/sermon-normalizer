@@ -16,8 +16,9 @@ Go CLI that turns a church service recording into publish-ready sermon files
 - Outputs go through `FFmpeg.RunTo` (writes `.partial`, renames on success).
   Existing outputs are skipped without `--force`, so a half-written file
   would never be redone.
-- Never delete a source unless its audio is verified identical (MD5 of the
-  decoded stream). Without `--archive`, sources are never touched.
+- Never delete a source unless its copy is verified identical: MD5 of the
+  decoded audio for WAV -> FLAC, MD5 of the bytes for a move across disks.
+  Without `--archive`, sources are never touched.
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm` (slow).
 - Code, CLI output and docs are in English.
 
