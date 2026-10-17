@@ -63,6 +63,7 @@ sermon-normalizer version
 run flags:
   --start / --end          cut the edit from raw (one segment); otherwise supply _edit yourself
   --fade-in / --fade-out   seconds of fade at the start/end of the sermon (0 = off)
+  --formats flac,mp3,opus  which outputs to make (default all)
   --archive <folder>       keep raw and edit as FLAC there (default: sources stay in place)
   --target-lufs  -19       -19 for mono, -16 for stereo
   --true-peak    -1.5

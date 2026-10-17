@@ -111,9 +111,14 @@ func cmdRun(ctx context.Context, args []string) error {
 	fs.Func("end", "cut the sermon from raw: where it ends (h:mm:ss, mm:ss or seconds)", timeFlag(&opt.End))
 	fs.Float64Var(&opt.FadeIn, "fade-in", 0, "fade in at the start of the sermon, in seconds (0 = off)")
 	fs.Float64Var(&opt.FadeOut, "fade-out", 0, "fade out at the end of the sermon, in seconds (0 = off)")
+	formats := fs.String("formats", opt.Outputs.String(), "comma-separated outputs to make: flac (master), mp3, opus")
 	archive := fs.String("archive", "", "archive the sources (raw, edit) as FLAC in this folder, relative to the date folder\n(default: no archive, sources are left in place)")
 	ffBin := fs.String("ffmpeg", "ffmpeg", "path to ffmpeg")
 	if err := fs.Parse(reorder(fs, args)); err != nil {
+		return err
+	}
+	var err error
+	if opt.Outputs, err = normalizer.ParseOutputs(*formats); err != nil {
 		return err
 	}
 	if opt.FadeIn < 0 || opt.FadeOut < 0 {

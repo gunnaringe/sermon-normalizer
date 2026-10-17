@@ -26,6 +26,7 @@ type Options struct {
 	Start, End     float64 // cut raw to edit (seconds); 0 = from the beginning / to the end
 	FadeIn         float64 // seconds at the start of the sermon; 0 = off
 	FadeOut        float64 // seconds at the end of the sermon; 0 = off
+	Outputs        Outputs
 }
 
 // cutting reports whether the edit is cut from raw rather than supplied by hand.
@@ -38,6 +39,7 @@ func DefaultOptions() Options {
 		TargetLUFS:     -19,
 		TruePeak:       -1.5,
 		NoiseReduction: 12,
+		Outputs:        AllOutputs,
 	}
 }
 
@@ -92,8 +94,10 @@ type Pipeline struct {
 	FF  FFmpeg
 	Out io.Writer
 
-	raw  string // the whole recording, if any
-	edit string // the sermon as a file; "" when the master is cut straight from raw
+	raw     string   // the whole recording, if any
+	edit    string   // the sermon as a file; "" when the master is cut straight from raw
+	master  string   // the master that MP3/Opus are made from
+	cleanup []string // temporary files to remove when the run ends
 }
 
 func (p *Pipeline) logf(format string, a ...any) { fmt.Fprintf(p.Out, format+"\n", a...) }
@@ -115,6 +119,11 @@ func (p *Pipeline) findSource(name string) string {
 
 // Run runs the whole flow.
 func (p *Pipeline) Run(ctx context.Context) error {
+	defer func() {
+		for _, f := range p.cleanup {
+			os.Remove(f)
+		}
+	}()
 	if p.P.Archive != "" {
 		if err := os.MkdirAll(p.P.Archive, 0o755); err != nil {
 			return err
@@ -345,11 +354,32 @@ func (p *Pipeline) masterFilter(length float64) string {
 	return strings.Join(f, ",")
 }
 
+// pending reports whether an output file needs to be made.
+func (p *Pipeline) pending(path string) bool { return p.Opt.Force || !exists(path) }
+
 func (p *Pipeline) stepMaster(ctx context.Context) error {
-	p.step(fmt.Sprintf("3. Master (mono, %g LUFS)", p.Opt.TargetLUFS))
-	if exists(p.P.Master) && !p.Opt.Force {
-		p.logf("Already exists, skipping (use --force).")
+	o := p.Opt.Outputs
+	lossy := (o.Mp3 && p.pending(p.P.Mp3)) || (o.Opus && p.pending(p.P.Opus))
+	p.master = p.P.Master
+	switch {
+	case o.Flac:
+		p.step(fmt.Sprintf("3. Master (mono, %g LUFS)", p.Opt.TargetLUFS))
+		if !p.pending(p.P.Master) {
+			p.logf("Already exists, skipping (use --force).")
+			return nil
+		}
+	case !lossy:
+		return nil // no master wanted, and nothing to make from one
+	case !p.pending(p.P.Master):
+		p.step("3. Master")
+		p.logf("Using the existing %s for MP3/Opus.", filepath.Base(p.P.Master))
 		return nil
+	default:
+		// Not wanted as output, but MP3/Opus are made from it. Kept in the
+		// date folder (it can be large) under a hidden name, removed after the run.
+		p.step(fmt.Sprintf("3. Master (temporary, for MP3/Opus; mono, %g LUFS)", p.Opt.TargetLUFS))
+		p.master = filepath.Join(p.P.Folder, "."+p.P.Date+".master.flac")
+		p.cleanup = append(p.cleanup, p.master)
 	}
 	var length float64
 	if p.Opt.FadeIn > 0 || p.Opt.FadeOut > 0 {
@@ -369,7 +399,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		args = append(p.cutArgs(), "-i", p.raw)
 	}
 	args = append(args, "-af", p.masterFilter(length), "-c:a", "flac", "-sample_fmt", "s32")
-	return p.FF.RunTo(ctx, p.P.Master, args...)
+	return p.FF.RunTo(ctx, p.master, args...)
 }
 
 // sermonLength is the length in seconds of what goes into the master.
@@ -405,7 +435,7 @@ func (p *Pipeline) encodeLossy(ctx context.Context, name, dst string, codec []st
 		return nil
 	}
 	enc := func(gain *float64) error {
-		args := []string{"-i", p.P.Master}
+		args := []string{"-i", p.master}
 		if gain != nil {
 			args = append(args, "-af", fmt.Sprintf("volume=%.2fdB", *gain))
 		}
@@ -426,13 +456,29 @@ func (p *Pipeline) encodeLossy(ctx context.Context, name, dst string, codec []st
 }
 
 func (p *Pipeline) stepLossy(ctx context.Context) error {
-	p.step(fmt.Sprintf("4. MP3 (%s) and Opus (%s), mono", p.Opt.Mp3Bitrate, p.Opt.OpusBitrate))
-	if err := p.encodeLossy(ctx, "mp3", p.P.Mp3,
-		[]string{"-ar", "44100", "-ac", "1", "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate}); err != nil {
-		return err
+	o := p.Opt.Outputs
+	var names []string
+	if o.Mp3 {
+		names = append(names, fmt.Sprintf("MP3 (%s)", p.Opt.Mp3Bitrate))
 	}
-	return p.encodeLossy(ctx, "opus", p.P.Opus,
-		[]string{"-ar", "48000", "-ac", "1", "-c:a", "libopus", "-b:a", p.Opt.OpusBitrate, "-application", "voip"})
+	if o.Opus {
+		names = append(names, fmt.Sprintf("Opus (%s)", p.Opt.OpusBitrate))
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	p.step("4. " + strings.Join(names, " and ") + ", mono")
+	if o.Mp3 {
+		if err := p.encodeLossy(ctx, "mp3", p.P.Mp3,
+			[]string{"-ar", "44100", "-ac", "1", "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate}); err != nil {
+			return err
+		}
+	}
+	if o.Opus {
+		return p.encodeLossy(ctx, "opus", p.P.Opus,
+			[]string{"-ar", "48000", "-ac", "1", "-c:a", "libopus", "-b:a", p.Opt.OpusBitrate, "-application", "voip"})
+	}
+	return nil
 }
 
 // --- report ---------------------------------------------------------------
@@ -441,9 +487,17 @@ func (p *Pipeline) report(ctx context.Context) error {
 	p.step(fmt.Sprintf("Result (target: %g LUFS, max %g dBTP)", p.Opt.TargetLUFS, p.Opt.TruePeak))
 	tw := tabwriter.NewWriter(p.Out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "File\tLUFS\tTP\tLRA\tMB")
-	files := []string{p.P.Master, p.P.Mp3, p.P.Opus}
+	var files []string
 	if p.edit != "" {
-		files = append([]string{p.edit}, files...)
+		files = append(files, p.edit)
+	}
+	for _, f := range []struct {
+		on   bool
+		path string
+	}{{p.Opt.Outputs.Flac, p.P.Master}, {p.Opt.Outputs.Mp3, p.P.Mp3}, {p.Opt.Outputs.Opus, p.P.Opus}} {
+		if f.on {
+			files = append(files, f.path)
+		}
 	}
 	for _, f := range files {
 		m, err := p.FF.Measure(ctx, f)

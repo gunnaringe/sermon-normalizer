@@ -342,3 +342,51 @@ func TestIntegrationFades(t *testing.T) {
 		t.Errorf("expected a fade length error, got %v", err)
 	}
 }
+
+// Only the selected outputs are made. Without FLAC, the master MP3/Opus need
+// is temporary and removed afterwards.
+func TestIntegrationSelectedOutputs(t *testing.T) {
+	ff := requireFFmpeg(t)
+	for _, c := range []struct {
+		outputs Outputs
+		want    []string
+	}{
+		{Outputs{Mp3: true}, []string{date + ".mp3"}},
+		{Outputs{Opus: true, Mp3: true}, []string{date + ".mp3", date + ".opus"}},
+		{Outputs{Flac: true}, []string{date + ".flac"}},
+	} {
+		t.Run(c.outputs.String(), func(t *testing.T) {
+			dir := dateFolder(t)
+			sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
+			opt := DefaultOptions()
+			opt.Outputs = c.outputs
+			if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+				t.Fatal(err)
+			}
+			wantFiles(t, dir, append(c.want, date+"_edit.flac")...)
+			for _, f := range c.want {
+				m, err := ff.Measure(context.Background(), filepath.Join(dir, f))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !near(m.LUFS, -19, 1) || m.TruePeak > -1.0+0.05 {
+					t.Errorf("%s: %.1f LUFS / %.1f dBTP", f, m.LUFS, m.TruePeak)
+				}
+			}
+		})
+	}
+}
+
+// The temporary master is removed even when the run fails.
+func TestIntegrationTemporaryMasterRemovedOnError(t *testing.T) {
+	ff := requireFFmpeg(t)
+	dir := dateFolder(t)
+	sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
+	opt := DefaultOptions()
+	opt.Outputs = Outputs{Mp3: true}
+	opt.Mp3Bitrate = "not-a-bitrate"
+	if err := run(t, context.Background(), ff, dir, "", opt); err == nil {
+		t.Fatal("expected the MP3 encode to fail")
+	}
+	wantFiles(t, dir, date+"_edit.flac")
+}

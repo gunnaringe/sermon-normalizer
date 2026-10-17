@@ -101,6 +101,8 @@ sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
 - MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or the loudness is off.
 - Existing output files are skipped without `--force`. Output is written to a `.partial` file and
   renamed when done, so an interrupted run never leaves a half-written file behind.
+- `--formats mp3` makes only the MP3. MP3 and Opus are always made from the master; without
+  `flac` it is a temporary hidden file in the date folder, removed when the run ends.
 - Mono and stereo recordings both work; everything is mixed down to mono first.
 
 Flags for `run` (may go before or after the folder):
@@ -111,6 +113,7 @@ Flags for `run` (may go before or after the folder):
 | `--end` | | where the sermon ends in raw |
 | `--fade-in` | 0 | seconds of fade in at the start of the sermon, 0 = off |
 | `--fade-out` | 0 | seconds of fade out at the end of the sermon, 0 = off |
+| `--formats` | flac,mp3,opus | which outputs to make; any of `flac` (master), `mp3`, `opus` |
 | `--archive` | | keep the sources as FLAC in this folder (default: leave them in place) |
 | `--target-lufs` | -19 | -19 for mono, -16 for stereo |
 | `--true-peak` | -1.5 | max true peak for the master |

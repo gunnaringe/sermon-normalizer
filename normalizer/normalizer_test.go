@@ -308,3 +308,24 @@ func TestMoveFile(t *testing.T) {
 		t.Error("move failed")
 	}
 }
+
+func TestParseOutputs(t *testing.T) {
+	ok := map[string]Outputs{
+		"flac,mp3,opus": AllOutputs,
+		"mp3":           {Mp3: true},
+		"Opus, FLAC":    {Flac: true, Opus: true},
+	}
+	for in, want := range ok {
+		if got, err := ParseOutputs(in); err != nil || got != want {
+			t.Errorf("ParseOutputs(%q) = %+v, %v; want %+v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", ",", "wav", "mp3,ogg"} {
+		if _, err := ParseOutputs(in); err == nil {
+			t.Errorf("ParseOutputs(%q): expected an error", in)
+		}
+	}
+	if s := (Outputs{Flac: true, Opus: true}).String(); s != "flac,opus" {
+		t.Errorf("String() = %q", s)
+	}
+}
