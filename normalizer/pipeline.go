@@ -14,19 +14,19 @@ import (
 	"text/tabwriter"
 )
 
-// Options styrer prosesseringen.
+// Options controls the processing.
 type Options struct {
 	Mp3Bitrate     string
 	OpusBitrate    string
 	TargetLUFS     float64 // mono: -19, stereo: -16
 	TruePeak       float64
-	NoiseReduction int // afftdn nr i dB; 0 = av
+	NoiseReduction int // afftdn nr in dB; 0 = off
 	KeepWav        bool
 	Force          bool
-	Start, End     float64 // klipp raw til edit (sekunder); 0 = fra start / til slutt
+	Start, End     float64 // cut raw to edit (seconds); 0 = from the beginning / to the end
 }
 
-// cutting sier om edit skal klippes fra raw i stedet for aa leveres ferdig.
+// cutting reports whether the edit is cut from raw rather than supplied by hand.
 func (o Options) cutting() bool { return o.Start > 0 || o.End > 0 }
 
 func DefaultOptions() Options {
@@ -39,11 +39,11 @@ func DefaultOptions() Options {
 	}
 }
 
-// Paths er filene i en datomappe.
+// Paths are the files in a date folder.
 type Paths struct {
 	Folder  string
 	Date    string
-	Arkiv   string
+	Archive string
 	RawFlac string
 	EditDst string
 	Master  string
@@ -57,23 +57,23 @@ func NewPaths(folder string) (Paths, error) {
 		return Paths{}, err
 	}
 	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
-		return Paths{}, fmt.Errorf("%s er ikke en mappe", abs)
+		return Paths{}, fmt.Errorf("%s is not a directory", abs)
 	}
 	date := filepath.Base(abs)
-	arkiv := filepath.Join(abs, "arkiv")
+	archive := filepath.Join(abs, "arkiv")
 	return Paths{
 		Folder:  abs,
 		Date:    date,
-		Arkiv:   arkiv,
-		RawFlac: filepath.Join(arkiv, date+"_raw.flac"),
-		EditDst: filepath.Join(arkiv, date+"_edit.flac"),
+		Archive: archive,
+		RawFlac: filepath.Join(archive, date+"_raw.flac"),
+		EditDst: filepath.Join(archive, date+"_edit.flac"),
 		Master:  filepath.Join(abs, date+".flac"),
 		Mp3:     filepath.Join(abs, date+".mp3"),
 		Opus:    filepath.Join(abs, date+".opus"),
 	}, nil
 }
 
-// Pipeline kjører stegene for én datomappe.
+// Pipeline runs the steps for one date folder.
 type Pipeline struct {
 	P   Paths
 	Opt Options
@@ -84,7 +84,7 @@ type Pipeline struct {
 func (p *Pipeline) logf(format string, a ...any) { fmt.Fprintf(p.Out, format+"\n", a...) }
 func (p *Pipeline) step(title string)            { p.logf("\n== %s", title) }
 func (p *Pipeline) warnf(format string, a ...any) {
-	p.logf("ADVARSEL: "+format, a...)
+	p.logf("WARNING: "+format, a...)
 }
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
@@ -106,9 +106,9 @@ func (p *Pipeline) inFolder(names ...string) []string {
 	return out
 }
 
-// Run kjører hele flyten.
+// Run runs the whole flow.
 func (p *Pipeline) Run(ctx context.Context) error {
-	if err := os.MkdirAll(p.P.Arkiv, 0o755); err != nil {
+	if err := os.MkdirAll(p.P.Archive, 0o755); err != nil {
 		return err
 	}
 	if err := p.stepRaw(ctx); err != nil {
@@ -126,26 +126,27 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	return p.report(ctx)
 }
 
-// --- 1. raw og 2. edit: begge kan komme som WAV eller FLAC ---------------
+// --- 1. raw and 2. edit: both may arrive as WAV or FLAC -------------------
 
 func (p *Pipeline) stepRaw(ctx context.Context) error {
-	p.step("1. Raatt opptak")
+	p.step("1. Raw recording")
 	ok, err := p.ingest(ctx, p.P.RawFlac, "{d}_raw", "{d}_1-raw")
 	if err != nil {
 		return err
 	}
 	if !ok {
-		p.warnf("fant ingen raw-fil.")
+		p.warnf("no raw file found.")
 	}
 	return nil
 }
 
-// ingest henter en kilde (WAV eller FLAC) i datomappen inn i arkiv/ som FLAC.
-//   - FLAC i mappen flyttes til dst.
-//   - WAV konverteres til dst (hvis dst mangler eller --force), lyden verifiseres
-//     med MD5, og WAV slettes bare hvis lyden er identisk (og ikke --keep-wav).
+// ingest brings a source (WAV or FLAC) in the date folder into the archive as FLAC.
+//   - A FLAC in the folder is moved to dst.
+//   - A WAV is converted to dst (if dst is missing or --force), the audio is
+//     verified with MD5, and the WAV is deleted only if the audio is identical
+//     (and not --keep-wav).
 //
-// Returnerer om dst finnes etterpaa.
+// Returns whether dst exists afterwards.
 func (p *Pipeline) ingest(ctx context.Context, dst string, bases ...string) (bool, error) {
 	var wavs, flacs []string
 	for _, b := range bases {
@@ -158,11 +159,11 @@ func (p *Pipeline) ingest(ctx context.Context, dst string, bases ...string) (boo
 		if err := os.Rename(flac, dst); err != nil {
 			return false, err
 		}
-		p.logf("Flyttet %s til arkiv/", filepath.Base(flac))
+		p.logf("Moved %s to the archive.", filepath.Base(flac))
 	}
 	if wav == "" {
 		if exists(dst) && flac == "" {
-			p.logf("Ingen WAV; bruker %s.", filepath.Base(dst))
+			p.logf("No WAV; using %s.", filepath.Base(dst))
 		}
 		return exists(dst), nil
 	}
@@ -178,14 +179,14 @@ func (p *Pipeline) ingest(ctx context.Context, dst string, bases ...string) (boo
 	}
 	switch {
 	case !same:
-		p.warnf("%s og %s er IKKE identiske. WAV beholdes.", filepath.Base(dst), filepath.Base(wav))
+		p.warnf("%s and %s are NOT identical. Keeping the WAV.", filepath.Base(dst), filepath.Base(wav))
 	case p.Opt.KeepWav:
-		p.logf("OK: %s er identisk med WAV. Beholder WAV (--keep-wav).", filepath.Base(dst))
+		p.logf("OK: %s is identical to the WAV. Keeping the WAV (--keep-wav).", filepath.Base(dst))
 	default:
 		if err := os.Remove(wav); err != nil {
 			return false, err
 		}
-		p.logf("OK: %s er identisk med WAV. Slettet %s.", filepath.Base(dst), filepath.Base(wav))
+		p.logf("OK: %s is identical to the WAV. Deleted %s.", filepath.Base(dst), filepath.Base(wav))
 	}
 	return true, nil
 }
@@ -199,7 +200,7 @@ func (p *Pipeline) audioMD5(ctx context.Context, path string) (string, error) {
 	}
 	m := reMD5.FindStringSubmatch(res.Stdout + res.Stderr)
 	if m == nil {
-		return "", errors.New("fant ikke MD5 i ffmpeg-utdata")
+		return "", errors.New("no MD5 found in ffmpeg output")
 	}
 	return m[1], nil
 }
@@ -217,7 +218,7 @@ func (p *Pipeline) sameAudio(ctx context.Context, a, b string) (bool, error) {
 }
 
 func (p *Pipeline) stepEdit(ctx context.Context) error {
-	p.step("2. Klippet versjon")
+	p.step("2. Edit")
 	if p.Opt.cutting() {
 		return p.cutEdit(ctx)
 	}
@@ -226,28 +227,28 @@ func (p *Pipeline) stepEdit(ctx context.Context) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("mangler %s_edit.flac (eller .wav): bruk --start/--end, eller klipp opptaket selv og lagre det i %s", p.P.Date, p.P.Folder)
+		return fmt.Errorf("missing %s_edit.flac (or .wav): use --start/--end, or cut the recording yourself and save it in %s", p.P.Date, p.P.Folder)
 	}
 	return nil
 }
 
-// cutEdit lager edit fra raw med --start/--end (ett sammenhengende stykke).
-// Trengs flere stykker, klipper man selv og leverer _edit-filen som foer.
+// cutEdit makes the edit from raw with --start/--end (one continuous segment).
+// If more than one segment is needed, cut by hand and supply the _edit file as before.
 func (p *Pipeline) cutEdit(ctx context.Context) error {
 	manual := p.inFolder("{d}_edit.flac", "{d}_edit.wav", "{d}_2-edit.flac", "{d}_2-edit.wav")
 	if src := firstExisting(manual...); src != "" {
-		return fmt.Errorf("%s finnes og --start/--end er oppgitt: bruk bare det ene", filepath.Base(src))
+		return fmt.Errorf("%s exists and --start/--end is given: use only one of them", filepath.Base(src))
 	}
 	if !exists(p.P.RawFlac) {
-		return fmt.Errorf("mangler %s, trengs for aa klippe med --start/--end", filepath.Base(p.P.RawFlac))
+		return fmt.Errorf("missing %s, needed to cut with --start/--end", filepath.Base(p.P.RawFlac))
 	}
 	if exists(p.P.EditDst) && !p.Opt.Force {
-		p.logf("%s finnes, hopper over (bruk --force for aa klippe paa nytt).", filepath.Base(p.P.EditDst))
+		p.logf("%s exists, skipping (use --force to cut again).", filepath.Base(p.P.EditDst))
 		return nil
 	}
-	// -ss/-to foer -i: ffmpeg dekoder og kaster lyden foer start, saa klippet er nøyaktig.
+	// -ss/-to before -i: ffmpeg decodes and discards the audio before start, so the cut is exact.
 	args := []string{"-y"}
-	from, to := "start", "slutt"
+	from, to := "start", "end"
 	if p.Opt.Start > 0 {
 		args = append(args, "-ss", secs(p.Opt.Start))
 		from = FormatTime(p.Opt.Start)
@@ -260,39 +261,11 @@ func (p *Pipeline) cutEdit(ctx context.Context) error {
 	if _, err := p.FF.Run(ctx, args...); err != nil {
 		return err
 	}
-	p.logf("Klippet %s fra %s til %s.", filepath.Base(p.P.EditDst), from, to)
+	p.logf("Cut %s from %s to %s.", filepath.Base(p.P.EditDst), from, to)
 	return nil
 }
 
 func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
-
-// ParseTime tolker 1:12:05, 41:20, 2480 eller 41:20.5 som sekunder.
-func ParseTime(s string) (float64, error) {
-	parts := strings.Split(s, ":")
-	if len(parts) > 3 || s == "" {
-		return 0, fmt.Errorf("ugyldig tid %q (bruk t:mm:ss, mm:ss eller sekunder)", s)
-	}
-	var total float64
-	for i, part := range parts {
-		last := i == len(parts)-1
-		v, err := strconv.ParseFloat(part, 64)
-		if err != nil || v < 0 || (!last && v != math.Trunc(v)) || (i > 0 && v >= 60) {
-			return 0, fmt.Errorf("ugyldig tid %q (bruk t:mm:ss, mm:ss eller sekunder)", s)
-		}
-		total = total*60 + v
-	}
-	return total, nil
-}
-
-func FormatTime(s float64) string {
-	h, rest := int(s)/3600, s-float64(int(s)/3600*3600)
-	m := int(rest) / 60
-	sec := rest - float64(m*60)
-	if sec == math.Trunc(sec) {
-		return fmt.Sprintf("%d:%02d:%02d", h, m, int(sec))
-	}
-	return fmt.Sprintf("%d:%02d:%06.3f", h, m, sec)
-}
 
 // --- 3. master ------------------------------------------------------------
 
@@ -312,7 +285,7 @@ func (p *Pipeline) masterFilter() string {
 func (p *Pipeline) stepMaster(ctx context.Context) error {
 	p.step(fmt.Sprintf("3. Master (mono, %g LUFS)", p.Opt.TargetLUFS))
 	if exists(p.P.Master) && !p.Opt.Force {
-		p.logf("Finnes allerede, hopper over (bruk --force).")
+		p.logf("Already exists, skipping (use --force).")
 		return nil
 	}
 	_, err := p.FF.Run(ctx, "-y", "-i", p.P.EditDst, "-af", p.masterFilter(),
@@ -324,8 +297,8 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 
 const lossyPeakCeiling = -1.0 // dBTP
 
-// correction regner ut gain som trengs etter koding til et tapsbelagt format.
-// Gain begrenses slik at true peak havner på maks lossyPeakCeiling.
+// correction computes the gain needed after encoding to a lossy format.
+// The gain is limited so that the true peak ends up at most lossyPeakCeiling.
 func correction(target float64, m Loudness) (gain float64, needed bool) {
 	gain = math.Min(target-m.LUFS, lossyPeakCeiling-m.TruePeak)
 	needed = math.Abs(gain) >= 0.3 || m.TruePeak > lossyPeakCeiling
@@ -334,7 +307,7 @@ func correction(target float64, m Loudness) (gain float64, needed bool) {
 
 func (p *Pipeline) encodeLossy(ctx context.Context, name, dst string, codec []string) error {
 	if exists(dst) && !p.Opt.Force {
-		p.logf("%s finnes, hopper over.", name)
+		p.logf("%s exists, skipping.", name)
 		return nil
 	}
 	enc := func(gain *float64) error {
@@ -355,14 +328,14 @@ func (p *Pipeline) encodeLossy(ctx context.Context, name, dst string, codec []st
 		return err
 	}
 	if gain, needed := correction(p.Opt.TargetLUFS, m); needed {
-		p.logf("%s: %.1f LUFS / %.1f dBTP -> justerer %.1f dB og koder paa nytt", name, m.LUFS, m.TruePeak, gain)
+		p.logf("%s: %.1f LUFS / %.1f dBTP -> adjusting %.1f dB and re-encoding", name, m.LUFS, m.TruePeak, gain)
 		return enc(&gain)
 	}
 	return nil
 }
 
 func (p *Pipeline) stepLossy(ctx context.Context) error {
-	p.step(fmt.Sprintf("4. MP3 (%s) og Opus (%s), mono", p.Opt.Mp3Bitrate, p.Opt.OpusBitrate))
+	p.step(fmt.Sprintf("4. MP3 (%s) and Opus (%s), mono", p.Opt.Mp3Bitrate, p.Opt.OpusBitrate))
 	if err := p.encodeLossy(ctx, "mp3", p.P.Mp3,
 		[]string{"-ar", "44100", "-ac", "1", "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate}); err != nil {
 		return err
@@ -371,12 +344,12 @@ func (p *Pipeline) stepLossy(ctx context.Context) error {
 		[]string{"-ar", "48000", "-ac", "1", "-c:a", "libopus", "-b:a", p.Opt.OpusBitrate, "-application", "voip"})
 }
 
-// --- rapport --------------------------------------------------------------
+// --- report ---------------------------------------------------------------
 
 func (p *Pipeline) report(ctx context.Context) error {
-	p.step(fmt.Sprintf("Resultat (maal: %g LUFS, maks %g dBTP)", p.Opt.TargetLUFS, p.Opt.TruePeak))
+	p.step(fmt.Sprintf("Result (target: %g LUFS, max %g dBTP)", p.Opt.TargetLUFS, p.Opt.TruePeak))
 	tw := tabwriter.NewWriter(p.Out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "Fil\tLUFS\tTP\tLRA\tMB")
+	fmt.Fprintln(tw, "File\tLUFS\tTP\tLRA\tMB")
 	for _, f := range []string{p.P.EditDst, p.P.Master, p.P.Mp3, p.P.Opus} {
 		m, err := p.FF.Measure(ctx, f)
 		if err != nil {
@@ -388,10 +361,10 @@ func (p *Pipeline) report(ctx context.Context) error {
 			continue
 		}
 		if m.TruePeak > -1.0 {
-			defer p.warnf("%s: true peak %.1f dBTP er over -1.", filepath.Base(f), m.TruePeak)
+			defer p.warnf("%s: true peak %.1f dBTP is above -1.", filepath.Base(f), m.TruePeak)
 		}
 		if math.Abs(m.LUFS-p.Opt.TargetLUFS) > 1.5 {
-			defer p.warnf("%s: %.1f LUFS er mer enn 1,5 fra maalet.", filepath.Base(f), m.LUFS)
+			defer p.warnf("%s: %.1f LUFS is more than 1.5 from the target.", filepath.Base(f), m.LUFS)
 		}
 	}
 	return tw.Flush()

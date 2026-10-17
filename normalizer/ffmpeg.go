@@ -8,18 +8,18 @@ import (
 	"strings"
 )
 
-// FFmpeg kaller ffmpeg med en argumentliste (aldri via shell).
+// FFmpeg calls ffmpeg with an argument list (never through a shell).
 type FFmpeg struct {
 	Bin string
 }
 
-// Result inneholder det ffmpeg skrev til stdout og stderr.
+// Result holds what ffmpeg wrote to stdout and stderr.
 type Result struct {
 	Stdout string
 	Stderr string
 }
 
-// Run kjører ffmpeg. -nostdin hindrer at ffmpeg venter på tastetrykk.
+// Run runs ffmpeg. -nostdin stops ffmpeg from waiting for key presses.
 func (f FFmpeg) Run(ctx context.Context, args ...string) (Result, error) {
 	full := append([]string{"-nostdin", "-hide_banner", "-nostats"}, args...)
 	cmd := exec.CommandContext(ctx, f.Bin, full...)
@@ -31,7 +31,7 @@ func (f FFmpeg) Run(ctx context.Context, args ...string) (Result, error) {
 		if ctx.Err() != nil {
 			return res(), ctx.Err()
 		}
-		return res(), fmt.Errorf("ffmpeg feilet (%w):\n%s", err, lastLines(errb.String(), 15))
+		return res(), fmt.Errorf("ffmpeg failed (%w):\n%s", err, lastLines(errb.String(), 15))
 	}
 	return res(), nil
 }

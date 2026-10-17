@@ -1,99 +1,99 @@
-# Plan: sermon-normalizer, behandling av tale-opptak
+# Plan: sermon-normalizer, processing of sermon recordings
 
-## Mål
+## Goal
 
-Ett kommandolinjeverktøy som tar et opptak av en tale (tale + musikk, ulikt volum)
-og lager ferdige filer for publisering på SoundCloud, Spotify og andre podcast-tjenester.
-Skal kjøre på Linux (server), men må kunne testes på Windows.
+One command-line tool that takes a recording of a sermon (speech + music, uneven volume)
+and produces finished files for publishing on SoundCloud, Spotify and other podcast services.
+Must run on Linux (server), but must be testable on Windows.
 
-## Dagens flyt (manuell + `behandle-tale.ps1`)
+## Previous flow (manual + `behandle-tale.ps1`)
 
-1. Opptaker gir `.wav`. `sox` konverterer til `.flac`.
-2. Manuell klipping i lydprogram (kun talen beholdes), normalisert midlertidig for enklere klipping.
-3. `behandle-tale.ps1` lager master (mono, -19 LUFS), MP3 og Opus.
+1. The recorder produces a `.wav`. `sox` converts it to `.flac`.
+2. Manual cutting in an audio editor (only the sermon is kept), temporarily normalised to make cutting easier.
+3. `behandle-tale.ps1` makes the master (mono, -19 LUFS), MP3 and Opus.
 
-## Mappestruktur per opptak
+## Folder layout per recording
 
 ```
-<dato>\                      f.eks. 2026-10-04
-  <dato>.flac                master, mono, 48 kHz / 24-bit, -19 LUFS
-  <dato>.mp3                 mono, 96 kbps  (publisering)
-  <dato>.opus                mono, 48 kbps
+<date>\                      e.g. 2026-10-04
+  <date>.flac                master, mono, 48 kHz / 24-bit, -19 LUFS
+  <date>.mp3                 mono, 96 kbps  (publishing)
+  <date>.opus                mono, 48 kbps
   arkiv\
-    <dato>_raw.flac          hele opptaket, uredigert
-    <dato>_edit.flac         klippet versjon (input til master)
+    <date>_raw.flac          the whole recording, unedited
+    <date>_edit.flac         cut version (input to the master)
 ```
 
-Input som legges i mappen: `<dato>_raw.wav` (eller `_raw.flac`) og `<dato>_edit.flac`.
-Gamle navn `_1-raw.*` og `_2-edit.flac` godtas.
+Input placed in the folder: `<date>_raw.wav` (or `_raw.flac`) and `<date>_edit.flac`.
+The old names `_1-raw.*` and `_2-edit.flac` are accepted.
 
-## Språkvalg
+## Choice of language
 
-**Anbefaling: Go.** Selve lydarbeidet gjøres av `ffmpeg` uansett språk. Koden er orkestrering:
-finne filer, kalle ffmpeg, tolke måleresultat, flytte/slette filer, rapportere.
+**Recommendation: Go.** The audio work itself is done by `ffmpeg` whatever the language. The code is orchestration:
+finding files, calling ffmpeg, interpreting measurements, moving/deleting files, reporting.
 
-| Språk | For | Mot |
+| Language | For | Against |
 |---|---|---|
-| **Go** | Én statisk binærfil, `GOOS=linux go build` fra Windows, ingen runtime eller venv på serveren, god `os/exec`, standardbibliotek dekker flagg/regex/tester | Litt mer kode enn Python |
-| Python | Raskest å skrive | Krever Python + venv/pakker på serveren, vanskeligere å levere som én fil |
-| Bash | Minst kode for rene ffmpeg-kall | Skjør for parsing, feilhåndtering og tester; ikke portabelt til Windows |
-| Rust | Samme leveranse som Go | Mer arbeid uten gevinst her |
+| **Go** | One static binary, `GOOS=linux go build` from Windows, no runtime or venv on the server, good `os/exec`, the standard library covers flags/regex/tests | A bit more code than Python |
+| Python | Fastest to write | Needs Python + venv/packages on the server, harder to ship as one file |
+| Bash | Least code for plain ffmpeg calls | Fragile for parsing, error handling and tests; not portable to Windows |
+| Rust | Same deliverable as Go | More work for no gain here |
 
-Go passer også siden du allerede har valgt det, og det er enkelt å utvide senere
-(for eksempel overvåke en mappe eller et web-API).
+Go also fits since it was already chosen, and it is easy to extend later
+(for example watching a folder or a web API).
 
-## Arkitektur
+## Architecture
 
-Modul `github.com/gunnaringe/sermon-normalizer`, kun standardbibliotek (ingen eksterne avhengigheter).
+Module `github.com/gunnaringe/sermon-normalizer`, standard library only (no external dependencies).
 
-- `main.go`: CLI (underkommandoer, flagg, Ctrl+C avbryter pent)
-- `ffmpeg.go`: tynn wrapper rundt `ffmpeg` (`-nostdin`, fanger stdout og stderr)
-- `measure.go`: måling med `ebur128` og parsing av sammendraget (LUFS, true peak, LRA)
-- `pipeline.go`: stegene (raw, edit, master, lossy, rapport)
-- `*_test.go`: tester for parsing, filnavn og gain-beregning
+- `cmd/sermon-normalizer/main.go`: CLI (subcommands, flags, Ctrl+C cancels cleanly)
+- `normalizer/ffmpeg.go`: thin wrapper around `ffmpeg` (`-nostdin`, captures stdout and stderr)
+- `normalizer/measure.go`: measurement with `ebur128` and parsing of the summary (LUFS, true peak, LRA)
+- `normalizer/pipeline.go`: the steps (raw, edit, master, lossy, report)
+- `normalizer/timecode.go`: parsing and formatting of `--start`/`--end` times
+- `*_test.go`: tests for parsing, file names and gain calculation
 
 ## CLI
 
 ```
-sermon-normalizer run <mappe> [flagg]     kjør hele flyten for en datomappe
-sermon-normalizer measure <fil>...        mål LUFS / true peak / LRA
+sermon-normalizer run <folder> [flags]   run the whole flow for a date folder
+sermon-normalizer measure <file>...      measure LUFS / true peak / LRA
 sermon-normalizer version
 
-run-flagg:
-  --start / --end          klipp edit fra raw (ett stykke); ellers leveres _edit selv
+run flags:
+  --start / --end          cut the edit from raw (one segment); otherwise supply _edit yourself
   --target-lufs  -19       -19 for mono, -16 for stereo
   --true-peak    -1.5
   --mp3-bitrate  96k
   --opus-bitrate 48k
-  --noise-reduction 12     0 = av
-  --keep-wav               ikke slett WAV etter verifisering
-  --force                  lag resultatfilene på nytt
+  --noise-reduction 12     0 = off
+  --keep-wav               do not delete the WAV after verification
+  --force                  recreate the output files
 ```
 
-## Viktige regler (fra erfaring i denne økten)
+## Important rules (learned the hard way)
 
-- WAV slettes **bare** etter at lyden i `raw.flac` er verifisert bit-identisk (MD5 over lydstrømmen).
-- MP3 og Opus kodes, **måles og kodes på nytt med justert gain** hvis peak > -1 dBTP
-  eller loudness avviker. Gain begrenses av peak-taket.
-- Måling med `ebur128` (rask), ikke `loudnorm` (oppsampler til 192 kHz og er treg).
-- Kall ffmpeg med argumentliste, aldri via shell (unngår quoting-feil som `-c:a` i PowerShell).
-- Eksisterende resultatfiler hoppes over uten `--force`.
+- The WAV is deleted **only** after the audio in `raw.flac` is verified bit-identical (MD5 over the audio stream).
+- MP3 and Opus are encoded, **measured and re-encoded with adjusted gain** if peak > -1 dBTP
+  or the loudness is off. The gain is limited by the peak ceiling.
+- Measure with `ebur128` (fast), not `loudnorm` (upsamples to 192 kHz and is slow).
+- Call ffmpeg with an argument list, never through a shell (avoids quoting bugs like `-c:a` in PowerShell).
+- Existing output files are skipped without `--force`.
 
-## Faser
+## Phases
 
-1. **Port av ps1 til Go** (denne leveransen): `run` og `measure`, tester, bygg for Windows og Linux.
-2. **Test på ekte opptak:** 2026-09-20 og 2026-10-04 gir samme resultat som ps1.
-3. **Drift på Linux:** installer ffmpeg (`apt install ffmpeg`), kopier binæren, kjør på en mappe.
-4. **Senere (valgfritt):**
-   - `run --all <årsmappe>` for å behandle alle datomapper uten master
-   - valgfri sox/ffmpeg-konvertering fra wav direkte i verktøyet (finnes allerede)
-   - mono/stereo-automatikk med riktig mål-LUFS
-   - metadata (ID3-tagger: tittel, dato, kirke) på MP3
-   - overvåking av mappe (Resilio Sync) og automatisk behandling
+1. **Port the ps1 to Go:** `run` and `measure`, tests, builds for Windows and Linux.
+2. **Test on real recordings:** 2026-09-20 and 2026-10-04 give the same result as the ps1.
+3. **Run on Linux:** install ffmpeg (`apt install ffmpeg`), copy the binary, run it on a folder.
+4. **Later (optional):**
+   - `run --all <year folder>` to process all date folders without a master
+   - mono/stereo detection with the right target LUFS
+   - metadata (ID3 tags: title, date, church) on the MP3
+   - watching a folder (Resilio Sync) and processing automatically
 
-## Risiko og åpne spørsmål
+## Risks and open questions
 
-- **Opus true peak** overskyter lett; håndteres av målesteget, men vurder å sette master-peak til -2 dBTP.
-- **Navngiving av tittel** i filnavn er ikke bestemt (nå kun dato).
-- **Støyfjerning** (`afftdn`) er ikke lyttet til; juster `--noise-reduction` etter ørene.
-- Resilio Sync kan lage `.rsls`-plassholdere; verktøyet ignorerer dem.
+- **Opus true peak** overshoots easily; handled by the measurement step, but consider setting the master peak to -2 dBTP.
+- **Title in file names** is not decided (date only for now).
+- **Noise reduction** (`afftdn`) has not been listened to; tune `--noise-reduction` by ear.
+- Resilio Sync can create `.rsls` placeholders; the tool ignores them.

@@ -15,14 +15,14 @@ import (
 
 var version = "0.1.0"
 
-const usage = `sermon-normalizer: behandler tale-opptak (raw + edit -> master.flac, mp3, opus)
+const usage = `sermon-normalizer: processes sermon recordings (raw + edit -> master.flac, mp3, opus)
 
-Bruk:
-  sermon-normalizer run <mappe> [flagg]     kjor hele flyten for en datomappe
-  sermon-normalizer measure <fil>...        mal LUFS / true peak / LRA
+Usage:
+  sermon-normalizer run <folder> [flags]   run the whole flow for a date folder
+  sermon-normalizer measure <file>...      measure LUFS / true peak / LRA
   sermon-normalizer version
 
-Kjor "sermon-normalizer run -h" for flagg.
+Run "sermon-normalizer run -h" for flags.
 `
 
 func main() {
@@ -44,14 +44,14 @@ func main() {
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
-		fmt.Fprintf(os.Stderr, "ukjent kommando %q\n\n%s", os.Args[1], usage)
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", os.Args[1], usage)
 		os.Exit(2)
 	}
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return
 		}
-		fmt.Fprintln(os.Stderr, "feil:", err)
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
@@ -59,19 +59,19 @@ func main() {
 func newFFmpeg(bin string) (normalizer.FFmpeg, error) {
 	path, err := exec.LookPath(bin)
 	if err != nil {
-		return normalizer.FFmpeg{}, fmt.Errorf("finner ikke %q i PATH (Linux: apt install ffmpeg)", bin)
+		return normalizer.FFmpeg{}, fmt.Errorf("cannot find %q in PATH (Linux: apt install ffmpeg)", bin)
 	}
 	return normalizer.FFmpeg{Bin: path}, nil
 }
 
-// reorder lar flagg stå både før og etter mappenavnet.
+// reorder lets flags go both before and after the folder name.
 func reorder(args []string) []string {
 	var flags, rest []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if len(a) > 1 && a[0] == '-' {
 			flags = append(flags, a)
-			// flagg med verdi (ikke bool) tar neste argument
+			// flags with a value (not bool) take the next argument
 			switch a {
 			case "--keep-wav", "-keep-wav", "--force", "-force":
 			default:
@@ -99,24 +99,24 @@ func containsEq(s string) bool {
 func cmdRun(ctx context.Context, args []string) error {
 	opt := normalizer.DefaultOptions()
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	fs.Float64Var(&opt.TargetLUFS, "target-lufs", opt.TargetLUFS, "mal-loudness (mono -19, stereo -16)")
-	fs.Float64Var(&opt.TruePeak, "true-peak", opt.TruePeak, "maks true peak (dBTP) for master")
-	fs.StringVar(&opt.Mp3Bitrate, "mp3-bitrate", opt.Mp3Bitrate, "mp3-bitrate")
-	fs.StringVar(&opt.OpusBitrate, "opus-bitrate", opt.OpusBitrate, "opus-bitrate")
-	fs.IntVar(&opt.NoiseReduction, "noise-reduction", opt.NoiseReduction, "stoyfjerning i dB (0 = av)")
-	fs.BoolVar(&opt.KeepWav, "keep-wav", false, "ikke slett WAV etter verifisering")
-	fs.BoolVar(&opt.Force, "force", false, "lag resultatfilene paa nytt")
-	fs.Func("start", "klipp edit fra raw: start paa talen (t:mm:ss, mm:ss eller sekunder)", timeFlag(&opt.Start))
-	fs.Func("end", "klipp edit fra raw: slutt paa talen (t:mm:ss, mm:ss eller sekunder)", timeFlag(&opt.End))
-	ffBin := fs.String("ffmpeg", "ffmpeg", "sti til ffmpeg")
+	fs.Float64Var(&opt.TargetLUFS, "target-lufs", opt.TargetLUFS, "target loudness (mono -19, stereo -16)")
+	fs.Float64Var(&opt.TruePeak, "true-peak", opt.TruePeak, "max true peak (dBTP) for the master")
+	fs.StringVar(&opt.Mp3Bitrate, "mp3-bitrate", opt.Mp3Bitrate, "mp3 bitrate")
+	fs.StringVar(&opt.OpusBitrate, "opus-bitrate", opt.OpusBitrate, "opus bitrate")
+	fs.IntVar(&opt.NoiseReduction, "noise-reduction", opt.NoiseReduction, "noise reduction in dB (0 = off)")
+	fs.BoolVar(&opt.KeepWav, "keep-wav", false, "do not delete the WAV after verification")
+	fs.BoolVar(&opt.Force, "force", false, "recreate output files")
+	fs.Func("start", "cut the sermon from raw: where it starts (h:mm:ss, mm:ss or seconds)", timeFlag(&opt.Start))
+	fs.Func("end", "cut the sermon from raw: where it ends (h:mm:ss, mm:ss or seconds)", timeFlag(&opt.End))
+	ffBin := fs.String("ffmpeg", "ffmpeg", "path to ffmpeg")
 	if err := fs.Parse(reorder(args)); err != nil {
 		return err
 	}
 	if opt.End > 0 && opt.End <= opt.Start {
-		return errors.New("--end maa vaere etter --start")
+		return errors.New("--end must be after --start")
 	}
 	if fs.NArg() != 1 {
-		return errors.New("oppgi noyaktig en mappe: sermon-normalizer run <mappe>")
+		return errors.New("give exactly one folder: sermon-normalizer run <folder>")
 	}
 	ff, err := newFFmpeg(*ffBin)
 	if err != nil {
@@ -140,7 +140,7 @@ func timeFlag(dst *float64) func(string) error {
 
 func cmdMeasure(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("oppgi minst en fil: sermon-normalizer measure <fil>...")
+		return errors.New("give at least one file: sermon-normalizer measure <file>...")
 	}
 	ff, err := newFFmpeg("ffmpeg")
 	if err != nil {

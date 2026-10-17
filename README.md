@@ -1,69 +1,72 @@
 # sermon-normalizer
 
-CLI som behandler tale-opptak (tale + musikk) til publiseringsklare filer.
-Se `PLAN.md` for bakgrunn og språkvalg.
+CLI that turns a recording of a church service into publish-ready sermon files:
+it cuts out the sermon, mixes it to mono, evens out the volume (speech and music are
+recorded at very different levels), normalises to podcast loudness and encodes
+FLAC, MP3 and Opus for SoundCloud, Spotify and other podcast services.
+See `PLAN.md` for background and design decisions.
 
-## Krav
+## Requirements
 
-- `ffmpeg` i PATH (Linux: `sudo apt install ffmpeg`, Windows: `winget install Gyan.FFmpeg`)
-- Go 1.22+ for å bygge (ingen eksterne Go-avhengigheter)
+- `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`, Windows: `winget install Gyan.FFmpeg`)
+- Go 1.22+ to build (no external Go dependencies)
 
-## Bygg
+## Build
 
 ```bash
-go build -o sermon-normalizer ./cmd/sermon-normalizer                                   # for denne maskinen
+go build -o sermon-normalizer ./cmd/sermon-normalizer                                   # for this machine
 GOOS=linux GOARCH=amd64 go build -o dist/sermon-normalizer-linux-amd64 ./cmd/sermon-normalizer   # for Linux x86-64
 GOOS=linux GOARCH=arm64 go build -o dist/sermon-normalizer-linux-arm64 ./cmd/sermon-normalizer   # for Linux ARM
 go test ./...
 ```
 
-PowerShell: sett `$env:GOOS="linux"; $env:GOARCH="amd64"` før `go build`.
+PowerShell: set `$env:GOOS="linux"; $env:GOARCH="amd64"` before `go build`.
 
-## Docker (ffmpeg følger med)
+## Docker (ffmpeg included)
 
-ffmpeg er et eget C-program og kan ikke bygges inn i Go-binæren, så containeren pakker begge sammen.
+ffmpeg is a separate C program and cannot be built into the Go binary, so the container packages both.
 
 ```bash
 docker build -t sermon-normalizer .
-docker run --rm -u "$(id -u):$(id -g)" -v /sti/til/Taler:/data sermon-normalizer run /data/2026/2026-10-04
+docker run --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data sermon-normalizer run /data/2026/2026-10-04
 ```
 
-`-u` gjør at filene som lages får din bruker som eier, ikke root.
-Bygget kjører `go vet` og `go test`, og sjekker at ffmpeg har libopus og libmp3lame.
+`-u` makes the created files owned by your user, not root.
+The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and libmp3lame.
 
-## Bruk
+## Usage
 
-Legg opptaket av hele gudstjenesten i datomappen, og oppgi hvor talen starter og slutter:
-
-```
-2026-10-04/
-  2026-10-04_raw.wav          (eller _raw.flac)    hele opptaket
-```
-
-```bash
-sermon-normalizer run /sti/til/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
-```
-
-Tidene kan skrives som `t:mm:ss`, `mm:ss` eller sekunder, med desimaler om nødvendig (`41:20.5`).
-Uten `--start` klippes det fra begynnelsen, uten `--end` til slutten.
-Verktøyet klipper `arkiv/<dato>_edit.flac` fra raw og fortsetter med master, MP3 og Opus.
-For å klippe på nytt med andre tider, kjør igjen med `--force`.
-
-**Mer enn ett stykke** (for eksempel en sang midt i talen som skal bort): klipp selv i et
-lydprogram og legg resultatet i mappen. Da brukes det i stedet, og `--start`/`--end` utelates
-(begge samtidig gir feil). WAV og FLAC godtas:
+Put the recording of the whole service in the date folder, and give where the sermon starts and ends:
 
 ```
 2026-10-04/
-  2026-10-04_raw.wav          (eller _raw.flac)    hele opptaket
-  2026-10-04_edit.flac        (eller _edit.wav)    klippet av deg
+  2026-10-04_raw.wav          (or _raw.flac)    the whole recording
 ```
 
 ```bash
-sermon-normalizer run /sti/til/Taler/2026/2026-10-04
+sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
 ```
 
-Resultat:
+Times can be written as `h:mm:ss`, `mm:ss` or seconds, with decimals if needed (`41:20.5`).
+Without `--start` the cut starts at the beginning, without `--end` it runs to the end.
+The tool cuts `arkiv/<date>_edit.flac` from raw and continues with the master, MP3 and Opus.
+To cut again with different times, run again with `--force`.
+
+**More than one segment** (for example a song in the middle of the sermon that should go):
+cut it yourself in an audio editor and put the result in the folder. It is then used instead,
+and `--start`/`--end` is left out (giving both is an error). WAV and FLAC are accepted:
+
+```
+2026-10-04/
+  2026-10-04_raw.wav          (or _raw.flac)    the whole recording
+  2026-10-04_edit.flac        (or _edit.wav)    cut by you
+```
+
+```bash
+sermon-normalizer run /path/to/Taler/2026/2026-10-04
+```
+
+Result:
 
 ```
 2026-10-04/
@@ -75,28 +78,28 @@ Resultat:
     2026-10-04_edit.flac
 ```
 
-- WAV konverteres til FLAC i `arkiv/`, lyden verifiseres med MD5, og **WAV slettes bare hvis lyden er identisk** (med mindre `--keep-wav`).
-- MP3 og Opus kodes, måles og kodes på nytt med justert gain hvis true peak > -1 dBTP eller loudness avviker.
-- Eksisterende resultatfiler hoppes over uten `--force`.
-- Gamle navn `_1-raw.*` og `_2-edit.*` godtas.
+- A WAV is converted to FLAC in `arkiv/`, the audio is verified with MD5, and **the WAV is deleted only if the audio is identical** (unless `--keep-wav`).
+- MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or the loudness is off.
+- Existing output files are skipped without `--force`.
+- The old names `_1-raw.*` and `_2-edit.*` are accepted.
 
-Flagg for `run` (kan stå før eller etter mappen):
+Flags for `run` (may go before or after the folder):
 
-| Flagg | Standard | |
+| Flag | Default | |
 |---|---|---|
-| `--start` | | start på talen i raw (klipper edit automatisk) |
-| `--end` | | slutt på talen i raw |
+| `--start` | | where the sermon starts in raw (cuts the edit automatically) |
+| `--end` | | where the sermon ends in raw |
 | `--target-lufs` | -19 | -19 for mono, -16 for stereo |
-| `--true-peak` | -1.5 | maks true peak for master |
+| `--true-peak` | -1.5 | max true peak for the master |
 | `--mp3-bitrate` | 96k | |
 | `--opus-bitrate` | 48k | |
-| `--noise-reduction` | 12 | dB, 0 = av |
-| `--keep-wav` | av | ikke slett WAV |
-| `--force` | av | lag resultatfilene på nytt |
-| `--ffmpeg` | ffmpeg | sti til ffmpeg |
+| `--noise-reduction` | 12 | dB, 0 = off |
+| `--keep-wav` | off | do not delete the WAV |
+| `--force` | off | recreate the output files |
+| `--ffmpeg` | ffmpeg | path to ffmpeg |
 
-Måle filer:
+Measuring files:
 
 ```bash
-sermon-normalizer measure fil1.mp3 fil2.flac
+sermon-normalizer measure file1.mp3 file2.flac
 ```

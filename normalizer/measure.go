@@ -7,15 +7,15 @@ import (
 	"strconv"
 )
 
-// Loudness er resultatet av en ebur128-måling.
+// Loudness is the result of an ebur128 measurement.
 type Loudness struct {
 	LUFS     float64 // integrated loudness
 	TruePeak float64 // dBTP
 	LRA      float64 // loudness range, LU
 }
 
-// Sammendraget står på egne linjer; linjene for hver 100 ms starter med "[Parsed_..."
-// og inneholder "I:" midt i linjen, så ^\s* skiller dem fra sammendraget.
+// The summary is on lines of its own; the lines for every 100 ms start with "[Parsed_..."
+// and contain "I:" mid-line, so ^\s* tells them apart from the summary.
 var (
 	reLUFS = regexp.MustCompile(`(?m)^\s*I:\s+(-?inf|-?[\d.]+) LUFS`)
 	reLRA  = regexp.MustCompile(`(?m)^\s*LRA:\s+(-?inf|-?[\d.]+) LU`)
@@ -25,7 +25,7 @@ var (
 func lastFloat(re *regexp.Regexp, s, what string) (float64, error) {
 	m := re.FindAllStringSubmatch(s, -1)
 	if len(m) == 0 {
-		return 0, fmt.Errorf("fant ikke %s i ffmpeg-utdata", what)
+		return 0, fmt.Errorf("no %s found in ffmpeg output", what)
 	}
 	return strconv.ParseFloat(m[len(m)-1][1], 64)
 }
@@ -45,7 +45,7 @@ func parseEbur128(stderr string) (Loudness, error) {
 	return l, nil
 }
 
-// Measure måler loudness med ebur128 (mye raskere enn loudnorm).
+// Measure measures loudness with ebur128 (much faster than loudnorm).
 func (f FFmpeg) Measure(ctx context.Context, path string) (Loudness, error) {
 	res, err := f.Run(ctx, "-i", path, "-af", "ebur128=peak=true:framelog=quiet", "-f", "null", "-")
 	if err != nil {
