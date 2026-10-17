@@ -22,6 +22,10 @@ go test ./...
 
 PowerShell: set `$env:GOOS="linux"; $env:GOARCH="amd64"` before `go build`.
 
+`go test ./...` runs the unit tests everywhere, and the integration tests (the whole pipeline
+with real ffmpeg on synthetic recordings) when `ffmpeg` and `ffprobe` are in PATH.
+`docker build .` always runs both. `go test -short ./...` skips the integration tests.
+
 ## Docker (ffmpeg included)
 
 ffmpeg is a separate C program and cannot be built into the Go binary, so the container packages both.
