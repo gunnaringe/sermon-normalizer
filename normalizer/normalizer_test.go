@@ -136,9 +136,9 @@ func TestFirstExisting(t *testing.T) {
 
 // A FLAC source is just moved to the archive (no ffmpeg needed).
 func TestIngestFlacMoves(t *testing.T) {
-	p := newTestPipeline(t, "arkiv", "2026-10-04_2-edit.flac") // old name accepted
-	src := p.inFolder("{d}_2-edit.flac")[0]
-	ok, err := p.ingest(context.Background(), p.P.EditArchive(), editBases...)
+	p := newTestPipeline(t, "arkiv", "2026-10-04_edit.flac")
+	src := p.inFolder("_edit.flac")
+	ok, err := p.ingest(context.Background(), p.P.EditArchive(), editName)
 	if err != nil || !ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
@@ -151,20 +151,20 @@ func TestIngestFlacMoves(t *testing.T) {
 func TestIngestFlacKeepsArchived(t *testing.T) {
 	p := newTestPipeline(t, "arkiv", "2026-10-04_raw.flac")
 	os.WriteFile(p.P.RawArchive(), []byte("archived"), 0o644)
-	if ok, err := p.ingest(context.Background(), p.P.RawArchive(), rawBases...); !ok || err != nil {
+	if ok, err := p.ingest(context.Background(), p.P.RawArchive(), rawName); !ok || err != nil {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
 	if b, _ := os.ReadFile(p.P.RawArchive()); string(b) != "archived" {
 		t.Error("the archived file was replaced")
 	}
-	if !exists(p.inFolder("{d}_raw.flac")[0]) {
+	if !exists(p.inFolder("_raw.flac")) {
 		t.Error("the source should be left in the folder")
 	}
 }
 
 func TestIngestNothing(t *testing.T) {
 	p := newTestPipeline(t, "arkiv")
-	if ok, err := p.ingest(context.Background(), p.P.RawArchive(), rawBases...); ok || err != nil {
+	if ok, err := p.ingest(context.Background(), p.P.RawArchive(), rawName); ok || err != nil {
 		t.Errorf("ok=%v err=%v", ok, err)
 	}
 }
@@ -179,7 +179,7 @@ func TestNoArchiveLeavesSources(t *testing.T) {
 	if err := p.stepEdit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if p.raw != p.inFolder("{d}_raw.wav")[0] || p.edit != p.inFolder("{d}_edit.flac")[0] {
+	if p.raw != p.inFolder("_raw.wav") || p.edit != p.inFolder("_edit.flac") {
 		t.Errorf("raw=%q edit=%q", p.raw, p.edit)
 	}
 	if exists(filepath.Join(p.P.Folder, "arkiv")) {
@@ -245,7 +245,7 @@ func TestFormatTime(t *testing.T) {
 func TestCutEditConflictsWithManualEdit(t *testing.T) {
 	for _, archive := range []string{"", "arkiv"} {
 		p := newTestPipeline(t, archive, "2026-10-04_raw.flac", "2026-10-04_edit.flac")
-		p.raw = p.inFolder("{d}_raw.flac")[0]
+		p.raw = p.inFolder("_raw.flac")
 		p.Opt.Start = 60
 		if err := p.stepEdit(context.Background()); err == nil || !strings.Contains(err.Error(), "only one of them") {
 			t.Errorf("archive=%q: expected a conflict error, got %v", archive, err)

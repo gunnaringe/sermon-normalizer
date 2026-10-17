@@ -26,7 +26,6 @@ Must run on Linux (server), but must be testable on Windows.
 
 Input placed in the folder: `<date>_raw.wav` (or `_raw.flac`), plus `<date>_edit.flac` unless `--start`/`--end` is used.
 Without `--archive` the sources stay in the date folder untouched.
-The old names `_1-raw.*` and `_2-edit.flac` are accepted.
 
 ## Choice of language
 

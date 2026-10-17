@@ -77,10 +77,10 @@ func NewPaths(folder, archive string) (Paths, error) {
 func (p Paths) RawArchive() string  { return filepath.Join(p.Archive, p.Date+"_raw.flac") }
 func (p Paths) EditArchive() string { return filepath.Join(p.Archive, p.Date+"_edit.flac") }
 
-// Source file names in the date folder ({d} = date), newest naming first.
-var (
-	rawBases  = []string{"{d}_raw", "{d}_1-raw"}
-	editBases = []string{"{d}_edit", "{d}_2-edit"}
+// Source names in the date folder: <date>_raw and <date>_edit, as .flac or .wav.
+const (
+	rawName  = "_raw"
+	editName = "_edit"
 )
 
 // Pipeline runs the steps for one date folder.
@@ -100,23 +100,15 @@ func (p *Pipeline) warnf(format string, a ...any) {
 	p.logf("WARNING: "+format, a...)
 }
 
-func (p *Pipeline) inFolder(names ...string) []string {
-	out := make([]string, len(names))
-	for i, n := range names {
-		out[i] = filepath.Join(p.P.Folder, strings.ReplaceAll(n, "{d}", p.P.Date))
-	}
-	return out
+// inFolder is <date><suffix> in the date folder.
+func (p *Pipeline) inFolder(suffix string) string {
+	return filepath.Join(p.P.Folder, p.P.Date+suffix)
 }
 
-// findSource returns the first source in the folder with one of the base names,
-// preferring FLAC over WAV.
-func (p *Pipeline) findSource(bases []string) string {
-	var flacs, wavs []string
-	for _, b := range bases {
-		flacs = append(flacs, p.inFolder(b+".flac")...)
-		wavs = append(wavs, p.inFolder(b+".wav")...)
-	}
-	return firstExisting(append(flacs, wavs...)...)
+// findSource returns the source with the given name in the folder,
+// preferring FLAC over WAV, or "".
+func (p *Pipeline) findSource(name string) string {
+	return firstExisting(p.inFolder(name+".flac"), p.inFolder(name+".wav"))
 }
 
 // Run runs the whole flow.
@@ -146,18 +138,15 @@ func (p *Pipeline) Run(ctx context.Context) error {
 func (p *Pipeline) stepRaw(ctx context.Context) error {
 	p.step("1. Raw recording")
 	if p.P.Archive == "" {
-		p.raw = p.findSource(rawBases)
-		switch {
-		case p.raw != "":
+		p.raw = p.findSource(rawName)
+		if p.raw != "" {
 			p.logf("Using %s (no archive, left in place).", filepath.Base(p.raw))
-		case exists(filepath.Join(p.P.Folder, "arkiv")):
-			p.warnf("no raw file in the folder, but there is an arkiv/ folder: use --archive arkiv.")
-		default:
+		} else {
 			p.warnf("no raw file found.")
 		}
 		return nil
 	}
-	ok, err := p.ingest(ctx, p.P.RawArchive(), rawBases...)
+	ok, err := p.ingest(ctx, p.P.RawArchive(), rawName)
 	if err != nil {
 		return err
 	}
@@ -176,13 +165,8 @@ func (p *Pipeline) stepRaw(ctx context.Context) error {
 //     (and not --keep-wav).
 //
 // Returns whether dst exists afterwards.
-func (p *Pipeline) ingest(ctx context.Context, dst string, bases ...string) (bool, error) {
-	var wavs, flacs []string
-	for _, b := range bases {
-		wavs = append(wavs, p.inFolder(b+".wav")...)
-		flacs = append(flacs, p.inFolder(b+".flac")...)
-	}
-	wav, flac := firstExisting(wavs...), firstExisting(flacs...)
+func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
+	wav, flac := firstExisting(p.inFolder(name+".wav")), firstExisting(p.inFolder(name+".flac"))
 
 	switch {
 	case flac == "":
@@ -252,7 +236,7 @@ func (p *Pipeline) sameAudio(ctx context.Context, a, b string) (bool, error) {
 
 func (p *Pipeline) stepEdit(ctx context.Context) error {
 	p.step("2. Edit")
-	manual := p.findSource(editBases)
+	manual := p.findSource(editName)
 	if p.Opt.cutting() {
 		if manual != "" {
 			return fmt.Errorf("%s exists and --start/--end is given: use only one of them", filepath.Base(manual))
@@ -275,7 +259,7 @@ func (p *Pipeline) stepEdit(ctx context.Context) error {
 		p.logf("Using %s (no archive, left in place).", filepath.Base(manual))
 		return nil
 	}
-	ok, err := p.ingest(ctx, p.P.EditArchive(), editBases...)
+	ok, err := p.ingest(ctx, p.P.EditArchive(), editName)
 	if err != nil {
 		return err
 	}

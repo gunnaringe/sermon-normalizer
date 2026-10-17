@@ -91,7 +91,6 @@ sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
 
 - A WAV is converted to FLAC in the archive, the audio is verified with MD5, and **the WAV is deleted only if the audio is identical** (unless `--keep-wav`). A FLAC is moved.
 - A file already in the archive is never replaced without `--force`.
-- Folders processed by older versions (raw already in `arkiv/`) need `--archive arkiv`.
 
 ### Notes
 
@@ -99,7 +98,6 @@ sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
 - Existing output files are skipped without `--force`. Output is written to a `.partial` file and
   renamed when done, so an interrupted run never leaves a half-written file behind.
 - Mono and stereo recordings both work; everything is mixed down to mono first.
-- The old names `_1-raw.*` and `_2-edit.*` are accepted.
 
 Flags for `run` (may go before or after the folder):
 
