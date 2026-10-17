@@ -1,11 +1,10 @@
-package main
+package normalizer
 
 import (
 	"context"
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -111,7 +110,7 @@ func TestIngestFlacMoves(t *testing.T) {
 	src := filepath.Join(dir, "2026-10-04_2-edit.flac") // gammelt navn godtas
 	os.WriteFile(src, []byte("x"), 0o644)
 
-	p := &Pipeline{P: paths, Opt: defaultOptions(), Out: io.Discard}
+	p := &Pipeline{P: paths, Opt: DefaultOptions(), Out: io.Discard}
 	ok, err := p.ingest(context.Background(), paths.EditDst, "{d}_edit", "{d}_2-edit")
 	if err != nil || !ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
@@ -125,14 +124,14 @@ func TestIngestNothing(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "2026-10-04")
 	os.Mkdir(dir, 0o755)
 	paths, _ := NewPaths(dir)
-	p := &Pipeline{P: paths, Opt: defaultOptions(), Out: io.Discard}
+	p := &Pipeline{P: paths, Opt: DefaultOptions(), Out: io.Discard}
 	if ok, err := p.ingest(context.Background(), paths.RawFlac, "{d}_raw"); ok || err != nil {
 		t.Errorf("ok=%v err=%v", ok, err)
 	}
 }
 
 func TestMasterFilter(t *testing.T) {
-	p := &Pipeline{Opt: defaultOptions()}
+	p := &Pipeline{Opt: DefaultOptions()}
 	f := p.masterFilter()
 	for _, want := range []string{"pan=mono", "afftdn=nr=12", "dynaudnorm", "loudnorm=I=-19:TP=-1.5", "aresample=48000"} {
 		if !strings.Contains(f, want) {
@@ -145,34 +144,26 @@ func TestMasterFilter(t *testing.T) {
 	}
 }
 
-func TestReorder(t *testing.T) {
-	got := reorder([]string{"mappe", "--keep-wav", "--mp3-bitrate", "128k", "--force"})
-	want := []string{"--keep-wav", "--mp3-bitrate", "128k", "--force", "mappe"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("fikk %v", got)
-	}
-}
-
 func TestParseTime(t *testing.T) {
 	ok := map[string]float64{
 		"2480": 2480, "41:20": 2480, "1:12:05": 4325, "41:20.5": 2480.5, "0:00:07": 7, "90": 90,
 	}
 	for in, want := range ok {
-		if got, err := parseTime(in); err != nil || got != want {
-			t.Errorf("parseTime(%q) = %v, %v; vil ha %v", in, got, err, want)
+		if got, err := ParseTime(in); err != nil || got != want {
+			t.Errorf("ParseTime(%q) = %v, %v; vil ha %v", in, got, err, want)
 		}
 	}
 	for _, in := range []string{"", "abc", "1:2:3:4", "41:60", "-5", "1.5:00", "1:-1"} {
-		if _, err := parseTime(in); err == nil {
-			t.Errorf("parseTime(%q): forventet feil", in)
+		if _, err := ParseTime(in); err == nil {
+			t.Errorf("ParseTime(%q): forventet feil", in)
 		}
 	}
 }
 
 func TestFormatTime(t *testing.T) {
 	for in, want := range map[float64]string{2480: "0:41:20", 4325: "1:12:05", 2480.5: "0:41:20.500"} {
-		if got := formatTime(in); got != want {
-			t.Errorf("formatTime(%v) = %q, vil ha %q", in, got, want)
+		if got := FormatTime(in); got != want {
+			t.Errorf("FormatTime(%v) = %q, vil ha %q", in, got, want)
 		}
 	}
 }
@@ -186,7 +177,7 @@ func TestCutEditConflictsWithManualEdit(t *testing.T) {
 	os.WriteFile(paths.RawFlac, []byte("x"), 0o644)
 	os.WriteFile(filepath.Join(dir, "2026-10-04_edit.flac"), []byte("x"), 0o644)
 
-	opt := defaultOptions()
+	opt := DefaultOptions()
 	opt.Start = 60
 	p := &Pipeline{P: paths, Opt: opt, Out: io.Discard}
 	if err := p.stepEdit(context.Background()); err == nil || !strings.Contains(err.Error(), "bare det ene") {
@@ -203,18 +194,10 @@ func TestCutEditSkipsExisting(t *testing.T) {
 	os.WriteFile(paths.RawFlac, []byte("x"), 0o644)
 	os.WriteFile(paths.EditDst, []byte("x"), 0o644)
 
-	opt := defaultOptions()
+	opt := DefaultOptions()
 	opt.End = 60
 	p := &Pipeline{P: paths, Opt: opt, Out: io.Discard}
 	if err := p.stepEdit(context.Background()); err != nil {
 		t.Error(err)
-	}
-}
-
-func TestReorderStartEnd(t *testing.T) {
-	got := reorder([]string{"mappe", "--start", "41:20", "--end=1:12:05"})
-	want := []string{"--start", "41:20", "--end=1:12:05", "mappe"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("fikk %v", got)
 	}
 }

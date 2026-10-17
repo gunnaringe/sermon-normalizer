@@ -1,7 +1,7 @@
-# talenorm
+# sermon-normalizer
 
 CLI som behandler tale-opptak (tale + musikk) til publiseringsklare filer.
-Se `../PLAN.md` for bakgrunn og språkvalg.
+Se `PLAN.md` for bakgrunn og språkvalg.
 
 ## Krav
 
@@ -11,9 +11,9 @@ Se `../PLAN.md` for bakgrunn og språkvalg.
 ## Bygg
 
 ```bash
-go build -o talenorm .                                   # for denne maskinen
-GOOS=linux GOARCH=amd64 go build -o dist/talenorm-linux-amd64 .   # for Linux x86-64
-GOOS=linux GOARCH=arm64 go build -o dist/talenorm-linux-arm64 .   # for Linux ARM
+go build -o sermon-normalizer ./cmd/sermon-normalizer                                   # for denne maskinen
+GOOS=linux GOARCH=amd64 go build -o dist/sermon-normalizer-linux-amd64 ./cmd/sermon-normalizer   # for Linux x86-64
+GOOS=linux GOARCH=arm64 go build -o dist/sermon-normalizer-linux-arm64 ./cmd/sermon-normalizer   # for Linux ARM
 go test ./...
 ```
 
@@ -24,8 +24,8 @@ PowerShell: sett `$env:GOOS="linux"; $env:GOARCH="amd64"` før `go build`.
 ffmpeg er et eget C-program og kan ikke bygges inn i Go-binæren, så containeren pakker begge sammen.
 
 ```bash
-docker build -t talenorm .
-docker run --rm -u "$(id -u):$(id -g)" -v /sti/til/Taler:/data talenorm run /data/2026/2026-10-04
+docker build -t sermon-normalizer .
+docker run --rm -u "$(id -u):$(id -g)" -v /sti/til/Taler:/data sermon-normalizer run /data/2026/2026-10-04
 ```
 
 `-u` gjør at filene som lages får din bruker som eier, ikke root.
@@ -41,7 +41,7 @@ Legg opptaket av hele gudstjenesten i datomappen, og oppgi hvor talen starter og
 ```
 
 ```bash
-talenorm run /sti/til/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
+sermon-normalizer run /sti/til/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
 ```
 
 Tidene kan skrives som `t:mm:ss`, `mm:ss` eller sekunder, med desimaler om nødvendig (`41:20.5`).
@@ -60,7 +60,7 @@ lydprogram og legg resultatet i mappen. Da brukes det i stedet, og `--start`/`--
 ```
 
 ```bash
-talenorm run /sti/til/Taler/2026/2026-10-04
+sermon-normalizer run /sti/til/Taler/2026/2026-10-04
 ```
 
 Resultat:
@@ -98,5 +98,5 @@ Flagg for `run` (kan stå før eller etter mappen):
 Måle filer:
 
 ```bash
-talenorm measure fil1.mp3 fil2.flac
+sermon-normalizer measure fil1.mp3 fil2.flac
 ```

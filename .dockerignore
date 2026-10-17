@@ -1,0 +1,5 @@
+dist/
+sermon-normalizer
+sermon-normalizer.exe
+*.md
+.git

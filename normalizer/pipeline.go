@@ -1,4 +1,4 @@
-package main
+package normalizer
 
 import (
 	"context"
@@ -29,7 +29,7 @@ type Options struct {
 // cutting sier om edit skal klippes fra raw i stedet for aa leveres ferdig.
 func (o Options) cutting() bool { return o.Start > 0 || o.End > 0 }
 
-func defaultOptions() Options {
+func DefaultOptions() Options {
 	return Options{
 		Mp3Bitrate:     "96k",
 		OpusBitrate:    "48k",
@@ -250,11 +250,11 @@ func (p *Pipeline) cutEdit(ctx context.Context) error {
 	from, to := "start", "slutt"
 	if p.Opt.Start > 0 {
 		args = append(args, "-ss", secs(p.Opt.Start))
-		from = formatTime(p.Opt.Start)
+		from = FormatTime(p.Opt.Start)
 	}
 	if p.Opt.End > 0 {
 		args = append(args, "-to", secs(p.Opt.End))
-		to = formatTime(p.Opt.End)
+		to = FormatTime(p.Opt.End)
 	}
 	args = append(args, "-i", p.P.RawFlac, "-c:a", "flac", p.P.EditDst)
 	if _, err := p.FF.Run(ctx, args...); err != nil {
@@ -266,8 +266,8 @@ func (p *Pipeline) cutEdit(ctx context.Context) error {
 
 func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
 
-// parseTime tolker 1:12:05, 41:20, 2480 eller 41:20.5 som sekunder.
-func parseTime(s string) (float64, error) {
+// ParseTime tolker 1:12:05, 41:20, 2480 eller 41:20.5 som sekunder.
+func ParseTime(s string) (float64, error) {
 	parts := strings.Split(s, ":")
 	if len(parts) > 3 || s == "" {
 		return 0, fmt.Errorf("ugyldig tid %q (bruk t:mm:ss, mm:ss eller sekunder)", s)
@@ -284,7 +284,7 @@ func parseTime(s string) (float64, error) {
 	return total, nil
 }
 
-func formatTime(s float64) string {
+func FormatTime(s float64) string {
 	h, rest := int(s)/3600, s-float64(int(s)/3600*3600)
 	m := int(rest) / 60
 	sec := rest - float64(m*60)

@@ -9,18 +9,20 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+
+	"github.com/gunnaringe/sermon-normalizer/normalizer"
 )
 
 var version = "0.1.0"
 
-const usage = `talenorm: behandler tale-opptak (raw + edit -> master.flac, mp3, opus)
+const usage = `sermon-normalizer: behandler tale-opptak (raw + edit -> master.flac, mp3, opus)
 
 Bruk:
-  talenorm run <mappe> [flagg]     kjor hele flyten for en datomappe
-  talenorm measure <fil>...        mal LUFS / true peak / LRA
-  talenorm version
+  sermon-normalizer run <mappe> [flagg]     kjor hele flyten for en datomappe
+  sermon-normalizer measure <fil>...        mal LUFS / true peak / LRA
+  sermon-normalizer version
 
-Kjor "talenorm run -h" for flagg.
+Kjor "sermon-normalizer run -h" for flagg.
 `
 
 func main() {
@@ -38,7 +40,7 @@ func main() {
 	case "measure":
 		err = cmdMeasure(ctx, os.Args[2:])
 	case "version", "--version":
-		fmt.Println("talenorm", version)
+		fmt.Println("sermon-normalizer", version)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
@@ -54,12 +56,12 @@ func main() {
 	}
 }
 
-func newFFmpeg(bin string) (FFmpeg, error) {
+func newFFmpeg(bin string) (normalizer.FFmpeg, error) {
 	path, err := exec.LookPath(bin)
 	if err != nil {
-		return FFmpeg{}, fmt.Errorf("finner ikke %q i PATH (Linux: apt install ffmpeg)", bin)
+		return normalizer.FFmpeg{}, fmt.Errorf("finner ikke %q i PATH (Linux: apt install ffmpeg)", bin)
 	}
-	return FFmpeg{Bin: path}, nil
+	return normalizer.FFmpeg{Bin: path}, nil
 }
 
 // reorder lar flagg stå både før og etter mappenavnet.
@@ -95,7 +97,7 @@ func containsEq(s string) bool {
 }
 
 func cmdRun(ctx context.Context, args []string) error {
-	opt := defaultOptions()
+	opt := normalizer.DefaultOptions()
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.Float64Var(&opt.TargetLUFS, "target-lufs", opt.TargetLUFS, "mal-loudness (mono -19, stereo -16)")
 	fs.Float64Var(&opt.TruePeak, "true-peak", opt.TruePeak, "maks true peak (dBTP) for master")
@@ -114,23 +116,23 @@ func cmdRun(ctx context.Context, args []string) error {
 		return errors.New("--end maa vaere etter --start")
 	}
 	if fs.NArg() != 1 {
-		return errors.New("oppgi noyaktig en mappe: talenorm run <mappe>")
+		return errors.New("oppgi noyaktig en mappe: sermon-normalizer run <mappe>")
 	}
 	ff, err := newFFmpeg(*ffBin)
 	if err != nil {
 		return err
 	}
-	paths, err := NewPaths(fs.Arg(0))
+	paths, err := normalizer.NewPaths(fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	p := &Pipeline{P: paths, Opt: opt, FF: ff, Out: os.Stdout}
+	p := &normalizer.Pipeline{P: paths, Opt: opt, FF: ff, Out: os.Stdout}
 	return p.Run(ctx)
 }
 
 func timeFlag(dst *float64) func(string) error {
 	return func(s string) error {
-		v, err := parseTime(s)
+		v, err := normalizer.ParseTime(s)
 		*dst = v
 		return err
 	}
@@ -138,7 +140,7 @@ func timeFlag(dst *float64) func(string) error {
 
 func cmdMeasure(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("oppgi minst en fil: talenorm measure <fil>...")
+		return errors.New("oppgi minst en fil: sermon-normalizer measure <fil>...")
 	}
 	ff, err := newFFmpeg("ffmpeg")
 	if err != nil {

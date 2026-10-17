@@ -1,4 +1,4 @@
-# Plan: talenorm, behandling av tale-opptak
+# Plan: sermon-normalizer, behandling av tale-opptak
 
 ## Mål
 
@@ -44,7 +44,7 @@ Go passer også siden du allerede har valgt det, og det er enkelt å utvide sene
 
 ## Arkitektur
 
-Modul `code/talenorm`, kun standardbibliotek (ingen eksterne avhengigheter).
+Modul `github.com/gunnaringe/sermon-normalizer`, kun standardbibliotek (ingen eksterne avhengigheter).
 
 - `main.go`: CLI (underkommandoer, flagg, Ctrl+C avbryter pent)
 - `ffmpeg.go`: tynn wrapper rundt `ffmpeg` (`-nostdin`, fanger stdout og stderr)
@@ -55,9 +55,9 @@ Modul `code/talenorm`, kun standardbibliotek (ingen eksterne avhengigheter).
 ## CLI
 
 ```
-talenorm run <mappe> [flagg]     kjør hele flyten for en datomappe
-talenorm measure <fil>...        mål LUFS / true peak / LRA
-talenorm version
+sermon-normalizer run <mappe> [flagg]     kjør hele flyten for en datomappe
+sermon-normalizer measure <fil>...        mål LUFS / true peak / LRA
+sermon-normalizer version
 
 run-flagg:
   --start / --end          klipp edit fra raw (ett stykke); ellers leveres _edit selv
