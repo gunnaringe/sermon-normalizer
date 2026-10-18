@@ -32,8 +32,6 @@ type Config struct {
 	CacheDir string // waveform data and previews
 	Archive  string // default archive folder for runs ("" = none)
 	Layout   string // where imports go under Root, as a Go time layout
-	Publish  string // finished files are copied here (e.g. a synced folder); "" = off
-
 	// InboxEvery is how often the inbox is looked at, InboxSettle how long a
 	// file must stay unchanged before it is taken (0 = 10 s and 30 s).
 	InboxEvery, InboxSettle time.Duration
@@ -84,12 +82,6 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{cfg: cfg, root: root, ctx: ctx, cancel: cancel, tagDates: map[string]string{}}
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
-	if cfg.Publish != "" {
-		if s.cfg.Publish, err = realDir(cfg.Publish); err != nil {
-			cancel()
-			return nil, fmt.Errorf("publish: %w", err)
-		}
-	}
 	if cfg.Inbox != "" {
 		s.inbox = newInboxWatcher(s)
 		s.wg.Add(1)
@@ -237,7 +229,6 @@ func (s *Server) pathParam(w http.ResponseWriter, r *http.Request) (string, bool
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"inbox":   s.cfg.Inbox != "",
-		"publish": s.cfg.Publish != "",
 		"chunk":   MaxChunk,
 		"archive": s.cfg.Archive,
 		"defaults": map[string]any{

@@ -32,7 +32,6 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/inbox.go`: inbox list/import, date suggestion, `newRawFolder`.
 - `web/inboxwatch.go`: takes settled files in the inbox (convert + prepare);
   `PUT api/inbox/files/<name>` for other services.
-- `web/publish.go`: copies finished files into `--publish` (a synced folder).
 - `web/static/`: plain JS, no build. `vendor/wavesurfer/` is wavesurfer.js
   7.12.12, unmodified.
 - `normalizer/`: the pipeline (`pipeline.go`), ffmpeg wrapper (`ffmpeg.go`:

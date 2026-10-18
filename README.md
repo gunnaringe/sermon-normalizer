@@ -53,7 +53,6 @@ sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
 | `--archive` | | the default archive folder for runs (see below) |
 | `--layout` | `2006/2006-01-02` | where imports go under `--root`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
-| `--publish` | | copy finished files here (e.g. a synced folder), see below |
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
@@ -85,19 +84,15 @@ cancels running jobs and waits for them to clean up.
 has one), verified identical by MD5 of the audio, and then replaces the WAV. Right after, the
 server prepares the waveform and the listening preview, so cutting can start at once.
 
-### Inbox and publishing
+### Inbox
 
-- **The inbox is any folder**: a Resilio Sync folder, a file share, or the API. A `.wav` or
+- **The inbox is any folder**: a synced folder, a file share, or the API. A `.wav` or
   `.flac` that has stopped changing for 30 s is taken: converted to FLAC and prepared, without
   anyone opening it. Hidden files and `*.partial*` are ignored, so write under such a name
   and rename when done if you can.
 - **`PUT api/inbox/files/<name>`** (optional `?modified=<ms>`) streams a recording into the
   inbox, for other services, e.g. a job forwarding uploads from a file-sharing app. An existing
   name gets 409, so a sender can tell it was delivered already.
-- **`--publish <folder>`** copies the finished files of every run there, in the same
-  `<year>/<date>/` folders, e.g. a folder Resilio Sync shares. The recordings and work files stay
-  in `--root`, so the shared folder holds only what is published. Each file appears whole
-  (copied under a hidden name, then renamed); a re-run with Force replaces it.
 
 When a recording is opened the first time, the server prepares its waveform and a small MP3
 preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` and carried along

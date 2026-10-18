@@ -55,7 +55,6 @@ Module `github.com/gunnaringe/sermon-normalizer`, standard library only.
 - `normalizer/channels.go`: the mono/one-sided checks behind the stereo warnings
 - `normalizer/outputs.go`: which outputs to make
 - `web/upload.go`, `web/inboxwatch.go`: new recordings, uploaded in chunks or taken from the inbox folder
-- `web/publish.go`: copies finished files to a shared (synced) folder
 - `*_test.go`: unit and integration tests; `web/e2e/`: browser tests
 
 Run options (from the web form): cut start/end, fades, outputs (FLAC, MP3, Opus), mono or
@@ -79,11 +78,10 @@ MP3 bitrate (96k), Opus bitrate (48k).
 3. **Release and deploy:** container image, running on the home cluster behind Traefik and Pocket ID.
 4. **Later (optional):**
    - metadata (ID3 tags: title, date, church) on the MP3
-   - picking up new recordings from a synced folder (Resilio Sync) automatically
 
 ## Risks and open questions
 
 - **Opus true peak** overshoots easily; handled by the measurement step, but consider setting the master peak to -2 dBTP.
 - **Title in file names** is not decided (date only for now).
 - **Noise reduction** (`afftdn`) has not been listened to; tune the noise reduction by ear.
-- Resilio Sync can create `.rsls` placeholders; the tool ignores them.
+- Sync clients can leave placeholder files (e.g. `*.rsls`); only exact names count, so they are ignored.

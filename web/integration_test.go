@@ -161,8 +161,7 @@ func events(t *testing.T, url string) []jobSnapshot {
 
 func TestIntegrationRun(t *testing.T) {
 	ff := requireFFmpeg(t)
-	published := t.TempDir()
-	ts := newTestServerWith(t, ff, func(c *Config) { c.Publish = published })
+	ts := newTestServer(t, ff)
 	hs := httptest.NewServer(ts.h)
 	defer hs.Close()
 	ts.file(t, "2026-10-04/x", "")
@@ -199,16 +198,6 @@ func TestIntegrationRun(t *testing.T) {
 	}
 	if strings.Join(names, ",") != "2026-10-04.mp3,2026-10-04_raw.wav,x" {
 		t.Errorf("files %v", names)
-	}
-	// The finished file was published, alone, under the same folder.
-	if same, err := normalizer.SameContent(mp3, filepath.Join(published, "2026-10-04", "2026-10-04.mp3")); err != nil || !same {
-		t.Errorf("published: %v %v", same, err)
-	}
-	if entries, _ := os.ReadDir(filepath.Join(published, "2026-10-04")); len(entries) != 1 {
-		t.Errorf("publish folder: %v", entries)
-	}
-	if !strings.Contains(strings.Join(last.Log, "\n"), "Published 2026-10-04/2026-10-04.mp3") {
-		t.Errorf("log %v", last.Log)
 	}
 	// The output can be fetched for listening.
 	resp, err := http.Get(hs.URL + "/api/file?path=" + last.Outputs[0].Path)

@@ -209,19 +209,11 @@ func (js *jobs) run(ctx context.Context, j *job, pl plan) {
 	err := p.Run(ctx)
 	lw.flush()
 	var outs []outputFileInfo
-	var made []string
 	on := map[string]bool{"flac": pl.opt.Outputs.Flac, "mp3": pl.opt.Outputs.Mp3, "opus": pl.opt.Outputs.Opus}
 	for _, o := range outputsOf(pl.paths) {
 		if fi := js.s.fileInfo(o.path); on[o.format] && fi != nil {
 			outs = append(outs, outputFileInfo{*fi, o.format})
-			made = append(made, o.path)
 		}
-	}
-	if err == nil && js.s.cfg.Publish != "" && len(made) > 0 {
-		j.update(func() { j.steps = append(j.steps, "5. Publish"); j.progress = 0 })
-		err = js.s.publish(pl.paths.Folder, made, func(format string, args ...any) {
-			lw.fn(fmt.Sprintf(format, args...))
-		})
 	}
 	j.update(func() {
 		j.outputs = outs

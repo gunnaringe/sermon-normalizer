@@ -443,34 +443,3 @@ func TestInboxPut(t *testing.T) {
 		t.Errorf("inbox: %v", entries)
 	}
 }
-
-func TestPublish(t *testing.T) {
-	published := t.TempDir()
-	ts := newTestServerWith(t, normalizer.FFmpeg{}, func(c *Config) { c.Publish = published })
-	mp3 := ts.file(t, "2026/2026-10-04/2026-10-04.mp3", "mp3")
-	opus := ts.file(t, "2026/2026-10-04/2026-10-04.opus", "opus")
-	var log []string
-	logf := func(f string, a ...any) { log = append(log, fmt.Sprintf(f, a...)) }
-	if err := ts.publish(filepath.Dir(mp3), []string{mp3, opus}, logf); err != nil {
-		t.Fatal(err)
-	}
-	if err := ts.publish(filepath.Dir(mp3), []string{mp3}, logf); err != nil {
-		t.Fatal(err)
-	}
-	os.WriteFile(mp3, []byte("mp3, made again"), 0o644)
-	if err := ts.publish(filepath.Dir(mp3), []string{mp3}, logf); err != nil {
-		t.Fatal(err)
-	}
-	if b, _ := os.ReadFile(filepath.Join(published, "2026", "2026-10-04", "2026-10-04.mp3")); string(b) != "mp3, made again" {
-		t.Errorf("published %q", b)
-	}
-	want := "Published 2026/2026-10-04/2026-10-04.mp3.|Published 2026/2026-10-04/2026-10-04.opus.|2026-10-04.mp3 is already published.|Published 2026/2026-10-04/2026-10-04.mp3."
-	if strings.Join(log, "|") != want {
-		t.Errorf("log %q", log)
-	}
-	for _, dir := range []string{filepath.Join(published, "2026", "2026-10-04"), filepath.Dir(mp3)} {
-		if entries, _ := os.ReadDir(dir); len(entries) != 2 {
-			t.Errorf("%s: %v (no hidden copies left)", dir, entries)
-		}
-	}
-}

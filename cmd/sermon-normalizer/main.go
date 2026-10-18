@@ -38,7 +38,6 @@ func run() error {
 	archive := flag.String("archive", "", "default archive folder for runs (relative to the date folder)")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
 	ffBin := flag.String("ffmpeg", "ffmpeg", "path to ffmpeg")
-	publish := flag.String("publish", "", "copy finished files here, in the same folders (e.g. a folder Resilio Sync shares)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -55,7 +54,7 @@ func run() error {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	web.CleanCache(*cacheDir, time.Duration(*cacheDays)*24*time.Hour)
 	srv, err := web.New(web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir, Archive: *archive,
-		Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Publish: *publish, Logger: logger})
+		Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger})
 	if err != nil {
 		return err
 	}
