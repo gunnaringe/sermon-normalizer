@@ -1,7 +1,7 @@
 # sermon-normalizer
 
 Go CLI and TUI that turn a church service recording into publish-ready sermon files
-(cut, mono, loudness-normalised FLAC/MP3/Opus). `README.md` covers usage,
+(cut, mono or stereo, loudness-normalised FLAC/MP3/Opus). `README.md` covers usage,
 `PLAN.md` the background and design decisions.
 
 ## Layout

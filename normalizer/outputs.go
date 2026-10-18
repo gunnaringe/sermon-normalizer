@@ -7,7 +7,7 @@ import (
 
 // Outputs selects which files a run produces.
 type Outputs struct {
-	Flac bool // the master, mono 48 kHz / 24-bit
+	Flac bool // the master, 48 kHz / 24-bit
 	Mp3  bool
 	Opus bool
 }

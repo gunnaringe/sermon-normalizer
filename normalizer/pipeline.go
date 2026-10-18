@@ -18,6 +18,7 @@ import (
 type Options struct {
 	Mp3Bitrate     string
 	OpusBitrate    string
+	Stereo         bool    // keep two channels; default mono
 	TargetLUFS     float64 // mono: -19, stereo: -16
 	TruePeak       float64
 	NoiseReduction int // afftdn nr in dB; 0 = off
@@ -32,11 +33,51 @@ type Options struct {
 // cutting reports whether the edit is cut from raw rather than supplied by hand.
 func (o Options) cutting() bool { return o.Start > 0 || o.End > 0 }
 
+// ChannelDefaults are the defaults that depend on mono or stereo: the usual
+// podcast loudness targets, and bitrates that sound the same per channel.
+type ChannelDefaults struct {
+	TargetLUFS  float64
+	Mp3Bitrate  string
+	OpusBitrate string
+}
+
+func DefaultsFor(stereo bool) ChannelDefaults {
+	if stereo {
+		return ChannelDefaults{TargetLUFS: -16, Mp3Bitrate: "128k", OpusBitrate: "96k"}
+	}
+	return ChannelDefaults{TargetLUFS: -19, Mp3Bitrate: "96k", OpusBitrate: "48k"}
+}
+
+// SetStereo switches between mono and stereo, moving the loudness target and
+// bitrates along unless they were changed from the old defaults.
+func (o *Options) SetStereo(stereo bool) {
+	old, def := DefaultsFor(o.Stereo), DefaultsFor(stereo)
+	if o.TargetLUFS == old.TargetLUFS {
+		o.TargetLUFS = def.TargetLUFS
+	}
+	if o.Mp3Bitrate == old.Mp3Bitrate {
+		o.Mp3Bitrate = def.Mp3Bitrate
+	}
+	if o.OpusBitrate == old.OpusBitrate {
+		o.OpusBitrate = def.OpusBitrate
+	}
+	o.Stereo = stereo
+}
+
+// Channels is "mono" or "stereo".
+func (o Options) Channels() string {
+	if o.Stereo {
+		return "stereo"
+	}
+	return "mono"
+}
+
 func DefaultOptions() Options {
+	mono := DefaultsFor(false)
 	return Options{
-		Mp3Bitrate:     "96k",
-		OpusBitrate:    "48k",
-		TargetLUFS:     -19,
+		Mp3Bitrate:     mono.Mp3Bitrate,
+		OpusBitrate:    mono.OpusBitrate,
+		TargetLUFS:     mono.TargetLUFS,
 		TruePeak:       -1.5,
 		NoiseReduction: 12,
 		Outputs:        AllOutputs,
@@ -392,9 +433,10 @@ func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
 // masterFilter is the filter chain for the master; length (seconds) is only
 // needed for a fade-out.
 func (p *Pipeline) masterFilter(length float64) string {
-	// Downmix first, whatever the input has (mono, stereo, more), so the
-	// rest of the chain works on the mono signal that gets published.
-	f := []string{"aformat=channel_layouts=mono"}
+	// Convert first, whatever the input has (mono, stereo, more), so the rest
+	// of the chain works on the channels that get published. A mono recording
+	// made stereo is the same signal on both sides.
+	f := []string{"aformat=channel_layouts=" + p.Opt.Channels()}
 	if p.Opt.NoiseReduction > 0 {
 		f = append(f, fmt.Sprintf("afftdn=nr=%d", p.Opt.NoiseReduction))
 	}
@@ -422,7 +464,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 	p.master = p.P.Master
 	switch {
 	case o.Flac:
-		p.step(fmt.Sprintf("3. Master (mono, %g LUFS)", p.Opt.TargetLUFS))
+		p.step(fmt.Sprintf("3. Master (%s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
 		if !p.pending(p.P.Master) {
 			p.logf("Already exists, skipping (use --force).")
 			return nil
@@ -436,7 +478,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 	default:
 		// Not wanted as output, but MP3/Opus are made from it. Kept in the
 		// date folder (it can be large) under a hidden name, removed after the run.
-		p.step(fmt.Sprintf("3. Master (temporary, for MP3/Opus; mono, %g LUFS)", p.Opt.TargetLUFS))
+		p.step(fmt.Sprintf("3. Master (temporary, for MP3/Opus; %s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
 		p.master = filepath.Join(p.P.Folder, "."+p.P.Date+".master.flac")
 		p.cleanup = append(p.cleanup, p.master)
 	}
@@ -530,16 +572,20 @@ func (p *Pipeline) stepLossy(ctx context.Context) error {
 	if len(names) == 0 {
 		return nil
 	}
-	p.step("4. " + strings.Join(names, " and ") + ", mono")
+	p.step("4. " + strings.Join(names, " and ") + ", " + p.Opt.Channels())
+	ac := "1"
+	if p.Opt.Stereo {
+		ac = "2"
+	}
 	if o.Mp3 {
 		if err := p.encodeLossy(ctx, "mp3", p.P.Mp3,
-			[]string{"-ar", "44100", "-ac", "1", "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate}); err != nil {
+			[]string{"-ar", "44100", "-ac", ac, "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate}); err != nil {
 			return err
 		}
 	}
 	if o.Opus {
 		return p.encodeLossy(ctx, "opus", p.P.Opus,
-			[]string{"-ar", "48000", "-ac", "1", "-c:a", "libopus", "-b:a", p.Opt.OpusBitrate, "-application", "voip"})
+			[]string{"-ar", "48000", "-ac", ac, "-c:a", "libopus", "-b:a", p.Opt.OpusBitrate, "-application", "voip"})
 	}
 	return nil
 }

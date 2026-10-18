@@ -463,3 +463,28 @@ func TestPlayerClearsFinishedClip(t *testing.T) {
 	}
 	p.stop()
 }
+
+func TestOptionsStereo(t *testing.T) {
+	dir := dateDir(t, t.TempDir(), "2026-10-04", "2026-10-04_raw.wav")
+	paths, _ := normalizer.NewPaths(dir, "")
+	m := newOptions(paths, cutDoneMsg{mode: modeTimes, start: 60}, normalizer.DefaultOptions(), "")
+	m.get("opusbr").input.SetValue("64k") // changed by hand: stays
+	for m.fields[m.focus].key != "stereo" {
+		m, _ = m.update(keyDown)
+	}
+	m, _ = m.update(keySpace)
+	opt, _, err := m.build()
+	if err != nil || !opt.Stereo || opt.TargetLUFS != -16 || opt.Mp3Bitrate != "128k" || opt.OpusBitrate != "64k" {
+		t.Fatalf("opt %+v err %v", opt, err)
+	}
+	// The command shows --channels stereo but not the stereo defaults.
+	cmd := commandLine(dir, opt, "")
+	if !strings.Contains(cmd, "--channels stereo") || strings.Contains(cmd, "--target-lufs") ||
+		strings.Contains(cmd, "--mp3-bitrate") || !strings.Contains(cmd, "--opus-bitrate 64k") {
+		t.Errorf("command %s", cmd)
+	}
+	m, _ = m.update(keySpace) // back to mono
+	if opt, _, _ := m.build(); opt.Stereo || opt.TargetLUFS != -19 || opt.Mp3Bitrate != "96k" || opt.OpusBitrate != "64k" {
+		t.Errorf("mono again: %+v", opt)
+	}
+}

@@ -390,3 +390,29 @@ func TestProgressWriter(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+func TestSetStereo(t *testing.T) {
+	o := DefaultOptions()
+	o.SetStereo(true)
+	if !o.Stereo || o.TargetLUFS != -16 || o.Mp3Bitrate != "128k" || o.OpusBitrate != "96k" || o.Channels() != "stereo" {
+		t.Errorf("stereo defaults: %+v", o)
+	}
+	o.SetStereo(false)
+	if o != DefaultOptions() {
+		t.Errorf("back to mono: %+v", o)
+	}
+	// Values changed from the defaults stay.
+	o.TargetLUFS, o.Mp3Bitrate = -18, "160k"
+	o.SetStereo(true)
+	if o.TargetLUFS != -18 || o.Mp3Bitrate != "160k" || o.OpusBitrate != "96k" {
+		t.Errorf("changed values: %+v", o)
+	}
+}
+
+func TestMasterFilterStereo(t *testing.T) {
+	p := &Pipeline{Opt: DefaultOptions()}
+	p.Opt.SetStereo(true)
+	if f := p.masterFilter(0); !strings.HasPrefix(f, "aformat=channel_layouts=stereo,") || !strings.Contains(f, "loudnorm=I=-16:") {
+		t.Errorf("filter %q", f)
+	}
+}

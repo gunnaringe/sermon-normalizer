@@ -61,9 +61,10 @@ func newOptions(paths normalizer.Paths, cut cutDoneMsg, def normalizer.Options, 
 	}
 	num := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 	m := optionsModel{paths: paths, cut: cut, fields: []field{
-		toggle("flac", "Output", "FLAC master", def.Outputs.Flac, "mono, 48 kHz / 24-bit"),
+		toggle("flac", "Output", "FLAC master", def.Outputs.Flac, "48 kHz / 24-bit"),
 		toggle("mp3", "Output", "MP3", def.Outputs.Mp3, ""),
 		toggle("opus", "Output", "Opus", def.Outputs.Opus, ""),
+		toggle("stereo", "Sound", "Stereo", def.Stereo, "off = mono, usual for speech"),
 		text("fadein", "Sound", "Fade in (s)", num(def.FadeIn), "0 = off"),
 		text("fadeout", "Sound", "Fade out (s)", num(def.FadeOut), "0 = off"),
 		text("noise", "Sound", "Noise reduction (dB)", strconv.Itoa(def.NoiseReduction), "0 = off"),
@@ -106,6 +107,7 @@ func (m optionsModel) build() (normalizer.Options, string, error) {
 	if m.cut.mode != modeEdit {
 		opt.Start, opt.End = m.cut.start, m.cut.end
 	}
+	opt.Stereo = m.get("stereo").on
 	opt.Outputs = normalizer.Outputs{Flac: m.get("flac").on, Mp3: m.get("mp3").on, Opus: m.get("opus").on}
 	if opt.Outputs == (normalizer.Outputs{}) {
 		return opt, "", fmt.Errorf("choose at least one output")
@@ -157,6 +159,9 @@ func (m optionsModel) update(msg tea.KeyMsg) (optionsModel, tea.Cmd) {
 	case " ", "x":
 		if f.kind == fieldToggle {
 			f.on = !f.on
+			if f.key == "stereo" {
+				m.followChannels(!f.on, f.on)
+			}
 			return m, nil
 		}
 	}
@@ -166,6 +171,22 @@ func (m optionsModel) update(msg tea.KeyMsg) (optionsModel, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+// followChannels moves the loudness target and bitrates to the new channel
+// defaults, unless they were changed from the old ones.
+func (m optionsModel) followChannels(oldStereo, stereo bool) {
+	old, def := normalizer.DefaultsFor(oldStereo), normalizer.DefaultsFor(stereo)
+	num := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+	for _, f := range []struct{ key, old, def string }{
+		{"lufs", num(old.TargetLUFS), num(def.TargetLUFS)},
+		{"mp3br", old.Mp3Bitrate, def.Mp3Bitrate},
+		{"opusbr", old.OpusBitrate, def.OpusBitrate},
+	} {
+		if in := &m.get(f.key).input; strings.TrimSpace(in.Value()) == f.old {
+			in.SetValue(f.def)
+		}
+	}
 }
 
 func (m optionsModel) view(width int) string {
@@ -263,6 +284,7 @@ func (m optionsModel) notices(opt normalizer.Options, archive string) []string {
 // commandLine is the CLI command for the same run (non-default flags only).
 func commandLine(folder string, opt normalizer.Options, archive string) string {
 	def := normalizer.DefaultOptions()
+	def.SetStereo(opt.Stereo) // compare with the defaults for the chosen channels
 	args := []string{"sermon-normalizer", "run", shellQuote(folder)}
 	add := func(flag, value string) { args = append(args, flag, shellQuote(value)) }
 	num := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
@@ -274,6 +296,9 @@ func commandLine(folder string, opt normalizer.Options, archive string) string {
 	}
 	if opt.Outputs != def.Outputs {
 		add("--formats", opt.Outputs.String())
+	}
+	if opt.Stereo {
+		add("--channels", "stereo")
 	}
 	if opt.FadeIn > 0 {
 		add("--fade-in", num(opt.FadeIn))

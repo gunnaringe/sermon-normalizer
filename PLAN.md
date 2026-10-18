@@ -70,7 +70,8 @@ run flags:
   --fade-in / --fade-out   seconds of fade at the start/end of the sermon (0 = off)
   --formats flac,mp3,opus  which outputs to make (default all)
   --archive <folder>       keep raw and edit as FLAC there (default: sources stay in place)
-  --target-lufs  -19       -19 for mono, -16 for stereo
+  --channels     mono      mono or stereo (stereo defaults: -16 LUFS, 128k MP3, 96k Opus)
+  --target-lufs  -19       -16 with --channels stereo
   --true-peak    -1.5
   --mp3-bitrate  96k
   --opus-bitrate 48k
@@ -95,7 +96,6 @@ run flags:
 3. **Run on Linux:** install ffmpeg (`apt install ffmpeg`), copy the binary, run it on a folder.
 4. **Later (optional):**
    - `run --all <year folder>` to process all date folders without a master
-   - mono/stereo detection with the right target LUFS
    - metadata (ID3 tags: title, date, church) on the MP3
    - watching a folder (Resilio Sync) and processing automatically
 

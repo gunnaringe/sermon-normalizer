@@ -104,10 +104,11 @@ func isBoolFlag(fs *flag.FlagSet, name string) bool {
 func cmdRun(ctx context.Context, args []string) error {
 	opt := normalizer.DefaultOptions()
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	fs.Float64Var(&opt.TargetLUFS, "target-lufs", opt.TargetLUFS, "target loudness (mono -19, stereo -16)")
+	channels := fs.String("channels", "mono", "mono or stereo output")
+	fs.Float64Var(&opt.TargetLUFS, "target-lufs", opt.TargetLUFS, "target loudness; -16 with --channels stereo")
 	fs.Float64Var(&opt.TruePeak, "true-peak", opt.TruePeak, "max true peak (dBTP) for the master")
-	fs.StringVar(&opt.Mp3Bitrate, "mp3-bitrate", opt.Mp3Bitrate, "mp3 bitrate")
-	fs.StringVar(&opt.OpusBitrate, "opus-bitrate", opt.OpusBitrate, "opus bitrate")
+	fs.StringVar(&opt.Mp3Bitrate, "mp3-bitrate", opt.Mp3Bitrate, "mp3 bitrate; 128k with --channels stereo")
+	fs.StringVar(&opt.OpusBitrate, "opus-bitrate", opt.OpusBitrate, "opus bitrate; 96k with --channels stereo")
 	fs.IntVar(&opt.NoiseReduction, "noise-reduction", opt.NoiseReduction, "noise reduction in dB (0 = off)")
 	fs.BoolVar(&opt.KeepWav, "keep-wav", false, "do not delete the WAV after verification")
 	fs.BoolVar(&opt.Force, "force", false, "recreate output files")
@@ -123,6 +124,9 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	var err error
 	if opt.Outputs, err = normalizer.ParseOutputs(*formats); err != nil {
+		return err
+	}
+	if err := applyChannels(fs, &opt, *channels); err != nil {
 		return err
 	}
 	if opt.FadeIn < 0 || opt.FadeOut < 0 {
@@ -144,6 +148,33 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	p := &normalizer.Pipeline{P: paths, Opt: opt, FF: ff, Out: os.Stdout}
 	return p.Run(ctx)
+}
+
+// applyChannels sets mono/stereo; the loudness target and bitrates follow
+// unless they were given on the command line.
+func applyChannels(fs *flag.FlagSet, opt *normalizer.Options, channels string) error {
+	var stereo bool
+	switch channels {
+	case "mono":
+	case "stereo":
+		stereo = true
+	default:
+		return fmt.Errorf("--channels must be mono or stereo, not %q", channels)
+	}
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	explicit := *opt
+	opt.SetStereo(stereo)
+	if given["target-lufs"] {
+		opt.TargetLUFS = explicit.TargetLUFS
+	}
+	if given["mp3-bitrate"] {
+		opt.Mp3Bitrate = explicit.Mp3Bitrate
+	}
+	if given["opus-bitrate"] {
+		opt.OpusBitrate = explicit.OpusBitrate
+	}
+	return nil
 }
 
 func cmdTUI(ctx context.Context, args []string) error {

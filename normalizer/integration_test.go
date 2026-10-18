@@ -150,24 +150,29 @@ func wantFiles(t *testing.T, dir string, want ...string) {
 
 func near(got, want, tol float64) bool { return math.Abs(got-want) <= tol }
 
-// checkOutputs checks the master, MP3 and Opus against the targets.
+// checkOutputs checks the master, MP3 and Opus against the mono targets.
 func checkOutputs(t *testing.T, ff FFmpeg, dir string, wantDuration float64) {
 	t.Helper()
+	checkOutputsAs(t, ff, dir, wantDuration, 1, -19)
+}
+
+func checkOutputsAs(t *testing.T, ff FFmpeg, dir string, wantDuration float64, channels int, lufs float64) {
+	t.Helper()
 	master := probeFile(t, filepath.Join(dir, date+".flac"))
-	if master.channels != 1 || master.sampleRate != 48000 || !near(master.duration, wantDuration, 0.1) {
-		t.Errorf("master: %+v, want mono 48 kHz %.1f s", master, wantDuration)
+	if master.channels != channels || master.sampleRate != 48000 || !near(master.duration, wantDuration, 0.1) {
+		t.Errorf("master: %+v, want %d channels, 48 kHz, %.1f s", master, channels, wantDuration)
 	}
 	for _, ext := range []string{".flac", ".mp3", ".opus"} {
 		f := filepath.Join(dir, date+ext)
-		if pr := probeFile(t, f); pr.channels != 1 {
-			t.Errorf("%s: %d channels, want mono", ext, pr.channels)
+		if pr := probeFile(t, f); pr.channels != channels {
+			t.Errorf("%s: %d channels, want %d", ext, pr.channels, channels)
 		}
 		m, err := ff.Measure(context.Background(), f)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !near(m.LUFS, -19, 1) || m.TruePeak > -1.0+0.05 {
-			t.Errorf("%s: %.1f LUFS / %.1f dBTP, want -19 ±1 LUFS and <= -1 dBTP", ext, m.LUFS, m.TruePeak)
+		if !near(m.LUFS, lufs, 1) || m.TruePeak > -1.0+0.05 {
+			t.Errorf("%s: %.1f LUFS / %.1f dBTP, want %g ±1 LUFS and <= -1 dBTP", ext, m.LUFS, m.TruePeak, lufs)
 		}
 	}
 }
@@ -453,5 +458,23 @@ func TestIntegrationProgressEvents(t *testing.T) {
 	}
 	if len(fractions) < 3 || !reachedEnd {
 		t.Errorf("fractions %v: want several, reaching ~1", fractions)
+	}
+}
+
+// Stereo keeps two channels at the stereo target, from stereo and from mono input.
+func TestIntegrationStereo(t *testing.T) {
+	ff := requireFFmpeg(t)
+	for _, inChannels := range []int{2, 1} {
+		t.Run(fmt.Sprintf("%d-channel input", inChannels), func(t *testing.T) {
+			dir := dateFolder(t)
+			service(t, ff, filepath.Join(dir, date+"_raw.flac"), inChannels)
+			opt := DefaultOptions()
+			opt.SetStereo(true)
+			opt.Start, opt.End = 20, 80
+			if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+				t.Fatal(err)
+			}
+			checkOutputsAs(t, ff, dir, 60, 2, -16)
+		})
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"flag"
 	"reflect"
 	"testing"
+
+	"github.com/gunnaringe/sermon-normalizer/normalizer"
 )
 
 func testFlags() *flag.FlagSet {
@@ -49,5 +51,33 @@ func TestReorder(t *testing.T) {
 		if got := reorder(testFlags(), c.in); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("reorder(%v) = %v, want %v", c.in, got, c.want)
 		}
+	}
+}
+
+func TestApplyChannels(t *testing.T) {
+	parse := func(args ...string) (normalizer.Options, error) {
+		opt := normalizer.DefaultOptions()
+		fs := flag.NewFlagSet("run", flag.ContinueOnError)
+		channels := fs.String("channels", "mono", "")
+		fs.Float64Var(&opt.TargetLUFS, "target-lufs", opt.TargetLUFS, "")
+		fs.StringVar(&opt.Mp3Bitrate, "mp3-bitrate", opt.Mp3Bitrate, "")
+		fs.StringVar(&opt.OpusBitrate, "opus-bitrate", opt.OpusBitrate, "")
+		if err := fs.Parse(args); err != nil {
+			return opt, err
+		}
+		return opt, applyChannels(fs, &opt, *channels)
+	}
+	if o, _ := parse(); o.Stereo || o.TargetLUFS != -19 || o.Mp3Bitrate != "96k" {
+		t.Errorf("default: %+v", o)
+	}
+	if o, _ := parse("--channels", "stereo"); !o.Stereo || o.TargetLUFS != -16 || o.Mp3Bitrate != "128k" || o.OpusBitrate != "96k" {
+		t.Errorf("stereo: %+v", o)
+	}
+	// Given flags win, even when equal to the mono default.
+	if o, _ := parse("--channels", "stereo", "--target-lufs", "-19", "--opus-bitrate", "64k"); o.TargetLUFS != -19 || o.OpusBitrate != "64k" || o.Mp3Bitrate != "128k" {
+		t.Errorf("stereo with flags: %+v", o)
+	}
+	if _, err := parse("--channels", "surround"); err == nil {
+		t.Error("expected an error")
 	}
 }

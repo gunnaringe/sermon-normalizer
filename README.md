@@ -1,7 +1,7 @@
 # sermon-normalizer
 
 CLI that turns a recording of a church service into publish-ready sermon files:
-it cuts out the sermon, mixes it to mono, evens out the volume (speech and music are
+it cuts out the sermon, mixes it to mono (or keeps stereo), evens out the volume (speech and music are
 recorded at very different levels), normalises to podcast loudness and encodes
 FLAC, MP3 and Opus for SoundCloud, Spotify and other podcast services.
 See `PLAN.md` for background and design decisions.
@@ -56,7 +56,7 @@ sermon-normalizer tui /path/to/Taler/2026/2026-10-04
    - **Enter times:** type the start and end. Marks set on the timeline show up here and vice versa.
    - **Edit file:** cut in your own audio editor; the screen shows where to save `<date>_edit.flac`,
      and `r` looks for it again.
-3. **Options:** which outputs to make (FLAC master, MP3, Opus; all by default), fades and the other
+3. **Options:** which outputs to make (FLAC master, MP3, Opus; all by default), mono or stereo, fades and the other
    flags, with the equivalent `run` command. Your choices carry over to the next folder (except Force).
 4. **Run:** progress per step, then the files made. Cancelling leaves nothing half-written.
 
@@ -132,7 +132,9 @@ sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
   renamed when done, so an interrupted run never leaves a half-written file behind.
 - `--formats mp3` makes only the MP3. MP3 and Opus are always made from the master; without
   `flac` it is a temporary hidden file in the date folder, removed when the run ends.
-- Mono and stereo recordings both work; everything is mixed down to mono first.
+- Output is mono by default, the usual choice for speech. `--channels stereo` keeps two channels
+  and moves the defaults to -16 LUFS, MP3 128k and Opus 96k; any of those given explicitly win.
+  Mono and stereo recordings both work either way.
 
 Flags for `run` (may go before or after the folder):
 
@@ -144,10 +146,11 @@ Flags for `run` (may go before or after the folder):
 | `--fade-out` | 0 | seconds of fade out at the end of the sermon, 0 = off |
 | `--formats` | flac,mp3,opus | which outputs to make; any of `flac` (master), `mp3`, `opus` |
 | `--archive` | | keep the sources as FLAC in this folder (default: leave them in place) |
-| `--target-lufs` | -19 | -19 for mono, -16 for stereo |
+| `--channels` | mono | `mono` or `stereo` |
+| `--target-lufs` | -19 | -16 with `--channels stereo` |
 | `--true-peak` | -1.5 | max true peak for the master |
-| `--mp3-bitrate` | 96k | |
-| `--opus-bitrate` | 48k | |
+| `--mp3-bitrate` | 96k | 128k with `--channels stereo` |
+| `--opus-bitrate` | 48k | 96k with `--channels stereo` |
 | `--noise-reduction` | 12 | dB, 0 = off |
 | `--keep-wav` | off | do not delete the WAV |
 | `--force` | off | recreate the output files |

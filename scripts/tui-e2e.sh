@@ -54,7 +54,7 @@ send Enter
 # Options: MP3 + Opus only, 1 s fade in.
 wait_for "Same as: sermon-normalizer run"
 wait_for "--start 0:00:21 --end 0:01:19"
-send Space Down Down Down BSpace 1
+send Space Down Down Down Down BSpace 1
 wait_for "--formats mp3,opus"
 wait_for "--fade-in 1"
 send Enter
