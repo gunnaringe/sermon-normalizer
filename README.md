@@ -125,7 +125,7 @@ cut it yourself in an audio editor and put the result in the date folder as `<da
 | Stereo | off (mono) | stereo moves the defaults to -16 LUFS, MP3 128k, Opus 96k |
 | Fade in / out | 0 | seconds of fade at the cut points, 0 = off |
 | Archive folder | `--archive` | keep the sources as FLAC there (default: leave them in place) |
-| Keep WAV | off | do not delete the WAV after archiving it |
+| Keep a hand-cut edit WAV | off | when archiving, keep `<date>_edit.wav` next to its FLAC (raw WAVs always become FLAC) |
 | Force | off | redo existing outputs (and cut again) |
 | Noise reduction | 12 dB | 0 = off |
 | Target loudness | -19 LUFS | |

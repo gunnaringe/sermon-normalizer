@@ -73,14 +73,27 @@ func dateFromMetadata(stderr string) string {
 
 // suggestDate guesses when a recording was made: from its name, its tags,
 // or its modification time (the client's, for uploads).
+// Tag reads are remembered by cacheKey, as the inbox page asks every few seconds.
 func (s *Server) suggestDate(ctx context.Context, path string, mod time.Time) (string, string) {
 	if d := dateFromName(filepath.Base(path)); d != "" {
 		return d, "name"
 	}
-	if res, err := s.cfg.FFmpeg.Run(ctx, "-i", path, "-t", "0", "-f", "null", "-"); err == nil {
-		if d := dateFromMetadata(res.Stderr); d != "" {
-			return d, "metadata"
+	key, _ := cacheKey(path)
+	s.tagsMu.Lock()
+	d, ok := s.tagDates[key]
+	s.tagsMu.Unlock()
+	if !ok {
+		if res, err := s.cfg.FFmpeg.Run(ctx, "-i", path, "-t", "0", "-f", "null", "-"); err == nil {
+			d = dateFromMetadata(res.Stderr)
 		}
+		if key != "" && ctx.Err() == nil {
+			s.tagsMu.Lock()
+			s.tagDates[key] = d
+			s.tagsMu.Unlock()
+		}
+	}
+	if d != "" {
+		return d, "metadata"
 	}
 	return mod.Format("2006-01-02"), "modified"
 }

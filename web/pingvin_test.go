@@ -130,6 +130,14 @@ func TestIntegrationPingvin(t *testing.T) {
 	service(t, ff, wav)
 	content, _ := os.ReadFile(wav)
 	id := fp.upload("Ab3dE", "rs1", "Gudstjeneste 2026-10-04.wav", content, false)
+	// A recorder's name without a date: the date comes from the WAV's tags,
+	// which must survive the conversion.
+	tagged := filepath.Join(t.TempDir(), "tagged.wav")
+	if _, err := ff.Run(context.Background(), "-y", "-i", wav, "-t", "5", "-metadata", "date=2026-09-20", "-c", "copy", tagged); err != nil {
+		t.Fatal(err)
+	}
+	taggedContent, _ := os.ReadFile(tagged)
+	fp.upload("Tt1", "rs1", "ZOOM0001.WAV", taggedContent, false)
 	skipped := fp.upload("Ab3dE", "rs1", "slides.pdf", []byte("pdf"), false)
 	// Still being written: the size in the database is not reached yet.
 	partial := fp.upload("Cc1", "rs1", "late.wav", content[:1000], false)
@@ -150,9 +158,14 @@ func TestIntegrationPingvin(t *testing.T) {
 		t.Errorf("seen file %q", seen)
 	}
 	list := decode[struct{ Files []inboxFile }](t, ts.do(t, "GET", "/api/inbox", nil))
-	if len(list.Files) != 1 || list.Files[0].SuggestedDate != "2026-10-04" {
-		t.Errorf("inbox %+v", list.Files)
+	dates := map[string]string{}
+	for _, f := range list.Files {
+		dates[f.Name] = f.SuggestedDate + " " + f.DateSource
 	}
+	if len(list.Files) != 2 || dates["Gudstjeneste 2026-10-04.flac"] != "2026-10-04 name" || dates["ZOOM0001.flac"] != "2026-09-20 metadata" {
+		t.Errorf("inbox %v", dates)
+	}
+	os.Remove(filepath.Join(ts.inbox, "ZOOM0001.flac"))
 
 	// The waveform was started at once; wait for it.
 	key, _ := cacheKey(flac)

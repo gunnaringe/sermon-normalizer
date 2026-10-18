@@ -51,6 +51,9 @@ type Server struct {
 	jobs     *jobs
 	analyses *analyses
 	pingvin  *pingvin
+
+	tagsMu   sync.Mutex
+	tagDates map[string]string // recording date from tags, by cacheKey ("" = none)
 }
 
 // New prepares a server. Close it to stop background work.
@@ -74,7 +77,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("cache: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{cfg: cfg, root: root, ctx: ctx, cancel: cancel}
+	s := &Server{cfg: cfg, root: root, ctx: ctx, cancel: cancel, tagDates: map[string]string{}}
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
 	if cfg.Pingvin != nil {

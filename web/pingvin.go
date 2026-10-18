@@ -47,7 +47,8 @@ type pingvin struct {
 	s   *Server
 	cfg PingvinConfig
 
-	mu      sync.Mutex
+	polling sync.Mutex           // one poll at a time; guards failed, lastErr, seen
+	mu      sync.Mutex           // guards busy
 	busy    []string             // inbox names being written
 	failed  map[string]time.Time // file ID -> last failure; retried after an hour
 	lastErr string               // last query error, logged once
@@ -105,6 +106,8 @@ func (p *pingvin) processing() []string {
 }
 
 func (p *pingvin) poll(ctx context.Context) {
+	p.polling.Lock()
+	defer p.polling.Unlock()
 	files, err := p.query(ctx)
 	if err != nil {
 		// Usually passing: Pingvin writing (locked, hot journal) or not up yet.

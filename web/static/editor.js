@@ -337,7 +337,7 @@ export async function editorView(view, path, config) {
       h('div', { class: 'options' },
         h('div', {}, h('strong', {}, 'Outputs'), check('flac', 'FLAC master'), check('mp3', 'MP3'), check('opus', 'Opus')),
         h('div', {}, h('strong', {}, 'Sound'), check('stereo', 'Stereo (off = mono)'), num('fadeIn', 'Fade in (s)', 0.5), num('fadeOut', 'Fade out (s)', 0.5)),
-        h('div', {}, h('strong', {}, 'Files'), text('archive', 'Archive folder', 'none'), check('keepWav', 'Keep WAV'), check('force', 'Force (redo existing)'))),
+        h('div', {}, h('strong', {}, 'Files'), text('archive', 'Archive folder', 'none'), check('keepWav', 'Keep a hand-cut edit WAV'), check('force', 'Force (redo existing)'))),
       h('details', {}, h('summary', {}, 'More sound options'),
         h('div', { class: 'options' },
           num('noiseReduction', 'Noise reduction (dB)', 1), num('targetLufs', 'Target loudness (LUFS)', 0.5),
