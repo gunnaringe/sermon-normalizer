@@ -29,13 +29,17 @@ func newTestServer(t *testing.T, ff normalizer.FFmpeg) *testServer {
 	return newTestServerWith(t, ff, nil)
 }
 
-func newTestServerWith(t *testing.T, ff normalizer.FFmpeg, pingvin *PingvinConfig) *testServer {
+func newTestServerWith(t *testing.T, ff normalizer.FFmpeg, configure func(*Config)) *testServer {
 	t.Helper()
 	root, inbox := t.TempDir(), t.TempDir()
 	if ff.Bin == "" {
 		ff.Bin = filepath.Join(t.TempDir(), "no-ffmpeg") // tag reading just fails
 	}
-	s, err := New(Config{Root: root, Inbox: inbox, CacheDir: t.TempDir(), FFmpeg: ff, Pingvin: pingvin, Logger: log.New(testLog{t}, "", 0)})
+	cfg := Config{Root: root, Inbox: inbox, CacheDir: t.TempDir(), FFmpeg: ff, Logger: log.New(testLog{t}, "", 0)}
+	if configure != nil {
+		configure(&cfg)
+	}
+	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +271,7 @@ func TestInboxImport(t *testing.T) {
 	write("ZOOM0001.WAV", "audio")
 	write("Gudstjeneste 2026-09-27.flac", "audio2")
 	write("being written.partial.flac", "x")
-	write(".pingvin-seen", "x")
+	write(".hidden.wav", "x")
 	write("notes.txt", "x")
 	recorded := time.Date(2026, 10, 4, 11, 30, 0, 0, time.Local)
 	os.Chtimes(filepath.Join(ts.inbox, "ZOOM0001.WAV"), recorded, recorded)
@@ -408,5 +412,65 @@ func TestStaticAndConfig(t *testing.T) {
 	}](t, ts.do(t, "GET", "/api/config", nil))
 	if !cfg.Inbox || cfg.Defaults.Mono.TargetLUFS != -19 || cfg.Defaults.Stereo.TargetLUFS != -16 || cfg.Defaults.Stereo.Mp3Bitrate != "128k" {
 		t.Errorf("config %+v", cfg)
+	}
+}
+
+func TestInboxPut(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	put := func(name, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("PUT", "/api/inbox/files/"+url.PathEscape(name)+"?modified=1790000000000", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		ts.h.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := put("Gudstjeneste 2026-10-04.wav", "audio"); rec.Code != http.StatusCreated {
+		t.Fatalf("put: %d %s", rec.Code, rec.Body)
+	}
+	dst := filepath.Join(ts.inbox, "Gudstjeneste 2026-10-04.wav")
+	if b, _ := os.ReadFile(dst); string(b) != "audio" {
+		t.Errorf("content %q", b)
+	}
+	if st, _ := os.Stat(dst); st.ModTime().UnixMilli() != 1790000000000 {
+		t.Errorf("mtime %v", st.ModTime())
+	}
+	for name, want := range map[string]int{"Gudstjeneste 2026-10-04.wav": http.StatusConflict, "slides.pdf": http.StatusBadRequest,
+		".hidden.wav": http.StatusBadRequest, "x.partial.flac": http.StatusBadRequest} {
+		if rec := put(name, "x"); rec.Code != want {
+			t.Errorf("%s: %d, want %d", name, rec.Code, want)
+		}
+	}
+	if entries, _ := os.ReadDir(ts.inbox); len(entries) != 1 {
+		t.Errorf("inbox: %v", entries)
+	}
+}
+
+func TestPublish(t *testing.T) {
+	published := t.TempDir()
+	ts := newTestServerWith(t, normalizer.FFmpeg{}, func(c *Config) { c.Publish = published })
+	mp3 := ts.file(t, "2026/2026-10-04/2026-10-04.mp3", "mp3")
+	opus := ts.file(t, "2026/2026-10-04/2026-10-04.opus", "opus")
+	var log []string
+	logf := func(f string, a ...any) { log = append(log, fmt.Sprintf(f, a...)) }
+	if err := ts.publish(filepath.Dir(mp3), []string{mp3, opus}, logf); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.publish(filepath.Dir(mp3), []string{mp3}, logf); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(mp3, []byte("mp3, made again"), 0o644)
+	if err := ts.publish(filepath.Dir(mp3), []string{mp3}, logf); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(published, "2026", "2026-10-04", "2026-10-04.mp3")); string(b) != "mp3, made again" {
+		t.Errorf("published %q", b)
+	}
+	want := "Published 2026/2026-10-04/2026-10-04.mp3.|Published 2026/2026-10-04/2026-10-04.opus.|2026-10-04.mp3 is already published.|Published 2026/2026-10-04/2026-10-04.mp3."
+	if strings.Join(log, "|") != want {
+		t.Errorf("log %q", log)
+	}
+	for _, dir := range []string{filepath.Join(published, "2026", "2026-10-04"), filepath.Dir(mp3)} {
+		if entries, _ := os.ReadDir(dir); len(entries) != 2 {
+			t.Errorf("%s: %v (no hidden copies left)", dir, entries)
+		}
 	}
 }

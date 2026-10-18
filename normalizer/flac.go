@@ -49,11 +49,11 @@ func (f FFmpeg) ToFlac(ctx context.Context, src, ext, dst string, progress func(
 	switch strings.ToLower(ext) {
 	case ".flac":
 		tmp := strings.TrimSuffix(dst, filepath.Ext(dst)) + ".partial.flac"
-		if err := copyFile(src, tmp); err != nil {
+		if err := CopyFile(src, tmp); err != nil {
 			os.Remove(tmp)
 			return err
 		}
-		if same, err := sameContent(src, tmp); err != nil || !same {
+		if same, err := SameContent(src, tmp); err != nil || !same {
 			os.Remove(tmp)
 			if err == nil {
 				err = fmt.Errorf("copy of %s differs from the original", filepath.Base(src))

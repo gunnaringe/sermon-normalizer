@@ -9,7 +9,6 @@ See `PLAN.md` for background and design decisions.
 ## Requirements
 
 - `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`), or use the Docker image
-- `sqlite3` in PATH, only for `--pingvin-data`
 - Go 1.25+ to build
 
 ## Build and test
@@ -17,7 +16,7 @@ See `PLAN.md` for background and design decisions.
 ```bash
 go build -o sermon-normalizer ./cmd/sermon-normalizer
 scripts/test.sh            # unit tests, seconds
-scripts/test.sh all        # vet + all tests with real ffmpeg and sqlite3 (container)
+scripts/test.sh all        # vet + all tests with real ffmpeg (container)
 scripts/test.sh e2e        # browser tests (Playwright, container)
 ```
 
@@ -54,9 +53,7 @@ sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
 | `--archive` | | the default archive folder for runs (see below) |
 | `--layout` | `2006/2006-01-02` | where imports go under `--root`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
-| `--pingvin-data` | | Pingvin Share's data directory: bring its reverse-share uploads into `--inbox` |
-| `--pingvin-reverse-share` | | the reverse share token they come through (a prefix is enough) |
-| `--sqlite3` | `sqlite3` | path to sqlite3, for reading Pingvin's database |
+| `--publish` | | copy finished files here (e.g. a synced folder), see below |
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
@@ -80,23 +77,27 @@ cancels running jobs and waits for them to clean up.
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
   and continue after a dropped connection. No inbox needed.
-- **Inbox** (with `--inbox`): recordings that arrived by other means wait there; import one
-  into its date folder. The date is suggested from the file name, the recording's tags or its
-  date. The page updates itself.
+- **Inbox** (with `--inbox`): recordings that arrived by other means wait there, already
+  converted and prepared; import one into its date folder. The date is suggested from the file
+  name, the recording's tags or its date. The page updates itself.
 
 **A WAV is converted to FLAC as soon as it arrives** (upload, import, or opening a folder that
 has one), verified identical by MD5 of the audio, and then replaces the WAV. Right after, the
 server prepares the waveform and the listening preview, so cutting can start at once.
 
-### Pingvin Share
+### Inbox and publishing
 
-With `--pingvin-data` and `--pingvin-reverse-share`, the server looks every 30 s for files
-uploaded to [Pingvin Share X](https://github.com/smp46/pingvin-share-x) through that reverse
-share (or into a share whose ID starts with it). Each new WAV or FLAC is converted to FLAC into
-the inbox and its waveform prepared, so it is ready to import and cut. Pingvin's data
-directory can be mounted read-only: its database is only read (with `sqlite3`), its files only
-copied. Handled uploads are listed in `<inbox>/.pingvin-seen`, so a recording imported or
-removed from the inbox does not come back; other files (PDFs, …) are skipped.
+- **The inbox is any folder**: a Resilio Sync folder, a file share, or the API. A `.wav` or
+  `.flac` that has stopped changing for 30 s is taken: converted to FLAC and prepared, without
+  anyone opening it. Hidden files and `*.partial*` are ignored, so write under such a name
+  and rename when done if you can.
+- **`PUT api/inbox/files/<name>`** (optional `?modified=<ms>`) streams a recording into the
+  inbox, for other services, e.g. a job forwarding uploads from a file-sharing app. An existing
+  name gets 409, so a sender can tell it was delivered already.
+- **`--publish <folder>`** copies the finished files of every run there, in the same
+  `<year>/<date>/` folders, e.g. a folder Resilio Sync shares. The recordings and work files stay
+  in `--root`, so the shared folder holds only what is published. Each file appears whole
+  (copied under a hidden name, then renamed); a re-run with Force replaces it.
 
 When a recording is opened the first time, the server prepares its waveform and a small MP3
 preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` and carried along

@@ -22,6 +22,8 @@ type inboxFile struct {
 	Modified      time.Time `json:"modified"`
 	SuggestedDate string    `json:"suggestedDate"`
 	DateSource    string    `json:"dateSource"` // name, metadata, modified
+	State         string    `json:"state"`      // waiting (still arriving), converting, preparing, ready, error
+	Error         string    `json:"error,omitempty"`
 }
 
 var errNoInbox = errors.New("no inbox folder configured")
@@ -115,16 +117,25 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 		if err != nil || ierr != nil || !info.Mode().IsRegular() {
 			continue
 		}
+		path := filepath.Join(s.cfg.Inbox, name)
 		f := inboxFile{Name: name, Size: info.Size(), Modified: info.ModTime()}
-		f.SuggestedDate, f.DateSource = s.suggestDate(r.Context(), filepath.Join(s.cfg.Inbox, name), info.ModTime())
+		f.SuggestedDate, f.DateSource = s.suggestDate(r.Context(), path, info.ModTime())
+		switch st := s.analyses.state(path, false); {
+		case st.State == "done":
+			f.State = "ready"
+		case st.State == "error":
+			f.State, f.Error = "error", st.Error
+		case st.State == "running" && st.Stage == "convert":
+			f.State = "converting"
+		case st.State == "running":
+			f.State = "preparing"
+		default:
+			f.State = "waiting"
+		}
 		files = append(files, f)
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Modified.After(files[j].Modified) })
-	processing := []string{}
-	if s.pingvin != nil {
-		processing = s.pingvin.processing()
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"files": files, "processing": processing, "layout": s.cfg.Layout})
+	writeJSON(w, http.StatusOK, map[string]any{"files": files, "layout": s.cfg.Layout})
 }
 
 type importRequest struct {
@@ -180,6 +191,10 @@ func (s *Server) handleInboxImport(w http.ResponseWriter, r *http.Request) {
 	src := filepath.Join(s.cfg.Inbox, name)
 	if !fileExists(src) {
 		writeError(w, http.StatusNotFound, fmt.Errorf("%s is not in the inbox", name))
+		return
+	}
+	if s.analyses.converting(src) {
+		writeError(w, http.StatusConflict, fmt.Errorf("%s is being converted to FLAC; import it when that is done", name))
 		return
 	}
 	folder, status, err := s.newRawFolder(q.Date)

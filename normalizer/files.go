@@ -27,12 +27,12 @@ func MoveFile(src, dst string) error {
 		return nil
 	}
 	tmp := dst + ".partial"
-	if err := copyFile(src, tmp); err != nil {
+	if err := CopyFile(src, tmp); err != nil {
 		os.Remove(tmp)
 		return err
 	}
 	// The source may be the only copy of the recording: verify before deleting it.
-	same, err := sameContent(src, tmp)
+	same, err := SameContent(src, tmp)
 	if err != nil {
 		os.Remove(tmp)
 		return err
@@ -47,7 +47,8 @@ func MoveFile(src, dst string) error {
 	return os.Remove(src)
 }
 
-func sameContent(a, b string) (bool, error) {
+// SameContent reports whether a and b have the same bytes.
+func SameContent(a, b string) (bool, error) {
 	ha, err := fileHash(a)
 	if err != nil {
 		return false, err
@@ -72,7 +73,8 @@ func fileHash(path string) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-func copyFile(src, dst string) error {
+// CopyFile copies src to dst and syncs it to disk.
+func CopyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err

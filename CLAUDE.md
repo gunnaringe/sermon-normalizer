@@ -2,13 +2,13 @@
 
 Go web service: cut a church service recording on a waveform, get
 loudness-normalised FLAC/MP3/Opus. `README.md` = usage, `PLAN.md` = background.
-Standard library only (ffmpeg and sqlite3 are run as commands).
+Standard library only (ffmpeg is run as a command).
 
 ## Checks (use these, in this order; output is already short)
 
 ```bash
 scripts/test.sh                       # unit tests, seconds — run after every change
-scripts/test.sh all ./web/ -run X     # with real ffmpeg/sqlite3, one package/test (container)
+scripts/test.sh all ./web/ -run X     # with real ffmpeg, one package/test (container)
 scripts/test.sh all                   # everything (~3 min, normalizer integration is slow)
 scripts/test.sh e2e [-g name]         # browser tests (~1.5 min); after changing web/static
 scripts/test.sh image                 # Docker build; before release changes
@@ -30,8 +30,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   preview, cached by path+size+mtime; `carry` moves the cache on import.
 - `web/upload.go`: chunked upload straight to a date folder.
 - `web/inbox.go`: inbox list/import, date suggestion, `newRawFolder`.
-- `web/pingvin.go`: polls Pingvin Share's SQLite (read-only) for reverse-share
-  uploads, converts them into the inbox. Schema fixture in `pingvin_test.go`.
+- `web/inboxwatch.go`: takes settled files in the inbox (convert + prepare);
+  `PUT api/inbox/files/<name>` for other services.
+- `web/publish.go`: copies finished files into `--publish` (a synced folder).
 - `web/static/`: plain JS, no build. `vendor/wavesurfer/` is wavesurfer.js
   7.12.12, unmodified.
 - `normalizer/`: the pipeline (`pipeline.go`), ffmpeg wrapper (`ffmpeg.go`:
@@ -44,7 +45,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   outputs are skipped without Force.
 - Delete a source only after its copy is verified identical (`SameAudio` for
   WAV→FLAC, byte MD5 for copies). Raw WAVs are replaced by verified FLAC; with
-  no archive folder, runs never touch sources. Pingvin's files are never changed.
+  no archive folder, runs never touch sources.
 - No long work inside a request: it sits behind Cloudflare (100 MB bodies,
   ~100 s timeout). Start background work on `s.ctx` under `s.wg`.
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.
@@ -53,4 +54,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`
   in `web/e2e/package.json`.
 
-There is no CI or deploy yet.
+Deploy: push to `main` → GitHub Actions publishes `ghcr.io/gunnaringe/sermon-normalizer:main-<ts>-<sha>`
+→ Flux rolls it out on kate (`clusters/kate/norkirken/`, namespace `norkirken`,
+https://sermons.haxxor.xyz). Nothing here knows about Pingvin Share: a CronJob in
+`clusters/kate/pingvin-share/inbox-sync/` forwards its uploads to the inbox API.

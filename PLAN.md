@@ -54,7 +54,8 @@ Module `github.com/gunnaringe/sermon-normalizer`, standard library only.
 - `normalizer/levels.go`: volume per window and silence detection, for the waveform
 - `normalizer/channels.go`: the mono/one-sided checks behind the stereo warnings
 - `normalizer/outputs.go`: which outputs to make
-- `web/upload.go`, `web/pingvin.go`: new recordings, uploaded in chunks or picked up from Pingvin Share
+- `web/upload.go`, `web/inboxwatch.go`: new recordings, uploaded in chunks or taken from the inbox folder
+- `web/publish.go`: copies finished files to a shared (synced) folder
 - `*_test.go`: unit and integration tests; `web/e2e/`: browser tests
 
 Run options (from the web form): cut start/end, fades, outputs (FLAC, MP3, Opus), mono or

@@ -1,7 +1,7 @@
 // Package web is a long-running web UI for the normalizer: browse date
 // folders, cut the sermon on a waveform, set options, run and follow jobs,
 // and bring new recordings in: uploaded straight to a date folder, or
-// through an inbox folder (which Pingvin Share uploads can feed).
+// through an inbox folder that anything can drop files into.
 package web
 
 import (
@@ -27,14 +27,18 @@ var static embed.FS
 
 // Config is how the server is set up.
 type Config struct {
-	Root     string         // folder holding the date folders (e.g. Taler/)
-	Inbox    string         // folder new recordings arrive in; "" = no inbox
-	CacheDir string         // waveform data and previews
-	Archive  string         // default archive folder for runs ("" = none)
-	Layout   string         // where imports go under Root, as a Go time layout
-	Pingvin  *PingvinConfig // pick up Pingvin Share uploads into the inbox; nil = off
-	FFmpeg   normalizer.FFmpeg
-	Logger   *log.Logger
+	Root     string // folder holding the date folders (e.g. Taler/)
+	Inbox    string // folder new recordings arrive in; "" = no inbox
+	CacheDir string // waveform data and previews
+	Archive  string // default archive folder for runs ("" = none)
+	Layout   string // where imports go under Root, as a Go time layout
+	Publish  string // finished files are copied here (e.g. a synced folder); "" = off
+
+	// InboxEvery is how often the inbox is looked at, InboxSettle how long a
+	// file must stay unchanged before it is taken (0 = 10 s and 30 s).
+	InboxEvery, InboxSettle time.Duration
+	FFmpeg                  normalizer.FFmpeg
+	Logger                  *log.Logger
 }
 
 // DefaultLayout puts imported recordings in <year>/<date>/.
@@ -50,7 +54,7 @@ type Server struct {
 
 	jobs     *jobs
 	analyses *analyses
-	pingvin  *pingvin
+	inbox    *inboxWatcher
 
 	tagsMu   sync.Mutex
 	tagDates map[string]string // recording date from tags, by cacheKey ("" = none)
@@ -80,13 +84,16 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{cfg: cfg, root: root, ctx: ctx, cancel: cancel, tagDates: map[string]string{}}
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
-	if cfg.Pingvin != nil {
-		if s.pingvin, err = newPingvin(s, *cfg.Pingvin); err != nil {
+	if cfg.Publish != "" {
+		if s.cfg.Publish, err = realDir(cfg.Publish); err != nil {
 			cancel()
-			return nil, err
+			return nil, fmt.Errorf("publish: %w", err)
 		}
+	}
+	if cfg.Inbox != "" {
+		s.inbox = newInboxWatcher(s)
 		s.wg.Add(1)
-		go s.pingvin.watch()
+		go s.inbox.watch()
 	}
 	return s, nil
 }
@@ -136,6 +143,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("POST /api/upload", s.handleUpload)
 	mux.HandleFunc("GET /api/inbox", s.handleInbox)
+	mux.HandleFunc("PUT /api/inbox/files/{name}", s.handleInboxPut)
 	mux.HandleFunc("POST /api/inbox/import", s.handleInboxImport)
 
 	// Once a login proxy sets a cookie, other sites must not be able to
@@ -229,7 +237,7 @@ func (s *Server) pathParam(w http.ResponseWriter, r *http.Request) (string, bool
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"inbox":   s.cfg.Inbox != "",
-		"pingvin": s.pingvin != nil,
+		"publish": s.cfg.Publish != "",
 		"chunk":   MaxChunk,
 		"archive": s.cfg.Archive,
 		"defaults": map[string]any{

@@ -166,13 +166,14 @@ function uploadView() {
 
 async function inboxView() {
   const list = h('div', {}, h('p', { class: 'muted' }, 'Loading…'));
-  const busy = h('div', {});
   let alive = true;
+  const states = {
+    waiting: 'still arriving', converting: 'converting to FLAC…', preparing: 'preparing the waveform…', ready: 'ready',
+  };
 
   async function refresh() {
     const data = await api('GET', 'api/inbox');
     if (!alive) return;
-    busy.replaceChildren(...data.processing.map((n) => h('p', { class: 'notice' }, `Converting ${n} to FLAC…`)));
     if (!data.files.length) {
       list.replaceChildren(h('p', { class: 'muted' }, 'The inbox is empty.'));
       return;
@@ -192,9 +193,11 @@ async function inboxView() {
           button.disabled = false;
         }
       } }, 'Import');
+      button.disabled = f.state === 'converting';
       const source = { name: 'from the name', metadata: 'from the recording', modified: 'from the file date' }[f.dateSource];
       return h('tr', {},
-        h('td', {}, h('strong', {}, f.name), h('div', { class: 'muted' }, formatSize(f.size), ' · ', new Date(f.modified).toLocaleString())),
+        h('td', {}, h('strong', {}, f.name), h('div', { class: 'muted' }, formatSize(f.size), ' · ', new Date(f.modified).toLocaleString()),
+          h('div', { class: f.state === 'error' ? 'error' : 'muted' }, f.state === 'error' ? 'Could not read it: ' + f.error : states[f.state])),
         h('td', {}, date, h('div', { class: 'muted' }, source)),
         h('td', {}, button, ' ', err));
     }))));
@@ -202,10 +205,9 @@ async function inboxView() {
 
   view.replaceChildren(
     h('h1', {}, 'Inbox'),
-    h('p', { class: 'muted' }, (config.pingvin
-      ? 'Recordings uploaded to Pingvin Share arrive here as FLAC, with the waveform prepared. '
-      : 'New recordings wait here. ') + 'Import one to make its date folder, then cut it there.'),
-    busy, list);
+    h('p', { class: 'muted' }, 'Recordings put in the inbox folder (by a synced folder, a file share or another service) ' +
+      'are converted to FLAC and prepared here. Import one to make its date folder, then cut it there.'),
+    list);
   await refresh();
   const timer = setInterval(() => refresh().catch(() => {}), 5000);
   return () => { alive = false; clearInterval(timer); };

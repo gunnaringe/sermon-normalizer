@@ -2,9 +2,9 @@
 # One entry point for checks, with short output (ok lines and failures only).
 #
 #   scripts/test.sh            unit tests (no ffmpeg; seconds; host Go or container)
-#   scripts/test.sh all [args] vet + all tests with ffmpeg and sqlite3, in a container;
+#   scripts/test.sh all [args] vet + all tests with ffmpeg, in a container;
 #                              args go to "go test" (default ./...), e.g.
-#                              scripts/test.sh all ./web/ -run Pingvin
+#                              scripts/test.sh all ./web/ -run Inbox
 #   scripts/test.sh e2e [args] browser tests (Playwright); args go to playwright,
 #                              e.g. scripts/test.sh e2e -g upload
 #   scripts/test.sh image      the Docker image (vet + all tests inside)
@@ -32,7 +32,7 @@ unit)
 	fi
 	;;
 all)
-	incontainer "apk add -q ffmpeg sqlite && test -z \"\$(gofmt -l cmd normalizer web)\" && go vet ./... && go test ${*:-./...}"
+	incontainer "apk add -q ffmpeg && test -z \"\$(gofmt -l cmd normalizer web)\" && go vet ./... && go test ${*:-./...}"
 	;;
 e2e)
 	incontainer 'go build -o web/e2e/bin/sermon-normalizer ./cmd/sermon-normalizer'

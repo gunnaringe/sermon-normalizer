@@ -161,7 +161,8 @@ func events(t *testing.T, url string) []jobSnapshot {
 
 func TestIntegrationRun(t *testing.T) {
 	ff := requireFFmpeg(t)
-	ts := newTestServer(t, ff)
+	published := t.TempDir()
+	ts := newTestServerWith(t, ff, func(c *Config) { c.Publish = published })
 	hs := httptest.NewServer(ts.h)
 	defer hs.Close()
 	ts.file(t, "2026-10-04/x", "")
@@ -198,6 +199,16 @@ func TestIntegrationRun(t *testing.T) {
 	}
 	if strings.Join(names, ",") != "2026-10-04.mp3,2026-10-04_raw.wav,x" {
 		t.Errorf("files %v", names)
+	}
+	// The finished file was published, alone, under the same folder.
+	if same, err := normalizer.SameContent(mp3, filepath.Join(published, "2026-10-04", "2026-10-04.mp3")); err != nil || !same {
+		t.Errorf("published: %v %v", same, err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(published, "2026-10-04")); len(entries) != 1 {
+		t.Errorf("publish folder: %v", entries)
+	}
+	if !strings.Contains(strings.Join(last.Log, "\n"), "Published 2026-10-04/2026-10-04.mp3") {
+		t.Errorf("log %v", last.Log)
 	}
 	// The output can be fetched for listening.
 	resp, err := http.Get(hs.URL + "/api/file?path=" + last.Outputs[0].Path)
@@ -286,5 +297,44 @@ func TestIntegrationQuietPreview(t *testing.T) {
 		if v := maxVolume(t, ff, preview, gap, 1.2); v > -50 {
 			t.Errorf("preview at %.1f-%.1f s: %.1f dB, want silence", gap, gap+1.2, v)
 		}
+	}
+}
+
+// Files dropped into the inbox are taken once they stop changing: a WAV
+// becomes FLAC and is prepared, without anyone opening it.
+func TestIntegrationInboxWatcher(t *testing.T) {
+	ff := requireFFmpeg(t)
+	ts := newTestServerWith(t, ff, func(c *Config) { c.InboxEvery, c.InboxSettle = 50*time.Millisecond, 300*time.Millisecond })
+	wav := filepath.Join(t.TempDir(), "a.wav")
+	service(t, ff, wav)
+	content, _ := os.ReadFile(wav)
+
+	// Arriving slowly, like a sync client writing it in place.
+	dst := filepath.Join(ts.inbox, "ZOOM0001.WAV")
+	if err := os.WriteFile(dst, content[:len(content)/2], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if st := decode[struct{ Files []inboxFile }](t, ts.do(t, "GET", "/api/inbox", nil)); len(st.Files) != 1 || st.Files[0].State != "waiting" {
+		t.Errorf("while arriving: %+v", st.Files)
+	}
+	f, _ := os.OpenFile(dst, os.O_APPEND|os.O_WRONLY, 0)
+	f.Write(content[len(content)/2:])
+	f.Close()
+
+	flac := filepath.Join(ts.inbox, "ZOOM0001.flac")
+	var files []inboxFile
+	for i := 0; i < 600; i++ {
+		files = decode[struct{ Files []inboxFile }](t, ts.do(t, "GET", "/api/inbox", nil)).Files
+		if len(files) == 1 && files[0].State == "ready" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if len(files) != 1 || files[0].Name != "ZOOM0001.flac" || files[0].State != "ready" || fileExists(dst) {
+		t.Fatalf("inbox %+v", files)
+	}
+	if same, err := ff.SameAudio(context.Background(), wav, flac); err != nil || !same {
+		t.Errorf("FLAC differs: %v %v", same, err)
 	}
 }
