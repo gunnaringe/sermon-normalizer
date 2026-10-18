@@ -430,6 +430,15 @@ func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
 
 // --- 3. master ------------------------------------------------------------
 
+// EvenLevels is the dynamic normalization in the master chain: it brings
+// quiet speech and loud music to a similar level without shifting time.
+const EvenLevels = "dynaudnorm=f=250:g=15:p=0.9"
+
+// ListenLevels is EvenLevels for listening while cutting (previews, players):
+// up to 40 dB of gain instead of 20, as raw recordings can be very quiet.
+// The master does not need it: its loudnorm step sets the final level.
+const ListenLevels = EvenLevels + ":m=100"
+
 // masterFilter is the filter chain for the master; length (seconds) is only
 // needed for a fade-out.
 func (p *Pipeline) masterFilter(length float64) string {
@@ -441,7 +450,7 @@ func (p *Pipeline) masterFilter(length float64) string {
 		f = append(f, fmt.Sprintf("afftdn=nr=%d", p.Opt.NoiseReduction))
 	}
 	f = append(f,
-		"dynaudnorm=f=250:g=15:p=0.9",
+		EvenLevels,
 		fmt.Sprintf("loudnorm=I=%g:TP=%g:LRA=11", p.Opt.TargetLUFS, p.Opt.TruePeak),
 		"aresample=48000",
 	)

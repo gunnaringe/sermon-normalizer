@@ -43,13 +43,17 @@ func newAnalyses(s *Server) *analyses {
 	return &analyses{s: s, current: map[string]*analysisState{}, sem: make(chan struct{}, 1)}
 }
 
+// cacheVersion changes when the analysis changes, so old caches are redone
+// (2: normalized preview).
+const cacheVersion = 2
+
 // cacheKey identifies a recording by path, size and modification time.
 func cacheKey(path string) (string, error) {
 	st, err := os.Stat(path)
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d\x00%d", path, st.Size(), st.ModTime().UnixNano())))
+	sum := sha256.Sum256([]byte(fmt.Sprintf("v%d\x00%s\x00%d\x00%d", cacheVersion, path, st.Size(), st.ModTime().UnixNano())))
 	return hex.EncodeToString(sum[:8]), nil
 }
 
@@ -128,12 +132,17 @@ func (a *analyses) run(raw, key string, st *analysisState) error {
 // analyze decodes raw once: levels for the waveform from one output, and a
 // small MP3 preview for listening from the other. Fixed-bitrate MP3 is what
 // browsers seek most reliably in, which matters in an hour-long file.
+//
+// The preview is normalized (normalizer.ListenLevels): recordings are often
+// far too quiet to hear where the sermon starts. The waveform keeps the
+// original levels, where loud music and quieter speech are easy to tell apart.
 func analyze(ctx context.Context, ff normalizer.FFmpeg, raw, dir string, progress func(float64)) (normalizer.LevelData, error) {
 	preview := filepath.Join(dir, "preview.mp3")
 	tmp := filepath.Join(dir, "preview.partial.mp3")
 	cmd := exec.CommandContext(ctx, ff.Bin, "-nostdin", "-hide_banner", "-v", "error", "-y", "-i", raw,
 		"-map", "0:a:0", "-ac", "1", "-ar", strconv.Itoa(normalizer.LevelRate), "-f", "s16le", "pipe:1",
-		"-map", "0:a:0", "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "64k", "-f", "mp3", tmp)
+		"-map", "0:a:0", "-ac", "1", "-af", normalizer.ListenLevels, "-ar", "44100",
+		"-c:a", "libmp3lame", "-b:a", "64k", "-f", "mp3", tmp)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()

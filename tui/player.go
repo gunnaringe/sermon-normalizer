@@ -49,7 +49,8 @@ func (p *player) play(path string, start, dur float64) (tea.Cmd, error) {
 	if !p.available() {
 		return nil, nil
 	}
-	args := []string{"-nodisp", "-autoexit", "-loglevel", "quiet", "-ss", secs(start)}
+	// Normalized like the master, so a quiet recording can be heard.
+	args := []string{"-nodisp", "-autoexit", "-loglevel", "quiet", "-af", normalizer.ListenLevels, "-ss", secs(start)}
 	if dur > 0 {
 		args = append(args, "-t", secs(dur))
 	}

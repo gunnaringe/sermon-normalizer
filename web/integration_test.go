@@ -237,3 +237,49 @@ func TestIntegrationCancelAndClose(t *testing.T) {
 		}
 	}
 }
+
+// maxVolume is the peak in dB of dur seconds of path from start.
+func maxVolume(t *testing.T, ff normalizer.FFmpeg, path string, start, dur float64) float64 {
+	t.Helper()
+	res, err := ff.Run(context.Background(), "-ss", strconv.FormatFloat(start, 'f', 3, 64), "-t", strconv.FormatFloat(dur, 'f', 3, 64),
+		"-i", path, "-af", "volumedetect", "-f", "null", "-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, ok := strings.Cut(res.Stderr, "max_volume: ")
+	if !ok {
+		return -999 // digital silence: volumedetect reports nothing
+	}
+	v, _ := strconv.ParseFloat(strings.Fields(after)[0], 64)
+	return v
+}
+
+// A quiet recording gets a preview loud enough to hear, with the silences
+// still where the waveform shows them.
+func TestIntegrationQuietPreview(t *testing.T) {
+	ff := requireFFmpeg(t)
+	ts := newTestServer(t, ff)
+	ts.file(t, "2026-10-04/x", "")
+	raw := filepath.Join(ts.root, "2026-10-04", "2026-10-04_raw.wav")
+	quiet := "if(between(t,19,21)+between(t,79,81), 0, if(between(t,21,79), 0.004*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t)), 0.03*sin(2*PI*440*t)))"
+	if _, err := ff.Run(context.Background(), "-y", "-f", "lavfi", "-i",
+		"aevalsrc=exprs='"+quiet+"':s=48000:d=100", "-c:a", "pcm_s24le", raw); err != nil {
+		t.Fatal(err)
+	}
+	st := waitAnalysis(t, ts, "2026-10-04")
+	if st.State != "done" {
+		t.Fatalf("analysis: %+v", st)
+	}
+	preview := filepath.Join(ts.analyses.dir(st.Key), "preview.mp3")
+	rawSpeech, previewSpeech := maxVolume(t, ff, raw, 40, 10), maxVolume(t, ff, preview, 40, 10)
+	t.Logf("speech peak: raw %.1f dB, preview %.1f dB", rawSpeech, previewSpeech)
+	if previewSpeech < rawSpeech+30 || previewSpeech > -0.5 {
+		t.Errorf("preview speech %.1f dB, raw %.1f dB: want at least 30 dB louder, not clipping", previewSpeech, rawSpeech)
+	}
+	// Still silent inside the gaps: the normalization did not shift time.
+	for _, gap := range []float64{19.4, 79.4} {
+		if v := maxVolume(t, ff, preview, gap, 1.2); v > -50 {
+			t.Errorf("preview at %.1f-%.1f s: %.1f dB, want silence", gap, gap+1.2, v)
+		}
+	}
+}

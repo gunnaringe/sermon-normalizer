@@ -67,8 +67,11 @@ sermon-normalizer-web --root /path/to/Taler --inbox /path/to/Inbox --listen :808
 
 When a recording is opened the first time, the server prepares its waveform and a small MP3
 preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` (default: the user
-cache folder; unused entries go after `--cache-days`). The browser only streams the preview;
-the cut is always made from the original.
+cache folder; unused entries go after `--cache-days`). The preview is normalized (up to 40 dB
+of dynamic gain), so even a very quiet recording can be heard while cutting; the waveform
+keeps the original levels, where loud music and quieter speech stand apart. The browser only
+streams the preview; the cut is always made from the original. TUI playback is normalized
+the same way.
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
