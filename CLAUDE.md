@@ -6,14 +6,16 @@ Go CLI and TUI that turn a church service recording into publish-ready sermon fi
 
 ## Layout
 
-- `cmd/sermon-normalizer/`: CLI only (flags, usage, Ctrl+C). Keep logic out of it.
+- `cmd/sermon-normalizer-cli/`: the CLI (flags, usage, Ctrl+C), and the TUI
+  with `--interactive`. Keep logic out of it.
 - `normalizer/`: the pipeline as an importable package. All audio work is
   ffmpeg, called with an argument list via `FFmpeg.Run`/`RunTo`, never a shell.
 - `tui/`: Bubble Tea front end over `normalizer` (screens: browser, cut,
   options, run). It finds sources with `Paths.Sources` and reports through
   `Pipeline.OnStep`/`OnProgress` and `Out`; nothing may write to the
   terminal directly while it runs.
-- `cmd/sermon-normalizer-web/` + `web/`: the web UI server. Jobs run on the
+- `cmd/sermon-normalizer/` + `web/`: the web app (the main binary; also the
+  Docker image's entrypoint). Jobs run on the
   server's context (not the request's); `Server.Close` cancels and waits.
   Every path parameter goes through `Server.resolve` (inside the root, no
   `..`, no hidden names, no symlinks out). `web/static/` is plain JS with no
@@ -55,7 +57,7 @@ Web browser tests (Playwright in its pinned image, real ffmpeg, a
 90-minute recording for responsiveness):
 
 ```bash
-CGO_ENABLED=0 go build -o web/e2e/bin/sermon-normalizer-web ./cmd/sermon-normalizer-web
+CGO_ENABLED=0 go build -o web/e2e/bin/sermon-normalizer ./cmd/sermon-normalizer
 podman run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -w /work \
   mcr.microsoft.com/playwright:v1.64.1-noble sh run.sh
 ```

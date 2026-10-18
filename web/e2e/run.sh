@@ -2,7 +2,7 @@
 # Browser tests of the web UI. Runs inside the Playwright image, with the
 # server binary built on the host (static) and mounted at /work/bin:
 #
-#   CGO_ENABLED=0 go build -o web/e2e/bin/sermon-normalizer-web ./cmd/sermon-normalizer-web
+#   CGO_ENABLED=0 go build -o web/e2e/bin/sermon-normalizer ./cmd/sermon-normalizer
 #   podman run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -w /work \
 #     mcr.microsoft.com/playwright:v1.64.1-noble sh run.sh
 set -eu
@@ -20,7 +20,7 @@ ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$long':s=8000:d=5400" -c:a flac "$d
 # A recording waiting to be uploaded.
 ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$expr':s=48000:d=30" -c:a flac "$data/upload.flac"
 
-./bin/sermon-normalizer-web --listen 127.0.0.1:8080 --root "$data/root" --inbox "$data/inbox" --cache-dir "$data/cache" >"$data/server.log" 2>&1 &
+./bin/sermon-normalizer --listen 127.0.0.1:8080 --root "$data/root" --inbox "$data/inbox" --cache-dir "$data/cache" >"$data/server.log" 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null; wait $server 2>/dev/null || true' EXIT
 for i in $(seq 50); do

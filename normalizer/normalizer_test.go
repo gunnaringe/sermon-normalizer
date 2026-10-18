@@ -532,13 +532,13 @@ func TestCommandLine(t *testing.T) {
 	opt.Start, opt.FadeOut, opt.Force = 61.5, 2, true
 	opt.Outputs = Outputs{Mp3: true}
 	got := CommandLine("/data/Taler/2026 10", opt, "/mnt/arkiv")
-	want := "sermon-normalizer run '/data/Taler/2026 10' --start 0:01:01.500 --formats mp3 --fade-out 2 --archive /mnt/arkiv --force"
+	want := "sermon-normalizer-cli run '/data/Taler/2026 10' --start 0:01:01.500 --formats mp3 --fade-out 2 --archive /mnt/arkiv --force"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
 	opt = DefaultOptions()
 	opt.SetStereo(true)
-	if got := CommandLine("x", opt, ""); got != "sermon-normalizer run x --channels stereo" {
+	if got := CommandLine("x", opt, ""); got != "sermon-normalizer-cli run x --channels stereo" {
 		t.Errorf("stereo defaults are not repeated: %s", got)
 	}
 }

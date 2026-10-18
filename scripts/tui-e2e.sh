@@ -6,7 +6,7 @@
 set -eu
 
 apk add -q --no-cache ffmpeg tmux
-go build -o /tmp/sermon-normalizer ./cmd/sermon-normalizer
+go build -o /tmp/sermon-normalizer-cli ./cmd/sermon-normalizer-cli
 
 root=$(mktemp -d)
 day="$root/2026/2026-10-04"
@@ -16,7 +16,7 @@ expr="if(between(t,19,21)+between(t,79,81), 0, if(between(t,21,79), 0.05*sin(2*P
 ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$expr|$expr':s=48000:d=100" -c:a pcm_s24le "$day/2026-10-04_raw.wav"
 
 export TERM=xterm-256color
-tmux new-session -d -s e2e -x 120 -y 40 "/tmp/sermon-normalizer tui $root/2026; echo TUI-EXITED; sleep 60"
+tmux new-session -d -s e2e -x 120 -y 40 "/tmp/sermon-normalizer-cli --interactive $root/2026; echo TUI-EXITED; sleep 60"
 
 screen() { tmux capture-pane -p -t e2e; }
 send() { tmux send-keys -t e2e "$@"; }
@@ -52,7 +52,7 @@ wait_for "start 0:21  end 1:19  length 0:58"
 send Enter
 
 # Options: MP3 + Opus only, 1 s fade in.
-wait_for "Same as: sermon-normalizer run"
+wait_for "Same as: sermon-normalizer-cli run"
 wait_for "--start 0:00:21 --end 0:01:19"
 send Space Down Down Down Down BSpace 1
 wait_for "--formats mp3,opus"

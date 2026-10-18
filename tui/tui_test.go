@@ -272,7 +272,7 @@ func TestOptions(t *testing.T) {
 	m := newOptions(paths, cutDoneMsg{mode: modeTimeline, start: 2480, end: 4325}, normalizer.DefaultOptions(), "")
 	v := strings.ReplaceAll(m.view(200), "\n", " ")
 	for _, want := range []string{"from 41:20 to 1:12:05", "[x]", "Already there, skipped unless Force: 2026-10-04.mp3",
-		"Same as: sermon-normalizer run " + dir + " --start 0:41:20 --end 1:12:05"} {
+		"Same as: sermon-normalizer-cli run " + dir + " --start 0:41:20 --end 1:12:05"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("view lacks %q:\n%s", want, v)
 		}

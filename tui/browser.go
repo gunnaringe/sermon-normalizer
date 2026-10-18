@@ -146,7 +146,7 @@ func (b browserModel) update(msg tea.KeyMsg) (browserModel, tea.Cmd) {
 
 func (b browserModel) view(width, height int) string {
 	var s strings.Builder
-	s.WriteString(titleStyle.Render("sermon-normalizer") + subtleStyle.Render("  "+b.dir) + "\n\n")
+	s.WriteString(titleStyle.Render("sermon-normalizer-cli") + subtleStyle.Render("  "+b.dir) + "\n\n")
 	if b.err != nil {
 		s.WriteString(errorStyle.Render(b.err.Error()) + "\n")
 	}

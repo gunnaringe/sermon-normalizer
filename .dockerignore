@@ -1,6 +1,8 @@
 dist/
 sermon-normalizer
 sermon-normalizer.exe
+sermon-normalizer-cli
+sermon-normalizer-cli.exe
 *.md
 .git
 web/e2e

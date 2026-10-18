@@ -35,7 +35,7 @@ func (o Options) Validate() error {
 func CommandLine(folder string, opt Options, archive string) string {
 	def := DefaultOptions()
 	def.SetStereo(opt.Stereo)
-	args := []string{"sermon-normalizer", "run", shellQuote(folder)}
+	args := []string{"sermon-normalizer-cli", "run", shellQuote(folder)}
 	add := func(flag, value string) { args = append(args, flag, shellQuote(value)) }
 	num := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 	if opt.Start > 0 {

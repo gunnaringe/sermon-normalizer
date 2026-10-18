@@ -1,23 +1,30 @@
 # sermon-normalizer
 
-CLI that turns a recording of a church service into publish-ready sermon files:
+Turns a recording of a church service into publish-ready sermon files:
 it cuts out the sermon, mixes it to mono (or keeps stereo), evens out the volume (speech and music are
 recorded at very different levels), normalises to podcast loudness and encodes
 FLAC, MP3 and Opus for SoundCloud, Spotify and other podcast services.
 See `PLAN.md` for background and design decisions.
 
+Two programs:
+
+- **`sermon-normalizer`**: the web app, a long-running service where you cut the sermon on a
+  waveform, run and follow jobs, and bring in new recordings.
+- **`sermon-normalizer-cli`**: the same processing from the command line, plus a terminal UI
+  with `--interactive`.
+
 ## Requirements
 
 - `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`, Windows: `winget install Gyan.FFmpeg`)
-- Go 1.24+ to build
+- Go 1.25+ to build
 - Optional: `ffplay` (ships with ffmpeg on Windows and most Linux packages) for playback in the TUI
 
 ## Build
 
 ```bash
-go build -o sermon-normalizer ./cmd/sermon-normalizer                                   # for this machine
-GOOS=linux GOARCH=amd64 go build -o dist/sermon-normalizer-linux-amd64 ./cmd/sermon-normalizer   # for Linux x86-64
-GOOS=linux GOARCH=arm64 go build -o dist/sermon-normalizer-linux-arm64 ./cmd/sermon-normalizer   # for Linux ARM
+go build -o sermon-normalizer ./cmd/sermon-normalizer              # the web app
+go build -o sermon-normalizer-cli ./cmd/sermon-normalizer-cli      # the CLI and TUI
+GOOS=linux GOARCH=arm64 go build -o dist/sermon-normalizer-cli-linux-arm64 ./cmd/sermon-normalizer-cli   # e.g. for Linux ARM
 go test ./...
 ```
 
@@ -33,22 +40,27 @@ with real ffmpeg on synthetic recordings) when `ffmpeg` and `ffprobe` are in PAT
 
 ffmpeg is a separate C program and cannot be built into the Go binary, so the container packages both.
 
+The image holds both programs; the web app is the default.
+
 ```bash
 docker build -t sermon-normalizer .
-docker run --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data sermon-normalizer run /data/2026/2026-10-04
+# the web app
+docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" -v /path/to/Taler:/data/Taler -v /path/to/cache:/cache \
+  sermon-normalizer --root /data/Taler --cache-dir /cache
+# the CLI
+docker run --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data --entrypoint sermon-normalizer-cli \
+  sermon-normalizer run /data/2026/2026-10-04 --start 41:20 --end 1:12:05
 ```
 
 `-u` makes the created files owned by your user, not root.
 The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and libmp3lame.
 
-## Web UI
+## Web app
 
-A separate binary, `sermon-normalizer-web`, runs as a long-lived service with the same flow in
-the browser:
+`sermon-normalizer` runs as a long-lived service:
 
 ```bash
-go build -o sermon-normalizer-web ./cmd/sermon-normalizer-web
-sermon-normalizer-web --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
+sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
 ```
 
 - **Folders:** the date folders with what they contain.
@@ -78,11 +90,11 @@ It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps 
 inside `--root`, and has no read/write timeouts (long uploads and live updates). On SIGTERM it
 cancels running jobs and waits for them to clean up.
 
-## TUI
+## Terminal UI
 
 ```bash
-sermon-normalizer tui /path/to/Taler/2026      # a folder of date folders
-sermon-normalizer tui /path/to/Taler/2026/2026-10-04
+sermon-normalizer-cli --interactive /path/to/Taler/2026      # a folder of date folders
+sermon-normalizer-cli --interactive /path/to/Taler/2026/2026-10-04
 ```
 
 1. **Folders:** date folders, newest first, with what they contain (`raw`, `edit`, `✓ flac mp3 opus`).
@@ -102,10 +114,11 @@ sermon-normalizer tui /path/to/Taler/2026/2026-10-04
 for next to it). In Docker the TUI works with `-it`, but without playback:
 
 ```bash
-docker run -it --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data sermon-normalizer tui /data/2026
+docker run -it --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data --entrypoint sermon-normalizer-cli \
+  sermon-normalizer --interactive /data/2026
 ```
 
-## Usage
+## CLI
 
 Put the recording of the whole service in the date folder, and give where the sermon starts and ends:
 
@@ -115,7 +128,7 @@ Put the recording of the whole service in the date folder, and give where the se
 ```
 
 ```bash
-sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
+sermon-normalizer-cli run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
 ```
 
 Result:
@@ -147,7 +160,7 @@ ends up with just the finished files. A relative path is relative to the date fo
 path (e.g. on another disk) is used as is, and can be shared by all dates.
 
 ```bash
-sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05 --archive arkiv
+sermon-normalizer-cli run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05 --archive arkiv
 ```
 
 ```
@@ -202,7 +215,7 @@ Flags for `run` (may go before or after the folder):
 Measuring files:
 
 ```bash
-sermon-normalizer measure file1.mp3 file2.flac
+sermon-normalizer-cli measure file1.mp3 file2.flac
 ```
 
 `measure` also takes `--ffmpeg`.

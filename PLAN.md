@@ -47,9 +47,9 @@ Go also fits since it was already chosen, and it is easy to extend later
 Module `github.com/gunnaringe/sermon-normalizer`. The `normalizer` package uses the standard library
 only; the TUI uses Bubble Tea, Bubbles and Lip Gloss.
 
-- `cmd/sermon-normalizer/main.go`: CLI (subcommands, flags, Ctrl+C cancels cleanly)
+- `cmd/sermon-normalizer-cli/main.go`: CLI (subcommands, flags, Ctrl+C cancels cleanly; `--interactive` starts the TUI)
 - `tui/`: the interactive front end (folders, cut, options, run)
-- `cmd/sermon-normalizer-web/`, `web/`: the web UI server (JSON API, jobs, waveform analysis,
+- `cmd/sermon-normalizer/`, `web/`: the web app (the main program) (JSON API, jobs, waveform analysis,
   inbox) and its embedded front end (`web/static/`, plain JS with wavesurfer.js bundled)
 - `normalizer/levels.go`: volume per 100 ms and silence detection, for the TUI timeline
 - `normalizer/outputs.go`: which outputs to make (`--formats`)
@@ -62,10 +62,10 @@ only; the TUI uses Bubble Tea, Bubbles and Lip Gloss.
 ## CLI
 
 ```
-sermon-normalizer tui [folder] [flags]   interactive: pick a folder, cut, set options, run
-sermon-normalizer run <folder> [flags]   run the whole flow for a date folder
-sermon-normalizer measure <file>...      measure LUFS / true peak / LRA
-sermon-normalizer version
+sermon-normalizer-cli --interactive [folder] [flags]   terminal UI: pick a folder, cut, set options, run
+sermon-normalizer-cli run <folder> [flags]             run the whole flow for a date folder
+sermon-normalizer-cli measure <file>...                measure LUFS / true peak / LRA
+sermon-normalizer-cli version
 
 run flags:
   --start / --end          cut the edit from raw (one segment); otherwise supply _edit yourself
