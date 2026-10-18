@@ -3,11 +3,12 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,17 +26,29 @@ type testServer struct {
 }
 
 func newTestServer(t *testing.T, ff normalizer.FFmpeg) *testServer {
+	return newTestServerWith(t, ff, nil)
+}
+
+func newTestServerWith(t *testing.T, ff normalizer.FFmpeg, pingvin *PingvinConfig) *testServer {
 	t.Helper()
 	root, inbox := t.TempDir(), t.TempDir()
 	if ff.Bin == "" {
 		ff.Bin = filepath.Join(t.TempDir(), "no-ffmpeg") // tag reading just fails
 	}
-	s, err := New(Config{Root: root, Inbox: inbox, CacheDir: t.TempDir(), FFmpeg: ff, Logger: log.New(io.Discard, "", 0)})
+	s, err := New(Config{Root: root, Inbox: inbox, CacheDir: t.TempDir(), FFmpeg: ff, Pingvin: pingvin, Logger: log.New(testLog{t}, "", 0)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
 	return &testServer{Server: s, root: s.root, inbox: s.cfg.Inbox, h: s.Handler()}
+}
+
+// testLog shows the server's log with the test's output (on failure or -v).
+type testLog struct{ t *testing.T }
+
+func (l testLog) Write(b []byte) (int, error) {
+	l.t.Log(strings.TrimSpace(string(b)))
+	return len(b), nil
 }
 
 // file creates a file under the root (slash path) with content.
@@ -178,73 +191,120 @@ func TestCheck(t *testing.T) {
 	}
 }
 
-func upload(t *testing.T, ts *testServer, name, content string, modified time.Time) *httptest.ResponseRecorder {
+// chunk sends one upload chunk straight to a date folder.
+func chunk(t *testing.T, ts *testServer, date, name string, size, offset int64, data string, modified time.Time) *httptest.ResponseRecorder {
 	t.Helper()
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
+	url := fmt.Sprintf("/api/upload?date=%s&name=%s&size=%d&offset=%d", date, url.QueryEscape(name), size, offset)
 	if !modified.IsZero() {
-		mw.WriteField("lastModified", strconv.FormatInt(modified.UnixMilli(), 10))
+		url += "&modified=" + strconv.FormatInt(modified.UnixMilli(), 10)
 	}
-	fw, _ := mw.CreateFormFile("file", name)
-	fw.Write([]byte(content))
-	mw.Close()
-	req := httptest.NewRequest("POST", "/api/inbox/upload", &body)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req := httptest.NewRequest("POST", url, strings.NewReader(data))
 	rec := httptest.NewRecorder()
 	ts.h.ServeHTTP(rec, req)
 	return rec
 }
 
-func TestInboxUploadAndImport(t *testing.T) {
+func TestUploadInChunks(t *testing.T) {
 	ts := newTestServer(t, normalizer.FFmpeg{})
 	recorded := time.Date(2026, 10, 4, 11, 30, 0, 0, time.Local)
-	rec := upload(t, ts, "ZOOM0001.WAV", "audio", recorded)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
+	if rec := chunk(t, ts, "2026-10-04", "ZOOM0001.WAV", 8, 0, "abc", recorded); rec.Code != http.StatusOK || decode[map[string]int64](t, rec)["offset"] != 3 {
+		t.Fatalf("first chunk: %d %s", rec.Code, rec.Body)
 	}
-	f := decode[inboxFile](t, rec)
-	if f.SuggestedDate != "2026-10-04" || f.DateSource != "modified" {
-		t.Errorf("suggested %+v (from the browser's lastModified)", f)
+	// A chunk at the wrong offset is told where to continue; a second
+	// upload to the same date waits for the first.
+	if rec := chunk(t, ts, "2026-10-04", "ZOOM0001.WAV", 8, 5, "fgh", recorded); rec.Code != http.StatusConflict || decode[map[string]any](t, rec)["offset"] != 3.0 {
+		t.Errorf("wrong offset: %d %s", rec.Code, rec.Body)
 	}
-	if st, _ := os.Stat(filepath.Join(ts.inbox, "ZOOM0001.WAV")); !st.ModTime().Equal(recorded) {
-		t.Errorf("mtime %v", st.ModTime())
+	if rec := chunk(t, ts, "2026-10-04", "other.wav", 8, 0, "xyz", recorded); rec.Code != http.StatusConflict {
+		t.Errorf("parallel upload: %d %s", rec.Code, rec.Body)
 	}
-	for name, want := range map[string]int{"ZOOM0001.WAV": http.StatusConflict, "talk.mp3": http.StatusBadRequest, ".x.wav": http.StatusBadRequest} {
-		if rec := upload(t, ts, name, "x", time.Time{}); rec.Code != want {
-			t.Errorf("upload %s: %d, want %d", name, rec.Code, want)
+	if rec := chunk(t, ts, "2026-10-04", "ZOOM0001.WAV", 8, 3, "defghij", recorded); rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("past the size: %d %s", rec.Code, rec.Body)
+	}
+	rec := chunk(t, ts, "2026-10-04", "ZOOM0001.WAV", 8, 3, "defgh", recorded)
+	if rec.Code != http.StatusCreated || decode[map[string]any](t, rec)["path"] != "2026/2026-10-04" {
+		t.Fatalf("last chunk: %d %s", rec.Code, rec.Body)
+	}
+	raw := filepath.Join(ts.root, "2026", "2026-10-04", "2026-10-04_raw.wav")
+	if b, _ := os.ReadFile(raw); string(b) != "abcdefgh" {
+		t.Errorf("uploaded %q", b)
+	}
+	if st, _ := os.Stat(raw); !st.ModTime().Equal(recorded) {
+		t.Errorf("mtime %v, want the browser's lastModified", st.ModTime())
+	}
+	entries, _ := os.ReadDir(filepath.Dir(raw))
+	if len(entries) != 1 {
+		t.Errorf("only the recording should be left: %v", entries)
+	}
+	if rec := chunk(t, ts, "2026-10-04", "again.flac", 3, 0, "abc", time.Time{}); rec.Code != http.StatusConflict ||
+		!strings.Contains(rec.Body.String(), "already has a raw recording") {
+		t.Errorf("second raw: %d %s", rec.Code, rec.Body)
+	}
+	for _, url := range []string{
+		"/api/upload?date=2026-10-05&name=talk.mp3&size=3&offset=0",
+		"/api/upload?date=05.10.2026&name=a.wav&size=3&offset=0",
+		"/api/upload?date=2026-10-05&name=a.wav&size=0&offset=0",
+		"/api/upload?date=2026-10-05&name=..%2Fa.wav&size=3&offset=0",
+	} {
+		if rec := ts.do(t, "POST", url, nil); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", url, rec.Code)
 		}
 	}
-	entries, _ := os.ReadDir(ts.inbox)
-	if len(entries) != 1 {
-		t.Errorf("inbox should hold just the one upload, no .partial files: %v", entries)
+	// A broken upload continues where the server has it.
+	chunk(t, ts, "2026-10-06", "b.flac", 6, 0, "abc", time.Time{})
+	if rec := chunk(t, ts, "2026-10-06", "b.flac", 6, 3, "def", time.Time{}); rec.Code != http.StatusCreated {
+		t.Errorf("resume: %d %s", rec.Code, rec.Body)
 	}
-	upload(t, ts, "Gudstjeneste 2026-09-27.flac", "audio2", time.Time{})
+}
+
+func TestInboxImport(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(ts.inbox, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("ZOOM0001.WAV", "audio")
+	write("Gudstjeneste 2026-09-27.flac", "audio2")
+	write("being written.partial.flac", "x")
+	write(".pingvin-seen", "x")
+	write("notes.txt", "x")
+	recorded := time.Date(2026, 10, 4, 11, 30, 0, 0, time.Local)
+	os.Chtimes(filepath.Join(ts.inbox, "ZOOM0001.WAV"), recorded, recorded)
 
 	list := decode[struct{ Files []inboxFile }](t, ts.do(t, "GET", "/api/inbox", nil))
 	if len(list.Files) != 2 {
 		t.Fatalf("files %+v", list.Files)
 	}
 	for _, f := range list.Files {
-		if f.Name == "Gudstjeneste 2026-09-27.flac" && (f.SuggestedDate != "2026-09-27" || f.DateSource != "name") {
-			t.Errorf("from name: %+v", f)
+		switch f.Name {
+		case "Gudstjeneste 2026-09-27.flac":
+			if f.SuggestedDate != "2026-09-27" || f.DateSource != "name" {
+				t.Errorf("from name: %+v", f)
+			}
+		case "ZOOM0001.WAV":
+			if f.SuggestedDate != "2026-10-04" || f.DateSource != "modified" {
+				t.Errorf("from mtime: %+v", f)
+			}
 		}
 	}
 
-	rec = ts.do(t, "POST", "/api/inbox/import", importRequest{Name: "ZOOM0001.WAV", Date: "2026-10-04"})
-	if rec.Code != http.StatusOK || decode[map[string]string](t, rec)["path"] != "2026/2026-10-04" {
+	rec := ts.do(t, "POST", "/api/inbox/import", importRequest{Name: "Gudstjeneste 2026-09-27.flac", Date: "2026-09-27"})
+	if rec.Code != http.StatusOK || decode[map[string]string](t, rec)["path"] != "2026/2026-09-27" {
 		t.Fatalf("import: %d %s", rec.Code, rec.Body)
 	}
-	if b, _ := os.ReadFile(filepath.Join(ts.root, "2026", "2026-10-04", "2026-10-04_raw.wav")); string(b) != "audio" {
+	if b, _ := os.ReadFile(filepath.Join(ts.root, "2026", "2026-09-27", "2026-09-27_raw.flac")); string(b) != "audio2" {
 		t.Error("imported file missing")
 	}
-	if fileExists(filepath.Join(ts.inbox, "ZOOM0001.WAV")) {
+	if fileExists(filepath.Join(ts.inbox, "Gudstjeneste 2026-09-27.flac")) {
 		t.Error("the inbox copy should be gone")
 	}
 	// A date that already has a raw recording is refused.
-	if rec := ts.do(t, "POST", "/api/inbox/import", importRequest{Name: "Gudstjeneste 2026-09-27.flac", Date: "2026-10-04"}); rec.Code != http.StatusConflict {
+	if rec := ts.do(t, "POST", "/api/inbox/import", importRequest{Name: "ZOOM0001.WAV", Date: "2026-09-27"}); rec.Code != http.StatusConflict {
 		t.Errorf("second raw: %d", rec.Code)
 	}
-	for _, q := range []importRequest{{"../x.wav", "2026-10-04"}, {"missing.wav", "2026-10-04"}, {"Gudstjeneste 2026-09-27.flac", "04.10.2026"}} {
+	for _, q := range []importRequest{{"../x.wav", "2026-10-04"}, {"missing.wav", "2026-10-04"}, {"ZOOM0001.WAV", "04.10.2026"},
+		{"being written.partial.flac", "2026-10-04"}} {
 		if rec := ts.do(t, "POST", "/api/inbox/import", q); rec.Code < 400 {
 			t.Errorf("import %+v: %d", q, rec.Code)
 		}

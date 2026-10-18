@@ -21,7 +21,8 @@ type folderEntry struct {
 	Raw     bool     `json:"raw"`
 	Edit    bool     `json:"edit"`
 	Outputs []string `json:"outputs"`
-	Pending bool     `json:"pending"` // has sources but not all outputs
+	Pending bool     `json:"pending"`    // has sources but not all outputs
+	Convert bool     `json:"converting"` // the raw WAV is being converted to FLAC
 	Job     string   `json:"job,omitempty"`
 }
 
@@ -41,6 +42,7 @@ func (s *Server) entry(abs string) folderEntry {
 	}
 	src := paths.Sources()
 	e.Raw, e.Edit = src.Raw != "", src.Edit != ""
+	e.Convert = e.Raw && s.analyses.converting(src.Raw)
 	for _, o := range outputsOf(paths) {
 		if _, err := os.Stat(o.path); err == nil {
 			e.Outputs = append(e.Outputs, o.format)
@@ -222,6 +224,8 @@ func (s *Server) check(abs string, q runRequest) plan {
 		return fail(fmt.Errorf("%s is in the folder and would conflict with cutting: use it, or move it away", filepath.Base(src.Edit)))
 	case !q.UseEdit && pl.opt.Start == 0 && pl.opt.End == 0:
 		return fail(errors.New("select where the sermon starts and ends"))
+	case src.Raw != "" && s.analyses.converting(src.Raw):
+		return fail(errors.New("the recording is still being converted to FLAC"))
 	}
 	if !pl.opt.Force {
 		var existing []string

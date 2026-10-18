@@ -25,8 +25,11 @@ import (
 const peakWindow = 0.01
 
 // analysisState is how far the waveform data and preview for a recording are.
+// A WAV is first converted to FLAC next to it (stage "convert"), which then
+// replaces it; the analysis (stage "analyze") is of the FLAC.
 type analysisState struct {
 	State    string  `json:"state"` // none, running, done, error
+	Stage    string  `json:"stage,omitempty"`
 	Progress float64 `json:"progress"`
 	Error    string  `json:"error,omitempty"`
 	Key      string  `json:"key,omitempty"` // changes with the recording; for cache-busting URLs
@@ -36,11 +39,12 @@ type analyses struct {
 	s       *Server
 	mu      sync.Mutex
 	current map[string]*analysisState // running or failed, by key
+	pending map[string]*analysisState // by the path of a FLAC being made from a WAV
 	sem     chan struct{}             // one full decode at a time
 }
 
 func newAnalyses(s *Server) *analyses {
-	return &analyses{s: s, current: map[string]*analysisState{}, sem: make(chan struct{}, 1)}
+	return &analyses{s: s, current: map[string]*analysisState{}, pending: map[string]*analysisState{}, sem: make(chan struct{}, 1)}
 }
 
 // cacheVersion changes when the analysis changes, so old caches are redone
@@ -77,18 +81,25 @@ func (a *analyses) state(raw string, start bool) analysisState {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if st := a.pending[raw]; st != nil {
+		return *st // the FLAC is being made and checked: the WAV's run covers it
+	}
 	if st := a.current[key]; st != nil && (st.State == "running" || !start) {
 		return *st
 	}
 	if !start {
 		return analysisState{State: "none", Key: key}
 	}
-	st := &analysisState{State: "running", Key: key}
+	st := &analysisState{State: "running", Stage: "analyze", Key: key}
+	if isWAV(raw) {
+		st.Stage = "convert"
+	}
 	a.current[key] = st
 	a.s.wg.Add(1)
 	go func() {
 		defer a.s.wg.Done()
-		err := a.run(raw, key, st)
+		keys := []string{key}
+		err := a.run(raw, key, st, &keys)
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if err != nil {
@@ -96,24 +107,52 @@ func (a *analyses) state(raw string, start bool) analysisState {
 			a.s.cfg.Logger.Printf("analysis of %s: %v", raw, err)
 			return
 		}
-		delete(a.current, key)
+		for _, k := range keys {
+			delete(a.current, k)
+		}
 	}()
 	return *st
 }
 
-func (a *analyses) run(raw, key string, st *analysisState) error {
+func isWAV(path string) bool { return strings.EqualFold(filepath.Ext(path), ".wav") }
+
+// converting reports whether raw is being converted to FLAC right now.
+func (a *analyses) converting(raw string) bool {
+	key, _ := cacheKey(raw)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	st := a.pending[raw]
+	if st == nil {
+		st = a.current[key]
+	}
+	return st != nil && st.State == "running" && st.Stage == "convert"
+}
+
+// carry moves the finished analysis of a recording along when the file is
+// moved (an import), so it is not redone: from the key it had before the
+// move to the key of its new path.
+func (a *analyses) carry(oldKey, newPath string) {
+	newKey, err := cacheKey(newPath)
+	if err != nil || oldKey == "" || !a.done(oldKey) || a.done(newKey) {
+		return
+	}
+	if err := os.Rename(a.dir(oldKey), a.dir(newKey)); err != nil {
+		a.s.cfg.Logger.Printf("analysis cache: %v", err)
+	}
+}
+
+// run converts raw to FLAC if it is a WAV, then analyses it. keys collects
+// the keys the state is registered under (the WAV's, then the FLAC's).
+func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error {
 	ctx := a.s.ctx
+	ff := a.s.cfg.FFmpeg
 	select {
 	case a.sem <- struct{}{}:
 		defer func() { <-a.sem }()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	dir := a.dir(key)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	total, _ := a.s.cfg.FFmpeg.Duration(ctx, raw)
+	total, _ := ff.Duration(ctx, raw)
 	progress := func(sec float64) {
 		if total > 0 {
 			a.mu.Lock()
@@ -121,7 +160,42 @@ func (a *analyses) run(raw, key string, st *analysisState) error {
 			a.mu.Unlock()
 		}
 	}
-	data, err := analyze(ctx, a.s.cfg.FFmpeg, raw, dir, progress)
+	if isWAV(raw) {
+		flac := strings.TrimSuffix(raw, filepath.Ext(raw)) + ".flac"
+		if fileExists(flac) {
+			return fmt.Errorf("%s and %s both exist", filepath.Base(raw), filepath.Base(flac))
+		}
+		a.mu.Lock()
+		a.pending[flac] = st
+		a.mu.Unlock()
+		defer func() {
+			a.mu.Lock()
+			delete(a.pending, flac)
+			a.mu.Unlock()
+		}()
+		if err := ff.ToFlac(ctx, raw, ".wav", flac, progress); err != nil {
+			return err
+		}
+		if err := os.Remove(raw); err != nil {
+			return err
+		}
+		a.s.cfg.Logger.Printf("converted %s to FLAC (verified identical) and removed the WAV", a.s.display(raw))
+		newKey, err := cacheKey(flac)
+		if err != nil {
+			return err
+		}
+		a.mu.Lock()
+		a.current[newKey] = st
+		*keys = append(*keys, newKey)
+		st.Stage, st.Progress, st.Key = "analyze", 0, newKey
+		a.mu.Unlock()
+		raw, key = flac, newKey
+	}
+	dir := a.dir(key)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	data, err := analyze(ctx, ff, raw, dir, progress)
 	if err != nil {
 		os.RemoveAll(dir)
 		return err

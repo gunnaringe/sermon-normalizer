@@ -1,4 +1,4 @@
-// The app: a hash router over three views (folders, a folder's editor, the inbox).
+// The app: a hash router over four views (folders, a folder's editor, upload, the inbox).
 import { api, q, h, formatSize, crumbs } from './util.js';
 import { editorView } from './editor.js';
 
@@ -12,12 +12,12 @@ async function route() {
   const hash = decodeURIComponent(location.hash.slice(1)) || '/';
   const [, section, ...rest] = hash.split('/');
   const path = rest.join('/');
-  for (const a of document.querySelectorAll('header nav a')) {
-    a.classList.toggle('active', a.dataset.nav === (section === 'inbox' ? 'inbox' : 'folders'));
-  }
+  const nav = ['inbox', 'upload'].includes(section) ? section : 'folders';
+  for (const a of document.querySelectorAll('header nav a')) a.classList.toggle('active', a.dataset.nav === nav);
   try {
     if (section === 'folder') teardown = await editorView(view, path, config);
-    else if (section === 'inbox' && config.inbox) await inboxView();
+    else if (section === 'upload') uploadView();
+    else if (section === 'inbox' && config.inbox) teardown = await inboxView();
     else await foldersView(section === 'folders' ? path : '');
   } catch (err) {
     view.replaceChildren(h('p', { class: 'error' }, err.message));
@@ -27,6 +27,7 @@ async function route() {
 function badges(e) {
   const out = [];
   if (e.job) out.push(h('span', { class: 'badge busy' }, 'processing'));
+  if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
   if (e.raw) out.push(h('span', { class: 'badge' }, 'raw'));
   if (e.edit) out.push(h('span', { class: 'badge' }, 'edit'));
   for (const f of ['flac', 'mp3', 'opus']) {
@@ -47,23 +48,137 @@ async function foldersView(path) {
     h('h1', {}, data.path ? data.path.split('/').pop() : 'Folders'),
     rows.length
       ? h('table', { class: 'list' }, h('tbody', {}, rows))
-      : h('p', { class: 'muted' }, 'No folders here yet.' + (config.inbox ? ' New recordings come in through the inbox.' : '')));
+      : h('p', { class: 'muted' }, 'No folders here yet. ', h('a', { href: '#/upload' }, 'Upload a recording'),
+        config.inbox ? ', or import one from the inbox.' : '.'));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// suggestDate guesses the recording date from the file name, else the
+// file's own date.
+function suggestDate(file) {
+  for (const m of file.name.matchAll(/(20\d\d)[-_.]?(\d\d)[-_.]?(\d\d)/g)) {
+    const d = `${m[1]}-${m[2]}-${m[3]}`;
+    if (!Number.isNaN(Date.parse(d))) return { date: d, source: 'from the name' };
+  }
+  const t = new Date(file.lastModified);
+  const pad = (n) => String(n).padStart(2, '0');
+  return { date: `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`, source: "from the file's date" };
+}
+
+// sendFile uploads file into the date folder in chunks: each request stays
+// small (proxies limit request bodies), and after a network error or a
+// server restart it continues where the server has it.
+async function sendFile(file, date, onProgress) {
+  const chunk = Number(localStorage.getItem('uploadChunk')) || Math.min(32 << 20, config.chunk);
+  let offset = 0;
+  let failures = 0;
+  let sent = false; // a chunk may have arrived even if its answer did not
+  for (;;) {
+    const url = `api/upload?date=${q(date)}&name=${q(file.name)}&size=${file.size}&offset=${offset}&modified=${file.lastModified}`;
+    let resp;
+    let data = {};
+    try {
+      resp = await fetch(url, { method: 'POST', body: file.slice(offset, offset + chunk) });
+      data = await resp.json().catch(() => ({}));
+    } catch (e) {
+      sent = true;
+      if (++failures > 6) throw new Error('the connection keeps failing: ' + e.message);
+      await sleep(1000 * 2 ** failures);
+      continue;
+    }
+    if (resp.status === 201) return data.path;
+    if (resp.ok) {
+      offset = data.offset;
+      sent = true;
+      failures = 0;
+      onProgress(offset / file.size);
+      continue;
+    }
+    if (resp.status === 409 && typeof data.offset === 'number' && (sent || offset > 0)) {
+      offset = data.offset; // continue from what the server has
+      continue;
+    }
+    if (resp.status >= 500 && ++failures <= 6) {
+      await sleep(1000 * 2 ** failures);
+      continue;
+    }
+    throw new Error(data.error || `${resp.status} ${resp.statusText}`);
+  }
+}
+
+function uploadView() {
+  const input = h('input', { type: 'file', accept: '.wav,.flac,audio/wav,audio/flac', hidden: true });
+  const chosen = h('div', {});
+  const status = h('p', { class: 'muted' });
+  const progress = h('progress', { max: 1, value: 0, hidden: true });
+  const drop = h('div', { class: 'drop' },
+    'Drop the recording (.wav or .flac) here, or ',
+    h('a', { href: '#/upload', onclick: (e) => { e.preventDefault(); input.click(); } }, 'choose a file'), '.');
+
+  function choose(file) {
+    if (!file) return;
+    if (!/\.(wav|flac)$/i.test(file.name)) {
+      status.className = 'error';
+      status.textContent = `${file.name}: only .wav and .flac recordings are accepted.`;
+      return;
+    }
+    const guess = suggestDate(file);
+    const date = h('input', { type: 'date', value: guess.date, required: true, 'aria-label': 'Date' });
+    const button = h('button', { class: 'primary', onclick: async () => {
+      if (!date.value) return;
+      button.disabled = date.disabled = true;
+      progress.hidden = false;
+      progress.value = 0;
+      status.className = 'muted';
+      status.textContent = `Uploading ${file.name} (${formatSize(file.size)})…`;
+      try {
+        const path = await sendFile(file, date.value, (p) => { progress.value = p; });
+        location.hash = '#/folder/' + path;
+      } catch (e) {
+        status.className = 'error';
+        status.textContent = `${file.name}: ${e.message}`;
+        button.disabled = date.disabled = false;
+        progress.hidden = true;
+      }
+    } }, 'Upload');
+    status.textContent = '';
+    chosen.replaceChildren(h('div', { class: 'panel' },
+      h('p', {}, h('strong', {}, file.name), ' · ', formatSize(file.size)),
+      h('p', {}, h('label', {}, 'Date ', date), ' ', h('span', { class: 'muted' }, guess.source)),
+      h('p', {}, button)));
+  }
+
+  input.addEventListener('change', () => choose(input.files[0]));
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('over');
+    choose(e.dataTransfer.files[0]);
+  });
+  view.replaceChildren(
+    h('h1', {}, 'Upload a recording'),
+    h('p', { class: 'muted' }, 'The whole service goes straight into its date folder. A WAV is converted to FLAC, ' +
+      'and the waveform prepared, as soon as it is in; the page for the date opens when the upload is done.'),
+    drop, input, chosen, status, progress);
 }
 
 async function inboxView() {
   const list = h('div', {}, h('p', { class: 'muted' }, 'Loading…'));
-  const status = h('p', { class: 'muted' });
-  const progress = h('progress', { max: 1, value: 0, hidden: true });
-  const input = h('input', { type: 'file', accept: '.wav,.flac,audio/wav,audio/flac', multiple: true, hidden: true });
-  const drop = h('div', { class: 'drop' },
-    'Drop recordings (.wav, .flac) here, or ', h('a', { href: '#/inbox', onclick: (e) => { e.preventDefault(); input.click(); } }, 'choose files'), '.');
+  const busy = h('div', {});
+  let alive = true;
 
   async function refresh() {
     const data = await api('GET', 'api/inbox');
+    if (!alive) return;
+    busy.replaceChildren(...data.processing.map((n) => h('p', { class: 'notice' }, `Converting ${n} to FLAC…`)));
     if (!data.files.length) {
       list.replaceChildren(h('p', { class: 'muted' }, 'The inbox is empty.'));
       return;
     }
+    // Leave rows alone while someone is choosing a date in them.
+    if (list.contains(document.activeElement)) return;
     list.replaceChildren(h('table', { class: 'list' }, h('tbody', {}, data.files.map((f) => {
       const date = h('input', { type: 'date', value: f.suggestedDate, required: true });
       const err = h('span', { class: 'error' });
@@ -85,59 +200,15 @@ async function inboxView() {
     }))));
   }
 
-  // upload sends one file with XHR (fetch cannot report upload progress).
-  // lastModified goes first: the server keeps the recording's own date.
-  function upload(file) {
-    return new Promise((resolve, reject) => {
-      const form = new FormData();
-      form.append('lastModified', String(file.lastModified));
-      form.append('file', file);
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', 'api/inbox/upload');
-      xhr.upload.onprogress = (e) => { if (e.lengthComputable) progress.value = e.loaded / e.total; };
-      xhr.onload = () => {
-        if (xhr.status < 300) return resolve();
-        let msg = xhr.statusText;
-        try { msg = JSON.parse(xhr.responseText).error; } catch {}
-        reject(new Error(msg));
-      };
-      xhr.onerror = () => reject(new Error('upload failed'));
-      xhr.send(form);
-    });
-  }
-
-  async function uploadAll(files) {
-    progress.hidden = false;
-    for (const file of files) {
-      status.className = 'muted';
-      status.textContent = `Uploading ${file.name} (${formatSize(file.size)})…`;
-      progress.value = 0;
-      try {
-        await upload(file);
-        status.textContent = `${file.name} uploaded.`;
-      } catch (e) {
-        status.className = 'error';
-        status.textContent = `${file.name}: ${e.message}`;
-      }
-    }
-    progress.hidden = true;
-    await refresh();
-  }
-
-  input.addEventListener('change', () => uploadAll([...input.files]));
-  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
-  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-  drop.addEventListener('drop', (e) => {
-    e.preventDefault();
-    drop.classList.remove('over');
-    uploadAll([...e.dataTransfer.files]);
-  });
-
   view.replaceChildren(
     h('h1', {}, 'Inbox'),
-    h('p', { class: 'muted' }, 'New recordings wait here. Import one to make its date folder, then cut it there.'),
-    list, h('h2', {}, 'Upload'), drop, input, status, progress);
+    h('p', { class: 'muted' }, (config.pingvin
+      ? 'Recordings uploaded to Pingvin Share arrive here as FLAC, with the waveform prepared. '
+      : 'New recordings wait here. ') + 'Import one to make its date folder, then cut it there.'),
+    busy, list);
   await refresh();
+  const timer = setInterval(() => refresh().catch(() => {}), 5000);
+  return () => { alive = false; clearInterval(timer); };
 }
 
 async function start() {

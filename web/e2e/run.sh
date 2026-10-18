@@ -1,10 +1,6 @@
 #!/bin/sh
 # Browser tests of the web UI. Runs inside the Playwright image, with the
-# server binary built on the host (static) and mounted at /work/bin:
-#
-#   CGO_ENABLED=0 go build -o web/e2e/bin/sermon-normalizer ./cmd/sermon-normalizer
-#   podman run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -w /work \
-#     mcr.microsoft.com/playwright:v1.64.1-noble sh run.sh
+# server binary mounted at /work/bin. Start it with: scripts/test.sh e2e
 set -eu
 
 apt-get update -qq >/dev/null && apt-get install -y -qq ffmpeg >/dev/null
@@ -29,4 +25,4 @@ for i in $(seq 50); do
 done
 
 npm ci --silent --no-audit --no-fund
-DATA="$data" npx playwright test "$@" || { echo "---- server log ----"; cat "$data/server.log"; exit 1; }
+DATA="$data" npx playwright test --reporter=line "$@" || { echo "---- server log (end) ----"; tail -n 50 "$data/server.log"; exit 1; }

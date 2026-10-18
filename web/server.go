@@ -1,6 +1,7 @@
 // Package web is a long-running web UI for the normalizer: browse date
 // folders, cut the sermon on a waveform, set options, run and follow jobs,
-// and bring new recordings in through an inbox folder.
+// and bring new recordings in: uploaded straight to a date folder, or
+// through an inbox folder (which Pingvin Share uploads can feed).
 package web
 
 import (
@@ -26,11 +27,12 @@ var static embed.FS
 
 // Config is how the server is set up.
 type Config struct {
-	Root     string // folder holding the date folders (e.g. Taler/)
-	Inbox    string // folder new recordings arrive in; "" = no inbox
-	CacheDir string // waveform data and previews
-	Archive  string // default archive folder for runs ("" = none)
-	Layout   string // where imports go under Root, as a Go time layout
+	Root     string         // folder holding the date folders (e.g. Taler/)
+	Inbox    string         // folder new recordings arrive in; "" = no inbox
+	CacheDir string         // waveform data and previews
+	Archive  string         // default archive folder for runs ("" = none)
+	Layout   string         // where imports go under Root, as a Go time layout
+	Pingvin  *PingvinConfig // pick up Pingvin Share uploads into the inbox; nil = off
 	FFmpeg   normalizer.FFmpeg
 	Logger   *log.Logger
 }
@@ -48,6 +50,7 @@ type Server struct {
 
 	jobs     *jobs
 	analyses *analyses
+	pingvin  *pingvin
 }
 
 // New prepares a server. Close it to stop background work.
@@ -74,6 +77,14 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{cfg: cfg, root: root, ctx: ctx, cancel: cancel}
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
+	if cfg.Pingvin != nil {
+		if s.pingvin, err = newPingvin(s, *cfg.Pingvin); err != nil {
+			cancel()
+			return nil, err
+		}
+		s.wg.Add(1)
+		go s.pingvin.watch()
+	}
 	return s, nil
 }
 
@@ -120,8 +131,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.handleJobEvents)
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleJobCancel)
 
+	mux.HandleFunc("POST /api/upload", s.handleUpload)
 	mux.HandleFunc("GET /api/inbox", s.handleInbox)
-	mux.HandleFunc("POST /api/inbox/upload", s.handleInboxUpload)
 	mux.HandleFunc("POST /api/inbox/import", s.handleInboxImport)
 
 	// Once a login proxy sets a cookie, other sites must not be able to
@@ -174,6 +185,14 @@ func realPath(path string) (string, error) {
 	}
 }
 
+// display names a file for the log: relative to the root, or just its name.
+func (s *Server) display(abs string) string {
+	if r, err := filepath.Rel(s.root, abs); err == nil && !strings.HasPrefix(r, "..") {
+		return filepath.ToSlash(r)
+	}
+	return filepath.Base(abs)
+}
+
 // relPath is abs relative to the root, slash-separated ("" for the root).
 func (s *Server) relPath(abs string) string {
 	r, err := filepath.Rel(s.root, abs)
@@ -207,6 +226,8 @@ func (s *Server) pathParam(w http.ResponseWriter, r *http.Request) (string, bool
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"inbox":   s.cfg.Inbox != "",
+		"pingvin": s.pingvin != nil,
+		"chunk":   MaxChunk,
 		"archive": s.cfg.Archive,
 		"defaults": map[string]any{
 			"mono":   requestFrom(normalizer.DefaultOptions(), ""),

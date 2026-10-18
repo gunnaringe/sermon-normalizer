@@ -1,62 +1,56 @@
 # sermon-normalizer
 
-Go web service that turns a church service recording into publish-ready sermon
-files (cut on a waveform, mono or stereo, loudness-normalised FLAC/MP3/Opus).
-`README.md` covers usage, `PLAN.md` the background and design decisions.
+Go web service: cut a church service recording on a waveform, get
+loudness-normalised FLAC/MP3/Opus. `README.md` = usage, `PLAN.md` = background.
+Standard library only (ffmpeg and sqlite3 are run as commands).
 
-## Layout
+## Checks (use these, in this order; output is already short)
 
-- `cmd/sermon-normalizer/`: the server's flags, startup and shutdown (also the
-  Docker image's entrypoint). Keep logic out of it.
-- `web/`: the HTTP API, jobs, waveform analysis and inbox. Jobs run on the
-  server's context (not the request's); `Server.Close` cancels and waits.
-  Every path parameter goes through `Server.resolve` (inside the root, no
-  `..`, no hidden names, no symlinks out). `web/static/` is plain JS with no
-  build step; `web/static/vendor/wavesurfer/` is wavesurfer.js 7.12.12,
-  unmodified (see its README) — upgrade by replacing the files.
-- `normalizer/`: the pipeline as a package. All audio work is ffmpeg, called
-  with an argument list via `FFmpeg.Run`/`RunTo`, never a shell. It finds
-  sources with `Paths.Sources` and reports through `Pipeline.OnStep`/
-  `OnProgress` and `Out`. Validation and verified moves live here, not in `web/`.
-- The module is standard library only; keep it that way unless there is a
-  strong reason.
+```bash
+scripts/test.sh                       # unit tests, seconds — run after every change
+scripts/test.sh all ./web/ -run X     # with real ffmpeg/sqlite3, one package/test (container)
+scripts/test.sh all                   # everything (~3 min, normalizer integration is slow)
+scripts/test.sh e2e [-g name]         # browser tests (~1.5 min); after changing web/static
+scripts/test.sh image                 # Docker build; before release changes
+```
+
+ffmpeg is not on the dev host; `all`/`e2e` run in podman. Don't run `go test -v`
+over the whole tree, and don't paste whole files into output: read the part you
+need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
+— look at them only when changing visible UI.
+
+## Map
+
+- `cmd/sermon-normalizer/main.go`: flags, startup, shutdown. No logic.
+- `web/server.go`: Config, routes, `resolve` (every path parameter: inside the
+  root, no `..`, no hidden names, no symlinks out).
+- `web/folders.go`: folder list/info, run options, `check` (validates a run).
+- `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
+- `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3
+  preview, cached by path+size+mtime; `carry` moves the cache on import.
+- `web/upload.go`: chunked upload straight to a date folder.
+- `web/inbox.go`: inbox list/import, date suggestion, `newRawFolder`.
+- `web/pingvin.go`: polls Pingvin Share's SQLite (read-only) for reverse-share
+  uploads, converts them into the inbox. Schema fixture in `pingvin_test.go`.
+- `web/static/`: plain JS, no build. `vendor/wavesurfer/` is wavesurfer.js
+  7.12.12, unmodified.
+- `normalizer/`: the pipeline (`pipeline.go`), ffmpeg wrapper (`ffmpeg.go`:
+  `Run`, `RunTo`), `ToFlac`/`SameAudio` (`flac.go`), `MoveFile` (`files.go`),
+  `Validate` (`validate.go`), levels/silences, channel checks.
 
 ## Rules that matter
 
-- Outputs go through `FFmpeg.RunTo` (writes `.partial`, renames on success).
-  Existing outputs are skipped without Force, so a half-written file
-  would never be redone.
-- Never delete a source unless its copy is verified identical: MD5 of the
-  decoded audio for WAV -> FLAC, MD5 of the bytes for a move across disks.
-  Without an archive folder, sources are never touched.
-- Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm` (slow).
-- Messages the pipeline and validation return are shown in the web UI: use
-  the form's names (Start, Force, mono), not flags.
-- Code, UI and docs are in English.
-
-## Testing
-
-ffmpeg is usually not installed on the dev host. Run everything in Docker/podman:
-
-```bash
-podman build -t sermon-normalizer .        # go vet + all tests incl. integration
-podman run --rm -v $PWD:/src:Z -w /src docker.io/library/golang:1.25-alpine3.22 \
-  sh -c 'apk add -q ffmpeg && go test -v ./...'   # faster iteration
-```
-
-Integration tests (`*/integration_test.go`) skip without ffmpeg/ffprobe.
-Unit tests that don't need ffmpeg run anywhere with `go test ./...`.
-
-Web browser tests (Playwright in its pinned image, real ffmpeg, a
-90-minute recording for responsiveness):
-
-```bash
-CGO_ENABLED=0 go build -o web/e2e/bin/sermon-normalizer ./cmd/sermon-normalizer
-podman run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -w /work \
-  mcr.microsoft.com/playwright:v1.64.1-noble sh run.sh
-```
-
-Keep the image tag equal to `@playwright/test` in `web/e2e/package.json`.
-Screenshots land in `web/e2e/screenshots/` (ignored by git).
+- Outputs go through `FFmpeg.RunTo` (`.partial`, renamed on success); existing
+  outputs are skipped without Force.
+- Delete a source only after its copy is verified identical (`SameAudio` for
+  WAV→FLAC, byte MD5 for copies). Raw WAVs are replaced by verified FLAC; with
+  no archive folder, runs never touch sources. Pingvin's files are never changed.
+- No long work inside a request: it sits behind Cloudflare (100 MB bodies,
+  ~100 s timeout). Start background work on `s.ctx` under `s.wg`.
+- Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.
+- Messages from `normalizer` show in the web UI: use the form's names
+  (Start, Force, mono), not flags. English everywhere.
+- Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`
+  in `web/e2e/package.json`.
 
 There is no CI or deploy yet.

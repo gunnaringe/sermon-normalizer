@@ -9,20 +9,20 @@ See `PLAN.md` for background and design decisions.
 ## Requirements
 
 - `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`), or use the Docker image
+- `sqlite3` in PATH, only for `--pingvin-data`
 - Go 1.25+ to build
 
 ## Build and test
 
 ```bash
 go build -o sermon-normalizer ./cmd/sermon-normalizer
-go test ./...
+scripts/test.sh            # unit tests, seconds
+scripts/test.sh all        # vet + all tests with real ffmpeg and sqlite3 (container)
+scripts/test.sh e2e        # browser tests (Playwright, container)
 ```
 
-`go test ./...` runs the unit tests everywhere, and the integration tests (the whole pipeline
-with real ffmpeg on synthetic recordings) when `ffmpeg` and `ffprobe` are in PATH.
-`docker build .` always runs both. `go test -short ./...` skips the integration tests.
-`web/e2e/run.sh` runs browser tests (Playwright) against the server with real ffmpeg
-(see `CLAUDE.md` for the command).
+The integration tests run the whole pipeline with real ffmpeg on synthetic recordings;
+`docker build .` runs them too.
 
 ## Docker (ffmpeg included)
 
@@ -54,6 +54,9 @@ sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
 | `--archive` | | the default archive folder for runs (see below) |
 | `--layout` | `2006/2006-01-02` | where imports go under `--root`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
+| `--pingvin-data` | | Pingvin Share's data directory: bring its reverse-share uploads into `--inbox` |
+| `--pingvin-reverse-share` | | the reverse share token they come through (a prefix is enough) |
+| `--sqlite3` | `sqlite3` | path to sqlite3, for reading Pingvin's database |
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
@@ -73,12 +76,31 @@ cancels running jobs and waits for them to clean up.
 - **Options and run:** the options below, checked as you change them; your choices carry over
   to the next folder (except Force). The run is followed live and keeps going if the browser is
   closed; the results can be played and downloaded. Cancelling leaves nothing half-written.
-- **Inbox** (with `--inbox`): new recordings wait there. Upload from the browser, then import
-  one into its date folder (`<year>/<date>/<date>_raw.*`, see `--layout`); the date is
-  suggested from the file name, the recording's tags or its date.
+- **Upload:** pick the recording and its date (suggested from the file name or the file's
+  date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
+  Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
+  and continue after a dropped connection. No inbox needed.
+- **Inbox** (with `--inbox`): recordings that arrived by other means wait there; import one
+  into its date folder. The date is suggested from the file name, the recording's tags or its
+  date. The page updates itself.
+
+**A WAV is converted to FLAC as soon as it arrives** (upload, import, or opening a folder that
+has one), verified identical by MD5 of the audio, and then replaces the WAV. Right after, the
+server prepares the waveform and the listening preview, so cutting can start at once.
+
+### Pingvin Share
+
+With `--pingvin-data` and `--pingvin-reverse-share`, the server looks every 30 s for files
+uploaded to [Pingvin Share X](https://github.com/smp46/pingvin-share-x) through that reverse
+share (or into a share whose ID starts with it). Each new WAV or FLAC is converted to FLAC into
+the inbox and its waveform prepared, so it is ready to import and cut. Pingvin's data
+directory can be mounted read-only: its database is only read (with `sqlite3`), its files only
+copied. Handled uploads are listed in `<inbox>/.pingvin-seen`, so a recording imported or
+removed from the inbox does not come back; other files (PDFs, …) are skipped.
 
 When a recording is opened the first time, the server prepares its waveform and a small MP3
-preview for listening (about 35 s for 90 minutes), kept in `--cache-dir`. The preview is
+preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` and carried along
+when a recording is imported. The preview is
 normalized (up to 40 dB of dynamic gain), so even a very quiet recording can be heard while
 cutting; the waveform keeps the original levels, where loud music and quieter speech stand
 apart. The browser only streams the preview; the cut is always made from the original.
@@ -91,7 +113,7 @@ cut it yourself in an audio editor and put the result in the date folder as `<da
 
 ```
 2026-10-04/
-  2026-10-04_raw.wav   untouched
+  2026-10-04_raw.flac  the whole recording, untouched by runs
   2026-10-04.flac      master: mono, 48 kHz / 24-bit, -19 LUFS
   2026-10-04.mp3       mono, 96 kbps
   2026-10-04.opus      mono, 48 kbps

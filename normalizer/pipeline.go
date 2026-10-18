@@ -8,7 +8,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -296,7 +295,7 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 			return false, err
 		}
 	}
-	same, err := p.sameAudio(ctx, wav, dst)
+	same, err := p.FF.SameAudio(ctx, wav, dst)
 	if err != nil {
 		return false, err
 	}
@@ -312,32 +311,6 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 		p.logf("OK: %s is identical to the WAV. Deleted %s.", filepath.Base(dst), filepath.Base(wav))
 	}
 	return true, nil
-}
-
-var reMD5 = regexp.MustCompile(`MD5=(\w+)`)
-
-func (p *Pipeline) audioMD5(ctx context.Context, path string) (string, error) {
-	res, err := p.FF.Run(ctx, "-v", "error", "-i", path, "-map", "0:a", "-f", "md5", "-")
-	if err != nil {
-		return "", err
-	}
-	m := reMD5.FindStringSubmatch(res.Stdout + res.Stderr)
-	if m == nil {
-		return "", errors.New("no MD5 found in ffmpeg output")
-	}
-	return m[1], nil
-}
-
-func (p *Pipeline) sameAudio(ctx context.Context, a, b string) (bool, error) {
-	ha, err := p.audioMD5(ctx, a)
-	if err != nil {
-		return false, err
-	}
-	hb, err := p.audioMD5(ctx, b)
-	if err != nil {
-		return false, err
-	}
-	return ha == hb, nil
 }
 
 func (p *Pipeline) stepEdit(ctx context.Context) error {

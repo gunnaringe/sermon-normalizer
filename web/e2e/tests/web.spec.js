@@ -34,6 +34,8 @@ test('folder list shows the date folders with their status', async ({ page }) =>
 test('cut on the waveform: drag, fields, keys, playback', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await expect(page.locator('#minimap')).toBeVisible();
+  // The raw WAV was converted to FLAC before the waveform was made.
+  await expect(page.getByText('Recording: 2026-10-04_raw.flac')).toBeVisible();
 
   // Dragging on the waveform selects; the fields follow.
   const box = await page.locator('#waveform').boundingBox();
@@ -105,7 +107,7 @@ test('run with chosen outputs and follow it live', async ({ page }) => {
   await page.screenshot({ path: path.join(shots, 'done.png'), fullPage: true });
 
   const files = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).sort();
-  expect(files).toEqual(['2026-10-04.mp3', '2026-10-04_raw.wav']);
+  expect(files).toEqual(['2026-10-04.mp3', '2026-10-04_raw.flac']);
   // The options are remembered for the next folder (not Force or the cut).
   await page.reload();
   await expect(page.getByLabel('FLAC master')).not.toBeChecked();
@@ -127,22 +129,42 @@ test('a run can be cancelled', async ({ page }) => {
   expect(left).toEqual([]);
 });
 
-test('inbox: upload and import into a new date folder', async ({ page }) => {
-  await page.goto('#/inbox');
-  await expect(page.getByText('The inbox is empty.')).toBeVisible();
+test('upload straight into a new date folder, in chunks', async ({ page }) => {
+  await page.goto('');
+  await page.evaluate(() => localStorage.setItem('uploadChunk', String(64 * 1024))); // several chunks
+  await page.getByRole('link', { name: 'Upload' }).click();
   await page.locator('input[type=file]').setInputFiles({
     name: 'Gudstjeneste 2026-09-27.flac',
     mimeType: 'audio/flac',
     buffer: fs.readFileSync(path.join(DATA, 'upload.flac')),
   });
-  await expect(page.getByText('Gudstjeneste 2026-09-27.flac uploaded.')).toBeVisible();
-  const row = page.locator('tr', { hasText: 'Gudstjeneste 2026-09-27.flac' });
-  await expect(row.locator('input[type=date]')).toHaveValue('2026-09-27');
-  await expect(row).toContainText('from the name');
-  await row.getByRole('button', { name: 'Import' }).click();
+  await expect(page.getByLabel('Date')).toHaveValue('2026-09-27');
+  await expect(page.getByText('from the name')).toBeVisible();
+  await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page).toHaveURL(/#\/folder\/2026\/2026-09-27$/);
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
-  expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-09-27'))).toEqual(['2026-09-27_raw.flac']);
+  const dir = path.join(DATA, 'root/2026/2026-09-27');
+  expect(fs.readdirSync(dir)).toEqual(['2026-09-27_raw.flac']);
+  expect(fs.readFileSync(path.join(dir, '2026-09-27_raw.flac')).equals(fs.readFileSync(path.join(DATA, 'upload.flac')))).toBe(true);
+  // The date now has a recording: a second upload to it is refused.
+  await page.getByRole('link', { name: 'Upload' }).click();
+  await page.locator('input[type=file]').setInputFiles({ name: 'again 2026-09-27.flac', mimeType: 'audio/flac', buffer: Buffer.from('x') });
+  await page.getByRole('button', { name: 'Upload' }).click();
+  await expect(page.getByText('already has a raw recording')).toBeVisible();
+});
+
+test('inbox: import into a new date folder', async ({ page }) => {
+  await page.goto('#/inbox');
+  await expect(page.getByText('The inbox is empty.')).toBeVisible();
+  fs.copyFileSync(path.join(DATA, 'upload.flac'), path.join(DATA, 'inbox', 'Gudstjeneste 2026-09-20.flac'));
+  const row = page.locator('tr', { hasText: 'Gudstjeneste 2026-09-20.flac' });
+  await expect(row).toBeVisible({ timeout: 10_000 }); // the page refreshes itself
+  await expect(row.locator('input[type=date]')).toHaveValue('2026-09-20');
+  await expect(row).toContainText('from the name');
+  await row.getByRole('button', { name: 'Import' }).click();
+  await expect(page).toHaveURL(/#\/folder\/2026\/2026-09-20$/);
+  await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
+  expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-09-20'))).toEqual(['2026-09-20_raw.flac']);
   expect(fs.readdirSync(path.join(DATA, 'inbox'))).toEqual([]);
 });
 

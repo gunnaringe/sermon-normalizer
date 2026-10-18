@@ -125,8 +125,12 @@ func TestIntegrationAnalysis(t *testing.T) {
 	if again := decode[analysisState](t, ts.do(t, "POST", "/api/analysis?path=2026-10-04", nil)); again.State != "done" || again.Key != st.Key {
 		t.Errorf("cached: %+v", again)
 	}
+	// The WAV was converted to FLAC first, and replaced by it.
+	if fileExists(filepath.Join(ts.root, "2026-10-04", "2026-10-04_raw.wav")) || !fileExists(filepath.Join(ts.root, "2026-10-04", "2026-10-04_raw.flac")) {
+		t.Error("the raw WAV should have become FLAC")
+	}
 	future := time.Now().Add(time.Hour)
-	os.Chtimes(filepath.Join(ts.root, "2026-10-04", "2026-10-04_raw.wav"), future, future)
+	os.Chtimes(filepath.Join(ts.root, "2026-10-04", "2026-10-04_raw.flac"), future, future)
 	if changed := decode[analysisState](t, ts.do(t, "GET", "/api/analysis?path=2026-10-04", nil)); changed.State != "none" || changed.Key == st.Key {
 		t.Errorf("after a change: %+v", changed)
 	}
@@ -271,6 +275,7 @@ func TestIntegrationQuietPreview(t *testing.T) {
 		t.Fatalf("analysis: %+v", st)
 	}
 	preview := filepath.Join(ts.analyses.dir(st.Key), "preview.mp3")
+	raw = strings.TrimSuffix(raw, ".wav") + ".flac" // the WAV became FLAC
 	rawSpeech, previewSpeech := maxVolume(t, ff, raw, 40, 10), maxVolume(t, ff, preview, 40, 10)
 	t.Logf("speech peak: raw %.1f dB, preview %.1f dB", rawSpeech, previewSpeech)
 	if previewSpeech < rawSpeech+30 || previewSpeech > -0.5 {

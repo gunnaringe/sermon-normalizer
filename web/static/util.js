@@ -16,7 +16,7 @@ export async function api(method, url, body) {
 
 export const q = (path) => encodeURIComponent(path);
 
-// parseTime parses 1:12:05, 41:20, 2480 or 41:20.5 as seconds, like the CLI.
+// parseTime parses 1:12:05, 41:20, 2480 or 41:20.5 as seconds.
 export function parseTime(s) {
   s = s.trim();
   const parts = s.split(':');

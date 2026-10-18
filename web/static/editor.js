@@ -58,6 +58,11 @@ export async function editorView(view, path, config) {
     ? h('label', {}, h('input', { type: 'checkbox', checked: useEdit, onchange: (e) => { useEdit = e.target.checked; changed(); } }),
       ` Use ${info.edit.name} (cut in another editor) instead of the selection`)
     : null;
+  const recordingLine = h('p', { class: 'muted' });
+  const showRecording = (raw) => {
+    recordingLine.textContent = raw ? `Recording: ${raw.name} · ${formatSize(raw.size)}` : 'No raw recording in this folder.';
+  };
+  showRecording(info.raw);
   const checkOut = h('div', {});
   const runButton = h('button', { class: 'primary', disabled: true, onclick: run }, 'Run');
   const jobPanel = h('section', {});
@@ -65,9 +70,7 @@ export async function editorView(view, path, config) {
   view.replaceChildren(
     crumbs(path.split('/').slice(0, -1).join('/'), info.date),
     h('h1', {}, info.date),
-    h('p', { class: 'muted' }, info.raw
-      ? `Recording: ${info.raw.name} · ${formatSize(info.raw.size)}`
-      : 'No raw recording in this folder.'),
+    recordingLine,
     waveSection,
     editChoice ? h('p', {}, editChoice) : '',
     h('h2', {}, 'Options'),
@@ -84,6 +87,7 @@ export async function editorView(view, path, config) {
     let st = await api('POST', 'api/analysis?path=' + q(path));
     while (alive && st.state === 'running') {
       bar.value = st.progress;
+      note.textContent = st.stage === 'convert' ? 'Converting the recording to FLAC…' : 'Preparing the waveform…';
       await new Promise((r) => setTimeout(r, 500));
       st = await api('GET', 'api/analysis?path=' + q(path));
     }
@@ -91,6 +95,10 @@ export async function editorView(view, path, config) {
     if (st.state !== 'done') {
       waveSection.replaceChildren(h('p', { class: 'error' }, 'Could not read the recording: ' + (st.error || st.state)));
       return;
+    }
+    if (info.raw && /\.wav$/i.test(info.raw.name)) { // it became FLAC meanwhile
+      showRecording((await api('GET', 'api/folder?path=' + q(path))).raw);
+      check();
     }
     const peaks = await api('GET', 'api/peaks?path=' + q(path));
     if (!alive) return;
