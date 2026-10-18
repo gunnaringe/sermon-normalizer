@@ -15,9 +15,11 @@ cd "$(dirname "$0")/.."
 run=$(command -v podman || command -v docker) || { echo "needs podman or docker" >&2; exit 1; }
 golang=docker.io/library/golang:1.25-alpine3.22
 playwright=mcr.microsoft.com/playwright:v1.64.1-noble # keep equal to web/e2e/package.json
-incontainer() {
+incontainer() { # incontainer <script> [args for the script's "$@"]
+	script=$1
+	shift
 	"$run" run --rm -v "$PWD":/src:Z -w /src -v gomod:/go/pkg/mod -v gocache:/root/.cache/go-build \
-		-e CGO_ENABLED=0 "$golang" sh -c "$1"
+		-e CGO_ENABLED=0 "$golang" sh -c "$script" sh "$@"
 }
 
 mode=${1:-unit}
@@ -32,7 +34,8 @@ unit)
 	fi
 	;;
 all)
-	incontainer "apk add -q ffmpeg && test -z \"\$(gofmt -l cmd normalizer web)\" && go vet ./... && go test ${*:-./...}"
+	[ $# -eq 0 ] && set -- ./...
+	incontainer 'apk add -q ffmpeg && test -z "$(gofmt -l cmd normalizer web)" && go vet ./... && go test "$@"' "$@"
 	;;
 e2e)
 	incontainer 'go build -o web/e2e/bin/sermon-normalizer ./cmd/sermon-normalizer'
