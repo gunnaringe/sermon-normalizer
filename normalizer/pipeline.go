@@ -279,7 +279,7 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 	case exists(dst) && !p.Opt.Force:
 		p.warnf("%s is already in the archive; leaving %s in the folder (use --force to replace).", filepath.Base(dst), filepath.Base(flac))
 	default:
-		if err := moveFile(flac, dst); err != nil {
+		if err := MoveFile(flac, dst); err != nil {
 			return false, err
 		}
 		p.logf("Moved %s to %s.", filepath.Base(flac), dst)

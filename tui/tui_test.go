@@ -311,17 +311,6 @@ func TestOptionsEditModeIgnoresTimes(t *testing.T) {
 	}
 }
 
-func TestCommandLine(t *testing.T) {
-	opt := normalizer.DefaultOptions()
-	opt.Start, opt.FadeOut, opt.Force = 61.5, 2, true
-	opt.Outputs = normalizer.Outputs{Mp3: true}
-	got := commandLine("/data/Taler/2026 10", opt, "/mnt/arkiv")
-	want := "sermon-normalizer run '/data/Taler/2026 10' --start 0:01:01.500 --formats mp3 --fade-out 2 --archive /mnt/arkiv --force"
-	if got != want {
-		t.Errorf("got  %s\nwant %s", got, want)
-	}
-}
-
 func TestRunView(t *testing.T) {
 	dir := dateDir(t, t.TempDir(), "2026-10-04", "2026-10-04.mp3")
 	paths, _ := normalizer.NewPaths(dir, "")
@@ -479,7 +468,7 @@ func TestOptionsStereo(t *testing.T) {
 		t.Fatalf("opt %+v err %v", opt, err)
 	}
 	// The command shows --channels stereo but not the stereo defaults.
-	cmd := commandLine(dir, opt, "")
+	cmd := normalizer.CommandLine(dir, opt, "")
 	if !strings.Contains(cmd, "--channels stereo") || strings.Contains(cmd, "--target-lufs") ||
 		strings.Contains(cmd, "--mp3-bitrate") || !strings.Contains(cmd, "--opus-bitrate 64k") {
 		t.Errorf("command %s", cmd)

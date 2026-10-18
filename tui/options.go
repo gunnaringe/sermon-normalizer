@@ -134,6 +134,9 @@ func (m optionsModel) build() (normalizer.Options, string, error) {
 	opt.OpusBitrate = strings.TrimSpace(m.get("opusbr").input.Value())
 	opt.KeepWav = m.get("keepwav").on
 	opt.Force = m.get("force").on
+	if err := opt.Validate(); err != nil {
+		return opt, "", err
+	}
 	return opt, strings.TrimSpace(m.get("archive").input.Value()), nil
 }
 
@@ -226,7 +229,7 @@ func (m optionsModel) view(width int) string {
 		for _, n := range m.notices(opt, archive) {
 			s.WriteString("\n" + n)
 		}
-		s.WriteString("\n\n" + wrap(subtleStyle, "Same as: "+commandLine(m.paths.Folder, opt, archive), width) + "\n")
+		s.WriteString("\n\n" + wrap(subtleStyle, "Same as: "+normalizer.CommandLine(m.paths.Folder, opt, archive), width) + "\n")
 	}
 	if m.msg != "" {
 		s.WriteString("\n" + errorStyle.Render(m.msg) + "\n")
@@ -279,63 +282,4 @@ func (m optionsModel) notices(opt normalizer.Options, archive string) []string {
 		}
 	}
 	return out
-}
-
-// commandLine is the CLI command for the same run (non-default flags only).
-func commandLine(folder string, opt normalizer.Options, archive string) string {
-	def := normalizer.DefaultOptions()
-	def.SetStereo(opt.Stereo) // compare with the defaults for the chosen channels
-	args := []string{"sermon-normalizer", "run", shellQuote(folder)}
-	add := func(flag, value string) { args = append(args, flag, shellQuote(value)) }
-	num := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
-	if opt.Start > 0 {
-		add("--start", normalizer.FormatTime(opt.Start))
-	}
-	if opt.End > 0 {
-		add("--end", normalizer.FormatTime(opt.End))
-	}
-	if opt.Outputs != def.Outputs {
-		add("--formats", opt.Outputs.String())
-	}
-	if opt.Stereo {
-		add("--channels", "stereo")
-	}
-	if opt.FadeIn > 0 {
-		add("--fade-in", num(opt.FadeIn))
-	}
-	if opt.FadeOut > 0 {
-		add("--fade-out", num(opt.FadeOut))
-	}
-	if opt.NoiseReduction != def.NoiseReduction {
-		add("--noise-reduction", strconv.Itoa(opt.NoiseReduction))
-	}
-	if opt.TargetLUFS != def.TargetLUFS {
-		add("--target-lufs", num(opt.TargetLUFS))
-	}
-	if opt.TruePeak != def.TruePeak {
-		add("--true-peak", num(opt.TruePeak))
-	}
-	if opt.Mp3Bitrate != def.Mp3Bitrate {
-		add("--mp3-bitrate", opt.Mp3Bitrate)
-	}
-	if opt.OpusBitrate != def.OpusBitrate {
-		add("--opus-bitrate", opt.OpusBitrate)
-	}
-	if archive != "" {
-		add("--archive", archive)
-	}
-	if opt.KeepWav {
-		args = append(args, "--keep-wav")
-	}
-	if opt.Force {
-		args = append(args, "--force")
-	}
-	return strings.Join(args, " ")
-}
-
-func shellQuote(s string) string {
-	if s != "" && !strings.ContainsAny(s, " '\"\\$`&|;<>()*?!#~") {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

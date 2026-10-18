@@ -20,9 +20,9 @@ func firstExisting(paths ...string) string {
 	return ""
 }
 
-// moveFile renames src to dst, falling back to copy and delete when they are
+// MoveFile renames src to dst, falling back to copy and delete when they are
 // on different file systems (e.g. an archive on another disk).
-func moveFile(src, dst string) error {
+func MoveFile(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil
 	}

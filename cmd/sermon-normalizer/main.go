@@ -129,11 +129,8 @@ func cmdRun(ctx context.Context, args []string) error {
 	if err := applyChannels(fs, &opt, *channels); err != nil {
 		return err
 	}
-	if opt.FadeIn < 0 || opt.FadeOut < 0 {
-		return errors.New("--fade-in and --fade-out cannot be negative")
-	}
-	if opt.End > 0 && opt.End <= opt.Start {
-		return errors.New("--end must be after --start")
+	if err := opt.Validate(); err != nil {
+		return err
 	}
 	if fs.NArg() != 1 {
 		return errors.New("give exactly one folder: sermon-normalizer run <folder>")

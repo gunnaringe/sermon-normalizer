@@ -297,14 +297,14 @@ func TestMoveFile(t *testing.T) {
 	dir := t.TempDir()
 	src, dst := filepath.Join(dir, "a"), filepath.Join(dir, "sub", "b")
 	os.WriteFile(src, []byte("data"), 0o644)
-	if err := moveFile(src, dst); err == nil {
+	if err := MoveFile(src, dst); err == nil {
 		t.Fatal("expected an error when the target folder is missing")
 	}
 	if !exists(src) {
 		t.Fatal("source must survive a failed move")
 	}
 	os.Mkdir(filepath.Join(dir, "sub"), 0o755)
-	if err := moveFile(src, dst); err != nil {
+	if err := MoveFile(src, dst); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(dst); string(b) != "data" || exists(src) {
@@ -339,9 +339,13 @@ func TestReadLevels(t *testing.T) {
 	for _, v := range []int16{32767, -32767, 32767, -32767, 16384, -16384, 16384, -16384, 0, 0} {
 		pcm = append(pcm, byte(v), byte(uint16(v)>>8))
 	}
-	got, err := readLevels(bytes.NewReader(pcm), 4)
+	data, err := ReadLevels(bytes.NewReader(pcm), 4.0/LevelRate, nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	got := data.RMS
+	if len(data.Peak) != 3 || math.Abs(data.Peak[0]-1) > 0.001 || math.Abs(data.Peak[1]-0.5) > 0.001 || data.Peak[2] != 0 {
+		t.Errorf("peaks %v", data.Peak)
 	}
 	want := []float64{0, -6.02, SilenceFloor}
 	if len(got) != len(want) {
@@ -499,5 +503,42 @@ func TestEffectivelyMono(t *testing.T) {
 		if got := c.check.EffectivelyMono(); got != c.want {
 			t.Errorf("%+v: %v", c.check, got)
 		}
+	}
+}
+
+func TestValidate(t *testing.T) {
+	if err := DefaultOptions().Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, change := range map[string]func(*Options){
+		"no outputs":    func(o *Options) { o.Outputs = Outputs{} },
+		"end <= start":  func(o *Options) { o.Start, o.End = 60, 30 },
+		"negative fade": func(o *Options) { o.FadeOut = -1 },
+		"noise":         func(o *Options) { o.NoiseReduction = 98 },
+		"lufs":          func(o *Options) { o.TargetLUFS = 3 },
+		"peak":          func(o *Options) { o.TruePeak = 1 },
+		"bitrate":       func(o *Options) { o.Mp3Bitrate = " " },
+	} {
+		o := DefaultOptions()
+		change(&o)
+		if o.Validate() == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestCommandLine(t *testing.T) {
+	opt := DefaultOptions()
+	opt.Start, opt.FadeOut, opt.Force = 61.5, 2, true
+	opt.Outputs = Outputs{Mp3: true}
+	got := CommandLine("/data/Taler/2026 10", opt, "/mnt/arkiv")
+	want := "sermon-normalizer run '/data/Taler/2026 10' --start 0:01:01.500 --formats mp3 --fade-out 2 --archive /mnt/arkiv --force"
+	if got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+	opt = DefaultOptions()
+	opt.SetStereo(true)
+	if got := CommandLine("x", opt, ""); got != "sermon-normalizer run x --channels stereo" {
+		t.Errorf("stereo defaults are not repeated: %s", got)
 	}
 }
