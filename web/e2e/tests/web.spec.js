@@ -1,0 +1,185 @@
+// Browser tests of the web UI against the real server and ffmpeg (see run.sh).
+import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const DATA = process.env.DATA;
+const shots = path.join(import.meta.dirname, '..', 'screenshots');
+fs.mkdirSync(shots, { recursive: true });
+
+// openEditor opens a date folder and waits until the waveform is ready.
+async function openEditor(page, folder, timeout = 60_000) {
+  await page.goto('#/folder/' + folder);
+  await expect(page.locator('#waveform')).toBeVisible({ timeout });
+  await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout });
+}
+
+const editor = (page, fn, arg) => page.evaluate(fn, arg);
+const currentTime = (page) => editor(page, () => window.__editor.ws.getCurrentTime());
+const selection = (page) => editor(page, () => {
+  const s = window.__editor.selection;
+  return s ? { start: s.start, end: s.end } : null;
+});
+
+test('folder list shows the date folders with their status', async ({ page }) => {
+  await page.goto('');
+  await page.getByRole('link', { name: '2026/' }).click();
+  await expect(page.getByRole('heading', { name: '2026' })).toBeVisible();
+  const row = page.locator('tr', { hasText: '2026-10-04' });
+  await expect(row).toContainText('raw');
+  await row.click();
+  await expect(page).toHaveURL(/#\/folder\/2026\/2026-10-04$/);
+});
+
+test('cut on the waveform: drag, fields, keys, playback', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await expect(page.locator('#minimap')).toBeVisible();
+
+  // Dragging on the waveform selects; the fields follow.
+  const box = await page.locator('#waveform').boundingBox();
+  const x = (t) => box.x + (t / 100) * box.width;
+  await page.mouse.move(x(30), box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x(50), box.y + box.height / 2, { steps: 8 });
+  await page.mouse.move(x(70), box.y + box.height / 2, { steps: 8 });
+  await page.mouse.up();
+  let sel = await selection(page);
+  expect(sel.start).toBeGreaterThan(27);
+  expect(sel.start).toBeLessThan(33);
+  expect(sel.end).toBeGreaterThan(67);
+  expect(sel.end).toBeLessThan(73);
+  await expect(page.getByLabel('Start')).toHaveValue(/^0:[23]\d\.\d\d$/);
+
+  // Typing in the fields moves the selection.
+  await page.getByLabel('Start').fill('0:21');
+  await page.getByLabel('Start').press('Enter');
+  await page.getByLabel('End').fill('79.5');
+  await page.getByLabel('End').press('Enter');
+  sel = await selection(page);
+  expect(sel.start).toBeCloseTo(21, 2);
+  expect(sel.end).toBeCloseTo(79.5, 2);
+  await expect(page.getByText('Length 0:58.5')).toBeVisible();
+  await page.getByLabel('End').fill('nonsense');
+  await page.getByLabel('End').press('Enter');
+  await expect(page.getByLabel('End')).toHaveClass(/invalid/);
+  expect((await selection(page)).end).toBeCloseTo(79.5, 2);
+
+  // Keys: ] jumps to silence edges, s/e mark at the playhead...
+  await page.locator('h1').click(); // focus out of the fields
+  await page.keyboard.press(']');
+  expect(await currentTime(page)).toBeCloseTo(19, 0);
+  await page.keyboard.press(']');
+  expect(await currentTime(page)).toBeCloseTo(21, 0);
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('s');
+  expect((await selection(page)).start).toBeCloseTo(22, 0);
+  // ...but not while typing in a field.
+  await page.getByLabel('Start').focus();
+  const before = await currentTime(page);
+  await page.keyboard.press(']');
+  expect(await currentTime(page)).toBe(before);
+
+  // Headless Chromium plays and seeks the MP3 preview.
+  await page.locator('h1').click();
+  await editor(page, () => window.__editor.ws.setTime(50));
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => window.__editor.ws.getCurrentTime() > 50.5, null, { timeout: 10_000 });
+  await page.keyboard.press(' ');
+  await page.screenshot({ path: path.join(shots, 'editor.png'), fullPage: true });
+});
+
+test('run with chosen outputs and follow it live', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await page.getByLabel('Start').fill('0:21');
+  await page.getByLabel('Start').press('Enter');
+  await page.getByLabel('End').fill('1:19');
+  await page.getByLabel('End').press('Enter');
+  await page.getByLabel('FLAC master').uncheck();
+  await page.getByLabel('Opus', { exact: true }).uncheck();
+  await page.getByLabel('Fade in (s)').fill('1');
+  await expect(page.locator('.command')).toContainText('--start 0:00:21 --end 0:01:19 --formats mp3 --fade-in 1');
+  await page.getByRole('button', { name: 'Run' }).click();
+  await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.outputs')).toContainText('2026-10-04.mp3');
+  await expect(page.locator('.outputs audio')).toHaveCount(1);
+  await page.screenshot({ path: path.join(shots, 'done.png'), fullPage: true });
+
+  const files = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).sort();
+  expect(files).toEqual(['2026-10-04.mp3', '2026-10-04_raw.wav']);
+  // The options are remembered for the next folder (not Force or the cut).
+  await page.reload();
+  await expect(page.getByLabel('FLAC master')).not.toBeChecked();
+  await expect(page.getByLabel('Fade in (s)')).toHaveValue('1');
+  // The finished run is shown again, and existing outputs are pointed out.
+  await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible();
+});
+
+test('a run can be cancelled', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await page.getByLabel('Start').fill('0:01');
+  await page.getByLabel('Start').press('Enter');
+  await page.getByLabel('FLAC master').check();
+  await page.getByLabel('Force (redo existing)').check();
+  await page.getByRole('button', { name: 'Run' }).click();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('heading', { name: 'Cancelled' })).toBeVisible({ timeout: 30_000 });
+  const left = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).filter((f) => f.includes('.partial') || f.startsWith('.'));
+  expect(left).toEqual([]);
+});
+
+test('inbox: upload and import into a new date folder', async ({ page }) => {
+  await page.goto('#/inbox');
+  await expect(page.getByText('The inbox is empty.')).toBeVisible();
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'Gudstjeneste 2026-09-27.flac',
+    mimeType: 'audio/flac',
+    buffer: fs.readFileSync(path.join(DATA, 'upload.flac')),
+  });
+  await expect(page.getByText('Gudstjeneste 2026-09-27.flac uploaded.')).toBeVisible();
+  const row = page.locator('tr', { hasText: 'Gudstjeneste 2026-09-27.flac' });
+  await expect(row.locator('input[type=date]')).toHaveValue('2026-09-27');
+  await expect(row).toContainText('from the name');
+  await row.getByRole('button', { name: 'Import' }).click();
+  await expect(page).toHaveURL(/#\/folder\/2026\/2026-09-27$/);
+  await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
+  expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-09-27'))).toEqual(['2026-09-27_raw.flac']);
+  expect(fs.readdirSync(path.join(DATA, 'inbox'))).toEqual([]);
+});
+
+test('a 90-minute recording stays responsive', async ({ page }) => {
+  test.setTimeout(300_000);
+  const started = Date.now();
+  await openEditor(page, '2026/2026-08-30', 240_000);
+  console.log(`analysis + first render: ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  expect(await editor(page, () => window.__editor.ws.getDuration())).toBeCloseTo(5400, 0);
+
+  // Zoom all the way in, seek near the end, select, and play: each step quick.
+  const timed = async (label, fn) => {
+    const t0 = Date.now();
+    await fn();
+    const ms = Date.now() - t0;
+    console.log(`${label}: ${ms} ms`);
+    expect(ms, label).toBeLessThan(3000);
+  };
+  await page.locator('h1').click();
+  await timed('zoom in fully', async () => {
+    for (let i = 0; i < 10; i++) await page.keyboard.press('+');
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  });
+  await timed('seek to 1:20:00', async () => {
+    await editor(page, () => window.__editor.ws.setTime(4800));
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
+  });
+  await timed('select 1:00:00 to 1:25:00', async () => {
+    await page.getByLabel('Start').fill('1:00:00');
+    await page.getByLabel('Start').press('Enter');
+    await page.getByLabel('End').fill('1:25:00');
+    await page.getByLabel('End').press('Enter');
+  });
+  expect((await selection(page)).start).toBeCloseTo(3600, 1);
+  await page.locator('h1').click();
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => window.__editor.ws.getCurrentTime() > 4800.5, null, { timeout: 15_000 });
+  await page.keyboard.press(' ');
+  await page.screenshot({ path: path.join(shots, 'long.png') });
+});

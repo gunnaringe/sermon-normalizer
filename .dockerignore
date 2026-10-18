@@ -3,3 +3,4 @@ sermon-normalizer
 sermon-normalizer.exe
 *.md
 .git
+web/e2e
