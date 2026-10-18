@@ -13,7 +13,15 @@ Go CLI and TUI that turn a church service recording into publish-ready sermon fi
   options, run). It finds sources with `Paths.Sources` and reports through
   `Pipeline.OnStep`/`OnProgress` and `Out`; nothing may write to the
   terminal directly while it runs.
+- `cmd/sermon-normalizer-web/` + `web/`: the web UI server. Jobs run on the
+  server's context (not the request's); `Server.Close` cancels and waits.
+  Every path parameter goes through `Server.resolve` (inside the root, no
+  `..`, no hidden names, no symlinks out). `web/static/` is plain JS with no
+  build step; `web/static/vendor/wavesurfer/` is wavesurfer.js 7.12.12,
+  unmodified (see its README) — upgrade by replacing the files.
 - `normalizer/` stays standard library only; dependencies belong in `tui/`.
+  Shared rules (validation, the CLI command line, verified moves) live in
+  `normalizer` so the TUI and the web cannot drift.
 
 ## Rules that matter
 
@@ -42,6 +50,18 @@ TUI end to end (tmux + ffmpeg in the container):
 ```bash
 podman run --rm -v $PWD:/src:Z -w /src docker.io/library/golang:1.25-alpine3.22 sh scripts/tui-e2e.sh
 ```
+
+Web browser tests (Playwright in its pinned image, real ffmpeg, a
+90-minute recording for responsiveness):
+
+```bash
+CGO_ENABLED=0 go build -o web/e2e/bin/sermon-normalizer-web ./cmd/sermon-normalizer-web
+podman run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -w /work \
+  mcr.microsoft.com/playwright:v1.64.1-noble sh run.sh
+```
+
+Keep the image tag equal to `@playwright/test` in `web/e2e/package.json`.
+Screenshots land in `web/e2e/screenshots/` (ignored by git).
 
 Bubble Tea v1 delivers keys typed faster than a redraw as one multi-rune
 message; the top-level model splits them, so tests can send `keys("]]s")`.

@@ -49,6 +49,8 @@ only; the TUI uses Bubble Tea, Bubbles and Lip Gloss.
 
 - `cmd/sermon-normalizer/main.go`: CLI (subcommands, flags, Ctrl+C cancels cleanly)
 - `tui/`: the interactive front end (folders, cut, options, run)
+- `cmd/sermon-normalizer-web/`, `web/`: the web UI server (JSON API, jobs, waveform analysis,
+  inbox) and its embedded front end (`web/static/`, plain JS with wavesurfer.js bundled)
 - `normalizer/levels.go`: volume per 100 ms and silence detection, for the TUI timeline
 - `normalizer/outputs.go`: which outputs to make (`--formats`)
 - `normalizer/ffmpeg.go`: thin wrapper around `ffmpeg` (`-nostdin`, captures stdout and stderr)

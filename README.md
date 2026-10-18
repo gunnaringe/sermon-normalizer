@@ -27,6 +27,7 @@ PowerShell: set `$env:GOOS="linux"; $env:GOARCH="amd64"` before `go build`.
 with real ffmpeg on synthetic recordings) when `ffmpeg` and `ffprobe` are in PATH.
 `docker build .` always runs both. `go test -short ./...` skips the integration tests.
 `scripts/tui-e2e.sh` drives the TUI in tmux with real ffmpeg (see the script for the command).
+`web/e2e/run.sh` runs browser tests (Playwright) against the web server with real ffmpeg.
 
 ## Docker (ffmpeg included)
 
@@ -39,6 +40,40 @@ docker run --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data sermon-normalizer
 
 `-u` makes the created files owned by your user, not root.
 The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and libmp3lame.
+
+## Web UI
+
+A separate binary, `sermon-normalizer-web`, runs as a long-lived service with the same flow in
+the browser:
+
+```bash
+go build -o sermon-normalizer-web ./cmd/sermon-normalizer-web
+sermon-normalizer-web --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
+```
+
+- **Folders:** the date folders with what they contain.
+- **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
+  ocenaudio. Drag to select the sermon and drag the edges to adjust; zoom with the slider,
+  `+`/`-` or ctrl+scroll; silences are marked grey. Listen from anywhere, to the selection,
+  or just around its start and end. The start/end fields follow the selection and can be typed
+  in. Keys: `space` play, `s`/`e` start/end at the playhead, `[`/`]` previous/next silence,
+  ←/→ 1 s (shift 0.1 s), `p` play the selection.
+- **Options and run:** the same options as the CLI, checked as you change them, with the
+  equivalent command. The run is followed live and keeps going if the browser is closed;
+  the results can be played and downloaded.
+- **Inbox** (with `--inbox`): new recordings wait there. Upload from the browser, then import
+  one into its date folder (`<year>/<date>/<date>_raw.*`, see `--layout`); the date is
+  suggested from the file name, the recording's tags or its date.
+
+When a recording is opened the first time, the server prepares its waveform and a small MP3
+preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` (default: the user
+cache folder; unused entries go after `--cache-days`). The browser only streams the preview;
+the cut is always made from the original.
+
+The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
+It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
+inside `--root`, and has no read/write timeouts (long uploads and live updates). On SIGTERM it
+cancels running jobs and waits for them to clean up.
 
 ## TUI
 
