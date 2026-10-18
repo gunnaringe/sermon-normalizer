@@ -71,7 +71,9 @@ cancels running jobs and waits for them to clean up.
   the selection.
 - **Options and run:** the options below, checked as you change them; your choices carry over
   to the next folder (except Force). The run is followed live and keeps going if the browser is
-  closed; the results can be played and downloaded. Cancelling leaves nothing half-written.
+  closed. Cancelling leaves nothing half-written.
+- **Files:** each date's page lists its finished files to play and download, and links to
+  the sources (whole recording and cut).
 - **Upload:** pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)

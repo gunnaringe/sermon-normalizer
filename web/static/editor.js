@@ -63,6 +63,7 @@ export async function editorView(view, path, config) {
     recordingLine.textContent = raw ? `Recording: ${raw.name} · ${formatSize(raw.size)}` : 'No raw recording in this folder.';
   };
   showRecording(info.raw);
+  const filesSection = h('section', {});
   const checkOut = h('div', {});
   const runButton = h('button', { class: 'primary', disabled: true, onclick: run }, 'Run');
   const jobPanel = h('section', {});
@@ -71,6 +72,7 @@ export async function editorView(view, path, config) {
     crumbs(path.split('/').slice(0, -1).join('/'), info.date),
     h('h1', {}, info.date),
     recordingLine,
+    filesSection,
     waveSection,
     editChoice ? h('p', {}, editChoice) : '',
     h('h2', {}, 'Options'),
@@ -78,6 +80,26 @@ export async function editorView(view, path, config) {
     h('div', { class: 'panel' }, checkOut, h('p', {}, runButton)),
     jobPanel,
   );
+
+  // ---- files: the outputs to listen to and download, and the sources ----
+  const fileURL = (f, download) => 'api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path);
+  function showFiles(inf) {
+    const outputs = inf.outputs.map((o) => h('div', { class: 'out' },
+      h('strong', {}, o.name), h('span', { class: 'muted' }, formatSize(o.size)),
+      h('audio', { controls: true, preload: 'none', src: fileURL(o) }),
+      h('a', { href: fileURL(o, true) }, 'Download')));
+    const sources = [[inf.raw, 'whole recording'], [inf.edit, 'cut']].filter(([f]) => f)
+      .flatMap(([f, what], i) => [i ? ' · ' : '', h('a', { href: fileURL(f, true) }, f.name), ` (${what}, ${formatSize(f.size)})`]);
+    filesSection.replaceChildren(
+      outputs.length ? h('div', { class: 'outputs' }, outputs) : '',
+      sources.length ? h('p', { class: 'muted' }, 'Sources: ', ...sources) : '');
+  }
+  async function refreshFiles() {
+    const inf = await api('GET', 'api/folder?path=' + q(path));
+    showRecording(inf.raw);
+    showFiles(inf);
+  }
+  showFiles(info);
 
   // ---- waveform ----
   async function prepareWaveform() {
@@ -97,7 +119,7 @@ export async function editorView(view, path, config) {
       return;
     }
     if (info.raw && /\.wav$/i.test(info.raw.name)) { // it became FLAC meanwhile
-      showRecording((await api('GET', 'api/folder?path=' + q(path))).raw);
+      await refreshFiles();
       check();
     }
     const peaks = await api('GET', 'api/peaks?path=' + q(path));
@@ -421,6 +443,7 @@ export async function editorView(view, path, config) {
         events.close();
         events = null;
         check(); // existing outputs changed
+        refreshFiles().catch(() => {});
       }
     };
   }
@@ -440,10 +463,7 @@ export async function editorView(view, path, config) {
       j.warnings.length ? h('div', {}, j.warnings.map((w) => h('p', { class: 'warn' }, '⚠ ' + w))) : '',
       j.error ? h('p', { class: 'error' }, j.error) : '',
       j.state === 'cancelled' ? h('p', {}, 'Cancelled. Nothing half-written was left behind.') : '',
-      j.outputs.length ? h('div', { class: 'outputs' }, j.outputs.map((o) => h('div', { class: 'out' },
-        h('strong', {}, o.name), h('span', { class: 'muted' }, formatSize(o.size)),
-        h('audio', { controls: true, preload: 'none', src: 'api/file?path=' + q(o.path) }),
-        h('a', { href: 'api/file?download=1&path=' + q(o.path) }, 'Download')))) : '',
+      j.state === 'done' ? h('p', {}, 'The files are listed at the top of the page.') : '',
       h('details', { open: running }, h('summary', {}, 'Log'), log),
       running ? h('button', { onclick: cancel }, 'Cancel') : ''));
     log.scrollTop = log.scrollHeight;

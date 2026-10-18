@@ -104,6 +104,10 @@ test('run with chosen outputs and follow it live', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.outputs')).toContainText('2026-10-04.mp3');
   await expect(page.locator('.outputs audio')).toHaveCount(1);
+  // Downloads straight from the page.
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('.outputs').getByRole('link', { name: 'Download' }).click()]);
+  expect(download.suggestedFilename()).toBe('2026-10-04.mp3');
+  await expect(page.getByText('Sources: 2026-10-04_raw.flac')).toBeVisible();
   await page.screenshot({ path: path.join(shots, 'done.png'), fullPage: true });
 
   const files = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).sort();
@@ -112,7 +116,8 @@ test('run with chosen outputs and follow it live', async ({ page }) => {
   await page.reload();
   await expect(page.getByLabel('FLAC master')).not.toBeChecked();
   await expect(page.getByLabel('Fade in (s)')).toHaveValue('1');
-  // The finished run is shown again, and existing outputs are pointed out.
+  // The files stay listed, and the finished run is shown again.
+  await expect(page.locator('.outputs')).toContainText('2026-10-04.mp3');
   await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible();
 });
 
