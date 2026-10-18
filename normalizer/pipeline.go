@@ -532,6 +532,14 @@ func (p *Pipeline) checkStereo(ctx context.Context) {
 		p.warnf("the two channels of the source are nearly identical (their difference is %.0f dB below the signal), "+
 			"so stereo output adds next to nothing. Use --channels mono.", -c.Side)
 	}
+	if side, by := c.Quieter(); side != "" {
+		how := fmt.Sprintf("%.0f dB quieter than the other", by)
+		if math.IsInf(by, 1) {
+			how = "silent"
+		}
+		p.warnf("the %s channel of the source is %s, so stereo output has the sermon on one side only. "+
+			"Use --channels mono, which mixes both channels.", side, how)
+	}
 }
 
 // sermonLength is the length in seconds of what goes into the master.

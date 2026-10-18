@@ -490,6 +490,8 @@ func TestIntegrationStereoWarnings(t *testing.T) {
 		{"identical", speech + "|" + speech, "are identical"},
 		{"nearly identical", speech + "|" + speech + "+0.0005*sin(2*PI*1234*t)", "are nearly identical"},
 		{"real stereo", speech + "|0.5*" + speech + "+0.05*sin(2*PI*330*t)", ""},
+		{"left only", speech + "|0", "the right channel of the source is silent"},
+		{"mostly right", "0.001*" + speech + "|" + speech, "the left channel of the source is 60 dB quieter"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := dateFolder(t)

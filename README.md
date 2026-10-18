@@ -137,7 +137,9 @@ sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
   Mono and stereo recordings both work either way. With `stereo`, the tool warns if the sermon
   is mono or its two channels are identical or nearly so (difference 30 dB or more below the
   signal, common when a mixer sends one signal to both sides): stereo output would then sound
-  the same as mono in bigger files. It only warns; the output is still stereo.
+  the same as mono in bigger files. It also warns if one channel is silent or 20 dB or more
+  quieter than the other: stereo output would have the sermon on one side only, while mono mixes
+  both channels. It only warns; the output is still stereo.
 
 Flags for `run` (may go before or after the folder):
 

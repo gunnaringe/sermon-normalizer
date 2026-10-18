@@ -14,10 +14,30 @@ import (
 // carries 0.1 % of the energy, which is noise, not stereo.
 const NearMonoSide = -30.0
 
+// OneSided is how much quieter one channel may be before the recording counts
+// as being on one side only. Panning in a real stereo mix is a few dB.
+const OneSided = 20.0
+
 // ChannelCheck describes the channels of a source.
 type ChannelCheck struct {
-	Channels int     // 1, 2, or more
-	Side     float64 // two channels: level of L-R relative to L+R in dB; -Inf when identical
+	Channels    int     // 1, 2, or more
+	Side        float64 // two channels: level of L-R relative to L+R in dB; -Inf when identical
+	Left, Right float64 // two channels: RMS level of each in dBFS; -Inf when silent
+}
+
+// Quieter returns which channel ("left"/"right") is at least OneSided dB
+// quieter than the other, and by how much (+Inf when silent), or "".
+func (c ChannelCheck) Quieter() (string, float64) {
+	if c.Channels != 2 || math.IsInf(c.Left, -1) && math.IsInf(c.Right, -1) {
+		return "", 0
+	}
+	switch d := c.Left - c.Right; {
+	case d >= OneSided:
+		return "right", d
+	case -d >= OneSided:
+		return "left", -d
+	}
+	return "", 0
 }
 
 // EffectivelyMono reports whether stereo output would add nothing.
@@ -47,9 +67,8 @@ func parseChannels(stderr string) (int, error) {
 	}
 }
 
-// parseSide reads the RMS levels astats prints per channel after the
-// mid/side pan, and returns side minus mid in dB.
-func parseSide(stderr string) (float64, error) {
+// parseLevels reads the RMS level astats prints for each channel (1-based).
+func parseLevels(stderr string) (map[int]float64, error) {
 	levels := map[int]float64{}
 	ch := 0
 	for _, line := range strings.Split(stderr, "\n") {
@@ -65,20 +84,30 @@ func parseSide(stderr string) (float64, error) {
 			v := strings.TrimSpace(strings.TrimPrefix(line, "RMS level dB: "))
 			level, err := strconv.ParseFloat(v, 64) // "-inf" parses too
 			if err != nil {
-				return 0, fmt.Errorf("bad RMS level %q", v)
+				return nil, fmt.Errorf("bad RMS level %q", v)
 			}
 			levels[ch] = level
 		}
 	}
-	mid, okMid := levels[1]
-	side, okSide := levels[2]
-	if !okMid || !okSide {
-		return 0, fmt.Errorf("no channel levels found in ffmpeg output")
+	if len(levels) == 0 {
+		return nil, fmt.Errorf("no channel levels found in ffmpeg output")
 	}
-	if math.IsInf(mid, -1) {
-		return math.Inf(-1), nil // silence: nothing to tell apart
+	return levels, nil
+}
+
+// checkFromLevels turns the levels of the analysis channels (left, right,
+// mid L+R, side L-R) into a ChannelCheck.
+func checkFromLevels(levels map[int]float64) (ChannelCheck, error) {
+	for ch := 1; ch <= 4; ch++ {
+		if _, ok := levels[ch]; !ok {
+			return ChannelCheck{}, fmt.Errorf("no level for analysis channel %d in ffmpeg output", ch)
+		}
 	}
-	return side - mid, nil
+	c := ChannelCheck{Channels: 2, Left: levels[1], Right: levels[2], Side: math.Inf(-1)}
+	if mid := levels[3]; !math.IsInf(mid, -1) { // all silent: nothing to tell apart
+		c.Side = levels[4] - mid
+	}
+	return c, nil
 }
 
 // CheckChannels looks at how different the channels of path are. pre are
@@ -92,11 +121,15 @@ func (f FFmpeg) CheckChannels(ctx context.Context, path string, pre ...string) (
 	if err != nil || n != 2 {
 		return ChannelCheck{Channels: n}, err
 	}
+	// Four analysis channels: left, right, mid (L+R) and side (L-R).
 	args := append(append([]string{}, pre...), "-i", path,
-		"-af", "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0-0.5*c1,astats", "-f", "null", "-")
+		"-af", "pan=quad|c0=c0|c1=c1|c2=0.5*c0+0.5*c1|c3=0.5*c0-0.5*c1,astats", "-f", "null", "-")
 	if res, err = f.Run(ctx, args...); err != nil {
 		return ChannelCheck{}, err
 	}
-	side, err := parseSide(res.Stderr)
-	return ChannelCheck{Channels: 2, Side: side}, err
+	levels, err := parseLevels(res.Stderr)
+	if err != nil {
+		return ChannelCheck{}, err
+	}
+	return checkFromLevels(levels)
 }

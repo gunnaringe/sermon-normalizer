@@ -435,24 +435,53 @@ func TestParseChannels(t *testing.T) {
 	}
 }
 
-func TestParseSide(t *testing.T) {
+func TestParseLevels(t *testing.T) {
 	out := `[Parsed_astats_1 @ 0x1] Channel: 1
 [Parsed_astats_1 @ 0x1] DC offset: 0.000002
-[Parsed_astats_1 @ 0x1] RMS level dB: -22.999456
+[Parsed_astats_1 @ 0x1] RMS level dB: -20.5
 [Parsed_astats_1 @ 0x1] Channel: 2
-[Parsed_astats_1 @ 0x1] RMS level dB: -49.030900
+[Parsed_astats_1 @ 0x1] RMS level dB: -inf
+[Parsed_astats_1 @ 0x1] Channel: 3
+[Parsed_astats_1 @ 0x1] RMS level dB: -26.5
+[Parsed_astats_1 @ 0x1] Channel: 4
+[Parsed_astats_1 @ 0x1] RMS level dB: -26.5
 [Parsed_astats_1 @ 0x1] Overall
 [Parsed_astats_1 @ 0x1] RMS level dB: -25.998939
 `
-	if got, err := parseSide(out); err != nil || math.Abs(got-(-26.03)) > 0.01 {
-		t.Errorf("got %v, %v", got, err)
+	levels, err := parseLevels(out)
+	if err != nil || len(levels) != 4 || levels[1] != -20.5 || !math.IsInf(levels[2], -1) {
+		t.Fatalf("levels %v, %v", levels, err)
 	}
-	identical := strings.Replace(out, "-49.030900", "-inf", 1)
-	if got, _ := parseSide(identical); !math.IsInf(got, -1) {
-		t.Errorf("identical: %v", got)
+	c, err := checkFromLevels(levels)
+	if err != nil || c.Side != 0 || c.EffectivelyMono() {
+		t.Errorf("check %+v, %v", c, err)
 	}
-	if _, err := parseSide("nothing"); err == nil {
+	if side, by := c.Quieter(); side != "right" || !math.IsInf(by, 1) {
+		t.Errorf("quieter %q %v", side, by)
+	}
+	if _, err := parseLevels("nothing"); err == nil {
 		t.Error("expected an error")
+	}
+	if _, err := checkFromLevels(map[int]float64{1: -20, 2: -20}); err == nil {
+		t.Error("expected an error for missing channels")
+	}
+}
+
+func TestQuieter(t *testing.T) {
+	inf := math.Inf(-1)
+	for _, c := range []struct {
+		l, r float64
+		side string
+	}{
+		{-20, -24, ""},      // panned a little
+		{-20, -45, "right"}, // one-sided
+		{-50, -20, "left"},  // one-sided
+		{inf, -20, "left"},  // silent
+		{inf, inf, ""},      // all silent
+	} {
+		if side, _ := (ChannelCheck{Channels: 2, Left: c.l, Right: c.r}).Quieter(); side != c.side {
+			t.Errorf("%v/%v: %q, want %q", c.l, c.r, side, c.side)
+		}
 	}
 }
 
