@@ -385,8 +385,7 @@ export async function editorView(view, path, config) {
     lastCheck = res;
     checkOut.replaceChildren(
       res.error ? h('p', { class: 'error' }, res.error) : '',
-      ...(res.notices || []).map((n) => h('p', { class: 'notice' }, n)),
-      res.command ? h('p', { class: 'command' }, 'Same as: ', h('code', {}, res.command)) : '');
+      ...(res.notices || []).map((n) => h('p', { class: 'notice' }, n)));
     updateRunButton();
   }
 

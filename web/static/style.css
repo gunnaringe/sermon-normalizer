@@ -122,7 +122,6 @@ table.list tr.row:hover { background: var(--panel); cursor: pointer; }
 .options input[type=number] { width: 6.5em; }
 .options input[type=text] { width: 14em; }
 details summary { cursor: pointer; color: var(--muted); margin: 0.6rem 0 0.3rem; }
-.command { word-break: break-all; color: var(--muted); }
 .notice { color: var(--warn); margin: 0.2rem 0; }
 
 progress { width: 100%; height: 0.7rem; accent-color: var(--accent); }

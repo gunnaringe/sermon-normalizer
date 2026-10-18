@@ -151,7 +151,10 @@ func TestCheck(t *testing.T) {
 	}
 	q.Start, q.End, q.FadeIn = 21, 79, 1
 	pl := decode[plan](t, ts.do(t, "POST", url, q))
-	if pl.Error != "" || !strings.HasSuffix(pl.Command, "--start 0:00:21 --end 0:01:19 --fade-in 1") ||
+	if parsed := ts.check(filepath.Join(ts.root, "d/2026-10-04"), q).opt; parsed.Start != 21 || parsed.End != 79 || parsed.FadeIn != 1 {
+		t.Errorf("parsed options %+v", parsed)
+	}
+	if pl.Error != "" ||
 		len(pl.Notices) != 1 || !strings.Contains(pl.Notices[0], "2026-10-04.mp3") {
 		t.Errorf("plan %+v", pl)
 	}
@@ -167,7 +170,7 @@ func TestCheck(t *testing.T) {
 		t.Errorf("conflict: %+v", pl)
 	}
 	q.UseEdit = true
-	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Error != "" || strings.Contains(pl.Command, "--start") {
+	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Error != "" || ts.check(filepath.Join(ts.root, "d/2026-10-04"), q).opt.Start != 0 {
 		t.Errorf("use edit: %+v", pl)
 	}
 	if rec := ts.do(t, "POST", url, map[string]any{"bogus": 1}); rec.Code != http.StatusBadRequest {
@@ -308,7 +311,7 @@ func TestRunQueueAndCancel(t *testing.T) {
 		t.Fatalf("run: %d %s", rec.Code, rec.Body)
 	}
 	snap := decode[jobSnapshot](t, rec)
-	if snap.State != "queued" || !strings.Contains(snap.Command, "--start 0:00:30") {
+	if snap.State != "queued" || snap.Folder != "2026-10-04" {
 		t.Errorf("snapshot %+v", snap)
 	}
 	if rec := ts.do(t, "POST", "/api/run?path=2026-10-04", q); rec.Code != http.StatusConflict {

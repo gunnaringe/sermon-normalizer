@@ -408,24 +408,45 @@ func serviceWithGaps(t *testing.T, ff FFmpeg, path string) {
 	}
 }
 
+// levels returns the RMS level in dBFS of every window seconds of path,
+// mixed to mono, as the web app reads them.
+func levels(f FFmpeg, path string, window float64) ([]float64, error) {
+	cmd := exec.Command(f.Bin, "-nostdin", "-hide_banner", "-v", "error",
+		"-i", path, "-ac", "1", "-ar", fmt.Sprint(LevelRate), "-f", "s16le", "-")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	data, readErr := ReadLevels(out, window, nil)
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("ffmpeg failed (%w):\n%s", err, lastLines(stderr.String(), 15))
+	}
+	return data.RMS, readErr
+}
+
 func TestIntegrationLevelsAndSilences(t *testing.T) {
 	ff := requireFFmpeg(t)
 	path := filepath.Join(t.TempDir(), "service.flac")
 	serviceWithGaps(t, ff, path)
 
-	levels, err := ff.Levels(context.Background(), path, 0.1)
+	lv, err := levels(ff, path, 0.1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(levels) != 1000 {
-		t.Fatalf("%d levels, want 1000 (100 s / 0.1 s)", len(levels))
+	if len(lv) != 1000 {
+		t.Fatalf("%d lv, want 1000 (100 s / 0.1 s)", len(lv))
 	}
-	music, speech, gap := levels[100], levels[500], levels[200]
+	music, speech, gap := lv[100], lv[500], lv[200]
 	t.Logf("music %.1f dB, speech %.1f dB, gap %.1f dB", music, speech, gap)
 	if music < speech+10 || gap != SilenceFloor {
 		t.Errorf("music %.1f, speech %.1f, gap %.1f: want music well above speech, gap silent", music, speech, gap)
 	}
-	got := Silences(levels, 0.1, 1)
+	got := Silences(lv, 0.1, 1)
 	if len(got) != 2 || !near(got[0].Start, 19, 0.15) || !near(got[0].End, 21, 0.15) ||
 		!near(got[1].Start, 79, 0.15) || !near(got[1].End, 81, 0.15) {
 		t.Errorf("silences %v, want ~[19 21] and ~[79 81]", got)
@@ -507,7 +528,7 @@ func TestIntegrationStereoWarnings(t *testing.T) {
 			if err := (&Pipeline{P: paths, Opt: opt, FF: ff, Out: &out}).Run(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			warned := strings.Contains(out.String(), "WARNING: ") && strings.Contains(out.String(), "--channels mono")
+			warned := strings.Contains(out.String(), "WARNING: ") && strings.Contains(out.String(), "Choose mono")
 			if c.want == "" && warned || c.want != "" && !strings.Contains(out.String(), c.want) {
 				t.Errorf("output:\n%s", out.String())
 			}
@@ -516,7 +537,7 @@ func TestIntegrationStereoWarnings(t *testing.T) {
 			opt.Force = true
 			out.Reset()
 			(&Pipeline{P: paths, Opt: opt, FF: ff, Out: &out}).Run(context.Background())
-			if strings.Contains(out.String(), "--channels mono") {
+			if strings.Contains(out.String(), "Choose mono") {
 				t.Errorf("mono output warned:\n%s", out.String())
 			}
 		})

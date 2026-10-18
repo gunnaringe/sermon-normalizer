@@ -2,15 +2,11 @@ package normalizer
 
 import (
 	"bufio"
-	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"math"
-	"os/exec"
 	"sort"
-	"strings"
 )
 
 // LevelRate is the sample rate levels are computed at: plenty for loudness,
@@ -27,30 +23,6 @@ type LevelData struct {
 
 // SilenceFloor is the level (dBFS) reported for digital silence.
 const SilenceFloor = -90.0
-
-// Levels returns the RMS level in dBFS of every window seconds of path,
-// mixed to mono. The audio is streamed, never held in memory.
-func (f FFmpeg) Levels(ctx context.Context, path string, window float64) ([]float64, error) {
-	cmd := exec.CommandContext(ctx, f.Bin, "-nostdin", "-hide_banner", "-v", "error",
-		"-i", path, "-ac", "1", "-ar", fmt.Sprint(LevelRate), "-f", "s16le", "-")
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	data, readErr := ReadLevels(out, window, nil)
-	if err := cmd.Wait(); err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, fmt.Errorf("ffmpeg failed (%w):\n%s", err, lastLines(stderr.String(), 15))
-	}
-	return data.RMS, readErr
-}
 
 // ReadLevels computes the levels of every window seconds of PCM read from r
 // (see LevelRate). progress, if set, gets the seconds read about once a second.

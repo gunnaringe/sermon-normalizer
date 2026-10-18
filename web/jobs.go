@@ -27,7 +27,6 @@ type job struct {
 
 	mu       sync.Mutex
 	state    string // queued, running, done, failed, cancelled
-	command  string
 	steps    []string
 	log      []string
 	warnings []string
@@ -44,7 +43,6 @@ type jobSnapshot struct {
 	ID       string           `json:"id"`
 	Folder   string           `json:"folder"`
 	State    string           `json:"state"`
-	Command  string           `json:"command"`
 	Steps    []string         `json:"steps"`
 	Log      []string         `json:"log"`
 	Warnings []string         `json:"warnings"`
@@ -57,7 +55,7 @@ func (j *job) snapshot() jobSnapshot {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return jobSnapshot{
-		ID: j.ID, Folder: j.Folder, State: j.state, Command: j.command,
+		ID: j.ID, Folder: j.Folder, State: j.state,
 		Steps: append([]string{}, j.steps...), Log: append([]string{}, j.log...),
 		Warnings: append([]string{}, j.warnings...), Progress: j.progress, Error: j.err,
 		Outputs: append([]outputFileInfo{}, j.outputs...),
@@ -154,7 +152,7 @@ func (js *jobs) start(pl plan) (*job, error) {
 	id := make([]byte, 8)
 	rand.Read(id)
 	ctx, cancel := context.WithCancel(js.s.ctx)
-	j := &job{ID: hex.EncodeToString(id), Folder: folder, state: "queued", command: pl.Command,
+	j := &job{ID: hex.EncodeToString(id), Folder: folder, state: "queued",
 		subs: map[chan struct{}]struct{}{}, cancel: cancel, finished: make(chan struct{})}
 	js.byID[j.ID] = j
 	js.all = append(js.all, j)

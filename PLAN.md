@@ -2,9 +2,9 @@
 
 ## Goal
 
-One command-line tool that takes a recording of a sermon (speech + music, uneven volume)
+One web service that takes a recording of a sermon (speech + music, uneven volume)
 and produces finished files for publishing on SoundCloud, Spotify and other podcast services.
-Must run on Linux (server), but must be testable on Windows.
+It runs on Linux (a server or the home cluster); the cutting happens in the browser.
 
 ## Previous flow (manual + `behandle-tale.ps1`)
 
@@ -19,13 +19,13 @@ Must run on Linux (server), but must be testable on Windows.
   <date>.flac                master, mono, 48 kHz / 24-bit, -19 LUFS
   <date>.mp3                 mono, 96 kbps  (publishing)
   <date>.opus                mono, 48 kbps
-  arkiv\                     only with --archive arkiv
+  arkiv\                     only with the archive folder set to arkiv
     <date>_raw.flac          the whole recording, unedited
     <date>_edit.flac         cut version (input to the master)
 ```
 
-Input placed in the folder: `<date>_raw.wav` (or `_raw.flac`), plus `<date>_edit.flac` unless `--start`/`--end` is used.
-Without `--archive` the sources stay in the date folder untouched.
+Input placed in the folder: `<date>_raw.wav` (or `_raw.flac`), plus `<date>_edit.flac` if the sermon is cut by hand instead of in the editor.
+Without an archive folder the sources stay in the date folder untouched.
 
 ## Choice of language
 
@@ -39,48 +39,27 @@ finding files, calling ffmpeg, interpreting measurements, moving/deleting files,
 | Bash | Least code for plain ffmpeg calls | Fragile for parsing, error handling and tests; not portable to Windows |
 | Rust | Same deliverable as Go | More work for no gain here |
 
-Go also fits since it was already chosen, and it is easy to extend later
-(for example watching a folder or a web API).
+Go also fits since it was already chosen, and its standard library has the web server too.
 
 ## Architecture
 
-Module `github.com/gunnaringe/sermon-normalizer`. The `normalizer` package uses the standard library
-only; the TUI uses Bubble Tea, Bubbles and Lip Gloss.
+Module `github.com/gunnaringe/sermon-normalizer`, standard library only.
 
-- `cmd/sermon-normalizer-cli/main.go`: CLI (subcommands, flags, Ctrl+C cancels cleanly; `--interactive` starts the TUI)
-- `tui/`: the interactive front end (folders, cut, options, run)
-- `cmd/sermon-normalizer/`, `web/`: the web app (the main program) (JSON API, jobs, waveform analysis,
-  inbox) and its embedded front end (`web/static/`, plain JS with wavesurfer.js bundled)
-- `normalizer/levels.go`: volume per 100 ms and silence detection, for the TUI timeline
-- `normalizer/outputs.go`: which outputs to make (`--formats`)
+- `cmd/sermon-normalizer/`: the server (flags, startup, clean shutdown)
+- `web/`: JSON API, jobs, waveform analysis, inbox, and the embedded front end
+  (`web/static/`, plain JS with wavesurfer.js bundled)
 - `normalizer/ffmpeg.go`: thin wrapper around `ffmpeg` (`-nostdin`, captures stdout and stderr)
 - `normalizer/measure.go`: measurement with `ebur128` and parsing of the summary (LUFS, true peak, LRA)
 - `normalizer/pipeline.go`: the steps (raw, edit, master, lossy, report)
-- `normalizer/timecode.go`: parsing and formatting of `--start`/`--end` times
-- `*_test.go`: tests for parsing, file names and gain calculation
+- `normalizer/levels.go`: volume per window and silence detection, for the waveform
+- `normalizer/channels.go`: the mono/one-sided checks behind the stereo warnings
+- `normalizer/outputs.go`: which outputs to make
+- `*_test.go`: unit and integration tests; `web/e2e/`: browser tests
 
-## CLI
-
-```
-sermon-normalizer-cli --interactive [folder] [flags]   terminal UI: pick a folder, cut, set options, run
-sermon-normalizer-cli run <folder> [flags]             run the whole flow for a date folder
-sermon-normalizer-cli measure <file>...                measure LUFS / true peak / LRA
-sermon-normalizer-cli version
-
-run flags:
-  --start / --end          cut the edit from raw (one segment); otherwise supply _edit yourself
-  --fade-in / --fade-out   seconds of fade at the start/end of the sermon (0 = off)
-  --formats flac,mp3,opus  which outputs to make (default all)
-  --archive <folder>       keep raw and edit as FLAC there (default: sources stay in place)
-  --channels     mono      mono or stereo (stereo defaults: -16 LUFS, 128k MP3, 96k Opus)
-  --target-lufs  -19       -16 with --channels stereo
-  --true-peak    -1.5
-  --mp3-bitrate  96k
-  --opus-bitrate 48k
-  --noise-reduction 12     0 = off
-  --keep-wav               do not delete the WAV after verification
-  --force                  recreate the output files
-```
+Run options (from the web form): cut start/end, fades, outputs (FLAC, MP3, Opus), mono or
+stereo (stereo defaults: -16 LUFS, 128k MP3, 96k Opus), archive folder, keep WAV, force,
+noise reduction (12 dB), target loudness (-19 LUFS), max true peak (-1.5 dBTP),
+MP3 bitrate (96k), Opus bitrate (48k).
 
 ## Important rules (learned the hard way)
 
@@ -89,21 +68,20 @@ run flags:
   or the loudness is off. The gain is limited by the peak ceiling.
 - Measure with `ebur128` (fast), not `loudnorm` (upsamples to 192 kHz and is slow).
 - Call ffmpeg with an argument list, never through a shell (avoids quoting bugs like `-c:a` in PowerShell).
-- Existing output files are skipped without `--force`.
+- Existing output files are skipped without Force.
 
 ## Phases
 
-1. **Port the ps1 to Go:** `run` and `measure`, tests, builds for Windows and Linux.
+1. **Port the ps1 to Go** and build the web editor (done).
 2. **Test on real recordings:** 2026-09-20 and 2026-10-04 give the same result as the ps1.
-3. **Run on Linux:** install ffmpeg (`apt install ffmpeg`), copy the binary, run it on a folder.
+3. **Release and deploy:** container image, running on the home cluster behind Traefik and Pocket ID.
 4. **Later (optional):**
-   - `run --all <year folder>` to process all date folders without a master
    - metadata (ID3 tags: title, date, church) on the MP3
-   - watching a folder (Resilio Sync) and processing automatically
+   - picking up new recordings from a synced folder (Resilio Sync) automatically
 
 ## Risks and open questions
 
 - **Opus true peak** overshoots easily; handled by the measurement step, but consider setting the master peak to -2 dBTP.
 - **Title in file names** is not decided (date only for now).
-- **Noise reduction** (`afftdn`) has not been listened to; tune `--noise-reduction` by ear.
+- **Noise reduction** (`afftdn`) has not been listened to; tune the noise reduction by ear.
 - Resilio Sync can create `.rsls` placeholders; the tool ignores them.

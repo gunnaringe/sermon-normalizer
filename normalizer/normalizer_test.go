@@ -242,22 +242,6 @@ func TestParseDuration(t *testing.T) {
 	}
 }
 
-func TestParseTime(t *testing.T) {
-	ok := map[string]float64{
-		"2480": 2480, "41:20": 2480, "1:12:05": 4325, "41:20.5": 2480.5, "0:00:07": 7, "90": 90,
-	}
-	for in, want := range ok {
-		if got, err := ParseTime(in); err != nil || got != want {
-			t.Errorf("ParseTime(%q) = %v, %v; want %v", in, got, err, want)
-		}
-	}
-	for _, in := range []string{"", "abc", "1:2:3:4", "41:60", "-5", "1.5:00", "1:-1"} {
-		if _, err := ParseTime(in); err == nil {
-			t.Errorf("ParseTime(%q): expected an error", in)
-		}
-	}
-}
-
 func TestFormatTime(t *testing.T) {
 	for in, want := range map[float64]string{2480: "0:41:20", 4325: "1:12:05", 2480.5: "0:41:20.500"} {
 		if got := FormatTime(in); got != want {
@@ -312,22 +296,7 @@ func TestMoveFile(t *testing.T) {
 	}
 }
 
-func TestParseOutputs(t *testing.T) {
-	ok := map[string]Outputs{
-		"flac,mp3,opus": AllOutputs,
-		"mp3":           {Mp3: true},
-		"Opus, FLAC":    {Flac: true, Opus: true},
-	}
-	for in, want := range ok {
-		if got, err := ParseOutputs(in); err != nil || got != want {
-			t.Errorf("ParseOutputs(%q) = %+v, %v; want %+v", in, got, err, want)
-		}
-	}
-	for _, in := range []string{"", ",", "wav", "mp3,ogg"} {
-		if _, err := ParseOutputs(in); err == nil {
-			t.Errorf("ParseOutputs(%q): expected an error", in)
-		}
-	}
+func TestOutputsString(t *testing.T) {
 	if s := (Outputs{Flac: true, Opus: true}).String(); s != "flac,opus" {
 		t.Errorf("String() = %q", s)
 	}
@@ -524,21 +493,5 @@ func TestValidate(t *testing.T) {
 		if o.Validate() == nil {
 			t.Errorf("%s: expected an error", name)
 		}
-	}
-}
-
-func TestCommandLine(t *testing.T) {
-	opt := DefaultOptions()
-	opt.Start, opt.FadeOut, opt.Force = 61.5, 2, true
-	opt.Outputs = Outputs{Mp3: true}
-	got := CommandLine("/data/Taler/2026 10", opt, "/mnt/arkiv")
-	want := "sermon-normalizer-cli run '/data/Taler/2026 10' --start 0:01:01.500 --formats mp3 --fade-out 2 --archive /mnt/arkiv --force"
-	if got != want {
-		t.Errorf("got  %s\nwant %s", got, want)
-	}
-	opt = DefaultOptions()
-	opt.SetStereo(true)
-	if got := CommandLine("x", opt, ""); got != "sermon-normalizer-cli run x --channels stereo" {
-		t.Errorf("stereo defaults are not repeated: %s", got)
 	}
 }

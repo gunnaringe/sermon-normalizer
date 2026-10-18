@@ -266,9 +266,9 @@ func (p *Pipeline) stepRaw(ctx context.Context) error {
 
 // ingest brings a source (WAV or FLAC) in the date folder into the archive as FLAC.
 //   - A FLAC in the folder is moved to dst.
-//   - A WAV is converted to dst (if dst is missing or --force), the audio is
+//   - A WAV is converted to dst (if dst is missing or forced), the audio is
 //     verified with MD5, and the WAV is deleted only if the audio is identical
-//     (and not --keep-wav).
+//     (and the WAV is not kept).
 //
 // Returns whether dst exists afterwards.
 func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
@@ -277,7 +277,7 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 	switch {
 	case flac == "":
 	case exists(dst) && !p.Opt.Force:
-		p.warnf("%s is already in the archive; leaving %s in the folder (use --force to replace).", filepath.Base(dst), filepath.Base(flac))
+		p.warnf("%s is already in the archive; leaving %s in the folder (force to replace it).", filepath.Base(dst), filepath.Base(flac))
 	default:
 		if err := MoveFile(flac, dst); err != nil {
 			return false, err
@@ -304,7 +304,7 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 	case !same:
 		p.warnf("%s and %s are NOT identical. Keeping the WAV.", filepath.Base(dst), filepath.Base(wav))
 	case p.Opt.KeepWav:
-		p.logf("OK: %s is identical to the WAV. Keeping the WAV (--keep-wav).", filepath.Base(dst))
+		p.logf("OK: %s is identical to the WAV. Keeping the WAV, as asked.", filepath.Base(dst))
 	default:
 		if err := os.Remove(wav); err != nil {
 			return false, err
@@ -345,10 +345,10 @@ func (p *Pipeline) stepEdit(ctx context.Context) error {
 	manual := p.findSource(editName)
 	if p.Opt.cutting() {
 		if manual != "" {
-			return fmt.Errorf("%s exists and --start/--end is given: use only one of them", filepath.Base(manual))
+			return fmt.Errorf("%s exists and a cut is given: use only one of them", filepath.Base(manual))
 		}
 		if p.raw == "" {
-			return errors.New("no raw file to cut with --start/--end")
+			return errors.New("no raw recording to cut")
 		}
 		if p.P.Archive == "" {
 			p.logf("Cutting %s from %s to %s while making the master.", filepath.Base(p.raw), p.cutFrom(), p.cutTo())
@@ -356,7 +356,7 @@ func (p *Pipeline) stepEdit(ctx context.Context) error {
 		}
 		return p.cutEdit(ctx)
 	}
-	missing := fmt.Errorf("missing %s_edit.flac (or .wav): use --start/--end, or cut the recording yourself and save it in %s", p.P.Date, p.P.Folder)
+	missing := fmt.Errorf("missing %s_edit.flac (or .wav): choose a cut, or cut the recording yourself and save it in %s", p.P.Date, p.P.Folder)
 	if p.P.Archive == "" {
 		if manual == "" {
 			return missing
@@ -376,14 +376,14 @@ func (p *Pipeline) stepEdit(ctx context.Context) error {
 	return nil
 }
 
-// cutEdit writes the edit to the archive from raw with --start/--end (one
+// cutEdit writes the edit to the archive from raw at the cut (one
 // continuous segment). If more than one segment is needed, cut by hand and
 // supply the _edit file as before.
 func (p *Pipeline) cutEdit(ctx context.Context) error {
 	dst := p.P.EditArchive()
 	if exists(dst) && !p.Opt.Force {
 		p.edit = dst
-		p.logf("%s exists, skipping (use --force to cut again).", filepath.Base(dst))
+		p.logf("%s exists, skipping (force to cut again).", filepath.Base(dst))
 		return nil
 	}
 	var total float64
@@ -399,7 +399,7 @@ func (p *Pipeline) cutEdit(ctx context.Context) error {
 	return nil
 }
 
-// cutArgs are the input options for --start/--end. Placed before -i, ffmpeg
+// cutArgs are the input options for the cut. Placed before -i, ffmpeg
 // decodes and discards the audio before start, so the cut is exact.
 func (p *Pipeline) cutArgs() []string {
 	var args []string
@@ -475,7 +475,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 	case o.Flac:
 		p.step(fmt.Sprintf("3. Master (%s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
 		if !p.pending(p.P.Master) {
-			p.logf("Already exists, skipping (use --force).")
+			p.logf("Already exists, skipping (force to redo).")
 			return nil
 		}
 	case !lossy:
@@ -533,13 +533,13 @@ func (p *Pipeline) checkStereo(ctx context.Context) {
 		p.warnf("could not check the channels: %v", err)
 	case c.Channels == 1:
 		p.warnf("the source is mono, so stereo output is the same signal on both sides: " +
-			"same sound, bigger files. Use --channels mono.")
+			"same sound, bigger files. Choose mono.")
 	case c.Channels == 2 && math.IsInf(c.Side, -1):
 		p.warnf("the two channels of the source are identical, so stereo output adds nothing: " +
-			"same sound, bigger files. Use --channels mono.")
+			"same sound, bigger files. Choose mono.")
 	case c.EffectivelyMono():
 		p.warnf("the two channels of the source are nearly identical (their difference is %.0f dB below the signal), "+
-			"so stereo output adds next to nothing. Use --channels mono.", -c.Side)
+			"so stereo output adds next to nothing. Choose mono.", -c.Side)
 	}
 	if side, by := c.Quieter(); side != "" {
 		how := fmt.Sprintf("%.0f dB quieter than the other", by)
@@ -547,7 +547,7 @@ func (p *Pipeline) checkStereo(ctx context.Context) {
 			how = "silent"
 		}
 		p.warnf("the %s channel of the source is %s, so stereo output has the sermon on one side only. "+
-			"Use --channels mono, which mixes both channels.", side, how)
+			"Choose mono, which mixes both channels.", side, how)
 	}
 }
 
@@ -561,7 +561,7 @@ func (p *Pipeline) sermonLength(ctx context.Context) (float64, error) {
 		return 0, err
 	}
 	if p.Opt.End > 0 && p.Opt.End < end {
-		end = p.Opt.End // --end past the end of the recording just runs to the end
+		end = p.Opt.End // an end past the end of the recording just runs to the end
 	}
 	return end - p.Opt.Start, nil
 }

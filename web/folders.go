@@ -192,7 +192,6 @@ func (q runRequest) options() normalizer.Options {
 // plan is a checked run: the options, or why it cannot run, plus notices.
 type plan struct {
 	Error   string   `json:"error,omitempty"`
-	Command string   `json:"command,omitempty"`
 	Notices []string `json:"notices"`
 
 	opt     normalizer.Options
@@ -224,7 +223,6 @@ func (s *Server) check(abs string, q runRequest) plan {
 	case !q.UseEdit && pl.opt.Start == 0 && pl.opt.End == 0:
 		return fail(errors.New("select where the sermon starts and ends"))
 	}
-	pl.Command = normalizer.CommandLine(abs, pl.opt, pl.archive)
 	if !pl.opt.Force {
 		var existing []string
 		on := map[string]bool{"flac": q.Flac, "mp3": q.Mp3, "opus": q.Opus}

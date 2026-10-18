@@ -1,137 +1,93 @@
 # sermon-normalizer
 
-Turns a recording of a church service into publish-ready sermon files:
-it cuts out the sermon, mixes it to mono (or keeps stereo), evens out the volume (speech and music are
-recorded at very different levels), normalises to podcast loudness and encodes
-FLAC, MP3 and Opus for SoundCloud, Spotify and other podcast services.
+A web app that turns a recording of a church service into publish-ready sermon files:
+cut out the sermon on a waveform, then it mixes to mono (or keeps stereo), evens out the volume
+(speech and music are recorded at very different levels), normalises to podcast loudness and
+encodes FLAC, MP3 and Opus for SoundCloud, Spotify and other podcast services.
 See `PLAN.md` for background and design decisions.
-
-Two programs:
-
-- **`sermon-normalizer`**: the web app, a long-running service where you cut the sermon on a
-  waveform, run and follow jobs, and bring in new recordings.
-- **`sermon-normalizer-cli`**: the same processing from the command line, plus a terminal UI
-  with `--interactive`.
 
 ## Requirements
 
-- `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`, Windows: `winget install Gyan.FFmpeg`)
+- `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`), or use the Docker image
 - Go 1.25+ to build
-- Optional: `ffplay` (ships with ffmpeg on Windows and most Linux packages) for playback in the TUI
 
-## Build
+## Build and test
 
 ```bash
-go build -o sermon-normalizer ./cmd/sermon-normalizer              # the web app
-go build -o sermon-normalizer-cli ./cmd/sermon-normalizer-cli      # the CLI and TUI
-GOOS=linux GOARCH=arm64 go build -o dist/sermon-normalizer-cli-linux-arm64 ./cmd/sermon-normalizer-cli   # e.g. for Linux ARM
+go build -o sermon-normalizer ./cmd/sermon-normalizer
 go test ./...
 ```
-
-PowerShell: set `$env:GOOS="linux"; $env:GOARCH="amd64"` before `go build`.
 
 `go test ./...` runs the unit tests everywhere, and the integration tests (the whole pipeline
 with real ffmpeg on synthetic recordings) when `ffmpeg` and `ffprobe` are in PATH.
 `docker build .` always runs both. `go test -short ./...` skips the integration tests.
-`scripts/tui-e2e.sh` drives the TUI in tmux with real ffmpeg (see the script for the command).
-`web/e2e/run.sh` runs browser tests (Playwright) against the web server with real ffmpeg.
+`web/e2e/run.sh` runs browser tests (Playwright) against the server with real ffmpeg
+(see `CLAUDE.md` for the command).
 
 ## Docker (ffmpeg included)
 
-ffmpeg is a separate C program and cannot be built into the Go binary, so the container packages both.
-
-The image holds both programs; the web app is the default.
+ffmpeg is a separate C program and cannot be built into the Go binary, so the image packages both.
 
 ```bash
 docker build -t sermon-normalizer .
-# the web app
-docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" -v /path/to/Taler:/data/Taler -v /path/to/cache:/cache \
-  sermon-normalizer --root /data/Taler --cache-dir /cache
-# the CLI
-docker run --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data --entrypoint sermon-normalizer-cli \
-  sermon-normalizer run /data/2026/2026-10-04 --start 41:20 --end 1:12:05
+docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
+  -v /path/to/Taler:/data/Taler -v /path/to/Inbox:/data/Inbox -v /path/to/cache:/cache \
+  sermon-normalizer --root /data/Taler --inbox /data/Inbox --cache-dir /cache
 ```
 
 `-u` makes the created files owned by your user, not root.
 The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and libmp3lame.
 
-## Web app
-
-`sermon-normalizer` runs as a long-lived service:
+## Running
 
 ```bash
 sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
 ```
 
-- **Folders:** the date folders with what they contain.
-- **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
-  ocenaudio. Drag to select the sermon and drag the edges to adjust; zoom with the slider,
-  `+`/`-` or ctrl+scroll; silences are marked grey. Listen from anywhere, to the selection,
-  or just around its start and end. The start/end fields follow the selection and can be typed
-  in. Keys: `space` play, `s`/`e` start/end at the playhead, `[`/`]` previous/next silence,
-  ←/→ 1 s (shift 0.1 s), `p` play the selection.
-- **Options and run:** the same options as the CLI, checked as you change them, with the
-  equivalent command. The run is followed live and keeps going if the browser is closed;
-  the results can be played and downloaded.
-- **Inbox** (with `--inbox`): new recordings wait there. Upload from the browser, then import
-  one into its date folder (`<year>/<date>/<date>_raw.*`, see `--layout`); the date is
-  suggested from the file name, the recording's tags or its date.
-
-When a recording is opened the first time, the server prepares its waveform and a small MP3
-preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` (default: the user
-cache folder; unused entries go after `--cache-days`). The preview is normalized (up to 40 dB
-of dynamic gain), so even a very quiet recording can be heard while cutting; the waveform
-keeps the original levels, where loud music and quieter speech stand apart. The browser only
-streams the preview; the cut is always made from the original. TUI playback is normalized
-the same way.
+| Flag | Default | |
+|---|---|---|
+| `--root` | | the folder with the date folders (required) |
+| `--inbox` | | where new recordings arrive; enables the Inbox page |
+| `--listen` | `:8080` | address to listen on |
+| `--cache-dir` | user cache folder | waveform data and listening previews |
+| `--cache-days` | 30 | remove cached analyses not used for this long |
+| `--archive` | | the default archive folder for runs (see below) |
+| `--layout` | `2006/2006-01-02` | where imports go under `--root`, as a Go time layout |
+| `--ffmpeg` | `ffmpeg` | path to ffmpeg |
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
 inside `--root`, and has no read/write timeouts (long uploads and live updates). On SIGTERM it
 cancels running jobs and waits for them to clean up.
 
-## Terminal UI
+## Using it
 
-```bash
-sermon-normalizer-cli --interactive /path/to/Taler/2026      # a folder of date folders
-sermon-normalizer-cli --interactive /path/to/Taler/2026/2026-10-04
-```
+- **Folders:** the date folders with what they contain (`raw`, `edit`, `✓ flac mp3 opus`).
+- **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
+  ocenaudio. Drag to select the sermon and drag the edges to adjust; zoom with the slider,
+  `+`/`-` or ctrl+scroll; silences are marked grey. Listen from anywhere, to the selection,
+  or just around its start and end. The start/end fields follow the selection and can be typed
+  in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed). Keys: `space` play, `s`/`e`
+  start/end at the playhead, `[`/`]` previous/next silence, ←/→ 1 s (shift 0.1 s), `p` play
+  the selection.
+- **Options and run:** the options below, checked as you change them; your choices carry over
+  to the next folder (except Force). The run is followed live and keeps going if the browser is
+  closed; the results can be played and downloaded. Cancelling leaves nothing half-written.
+- **Inbox** (with `--inbox`): new recordings wait there. Upload from the browser, then import
+  one into its date folder (`<year>/<date>/<date>_raw.*`, see `--layout`); the date is
+  suggested from the file name, the recording's tags or its date.
 
-1. **Folders:** date folders, newest first, with what they contain (`raw`, `edit`, `✓ flac mp3 opus`).
-2. **Cut:** choose how to cut out the sermon (tab switches):
-   - **Timeline:** the volume of the whole recording. Music is louder than speech, so the sermon
-     stands out; `·` marks silences. Move with ←/→ (shift for 1 s, PgUp/PgDn for a minute), zoom
-     with `+`/`-`, jump between silences with `[`/`]`, mark with `s` (start) and `e` (end).
-     With `ffplay` available, `space` plays from the cursor and `S`/`E` play around the marks.
-   - **Enter times:** type the start and end. Marks set on the timeline show up here and vice versa.
-   - **Edit file:** cut in your own audio editor; the screen shows where to save `<date>_edit.flac`,
-     and `r` looks for it again.
-3. **Options:** which outputs to make (FLAC master, MP3, Opus; all by default), mono or stereo, fades and the other
-   flags, with the equivalent `run` command. Your choices carry over to the next folder (except Force).
-4. **Run:** progress per step, then the files made. Cancelling leaves nothing half-written.
+When a recording is opened the first time, the server prepares its waveform and a small MP3
+preview for listening (about 35 s for 90 minutes), kept in `--cache-dir`. The preview is
+normalized (up to 40 dB of dynamic gain), so even a very quiet recording can be heard while
+cutting; the waveform keeps the original levels, where loud music and quieter speech stand
+apart. The browser only streams the preview; the cut is always made from the original.
 
-`--archive <folder>` sets the default archive folder, `--ffmpeg` the ffmpeg to use (`ffplay` is looked
-for next to it). In Docker the TUI works with `-it`, but without playback:
+**More than one segment** (for example a song in the middle of the sermon that should go):
+cut it yourself in an audio editor and put the result in the date folder as `<date>_edit.flac`
+(or `.wav`). The editor then offers to use it instead of a cut.
 
-```bash
-docker run -it --rm -u "$(id -u):$(id -g)" -v /path/to/Taler:/data --entrypoint sermon-normalizer-cli \
-  sermon-normalizer --interactive /data/2026
-```
-
-## CLI
-
-Put the recording of the whole service in the date folder, and give where the sermon starts and ends:
-
-```
-2026-10-04/
-  2026-10-04_raw.wav          (or _raw.flac)    the whole recording
-```
-
-```bash
-sermon-normalizer-cli run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
-```
-
-Result:
+## What a run makes
 
 ```
 2026-10-04/
@@ -141,27 +97,37 @@ Result:
   2026-10-04.opus      mono, 48 kbps
 ```
 
-Times can be written as `h:mm:ss`, `mm:ss` or seconds, with decimals if needed (`41:20.5`).
-Without `--start` the cut starts at the beginning, without `--end` it runs to the end.
-To cut again with different times, run again with `--force`.
+| Option | Default | |
+|---|---|---|
+| Outputs | FLAC, MP3, Opus | which files to make |
+| Stereo | off (mono) | stereo moves the defaults to -16 LUFS, MP3 128k, Opus 96k |
+| Fade in / out | 0 | seconds of fade at the cut points, 0 = off |
+| Archive folder | `--archive` | keep the sources as FLAC there (default: leave them in place) |
+| Keep WAV | off | do not delete the WAV after archiving it |
+| Force | off | redo existing outputs (and cut again) |
+| Noise reduction | 12 dB | 0 = off |
+| Target loudness | -19 LUFS | |
+| Max true peak | -1.5 dBTP | for the master |
+| MP3 / Opus bitrate | 96k / 48k | |
 
-Add `--fade-in 1 --fade-out 2` (seconds) to fade the sermon in and out instead of starting
-and stopping abruptly at the cut points. The fades are applied last, after the loudness
-processing, so they stay intact in the master, MP3 and Opus.
-
-**More than one segment** (for example a song in the middle of the sermon that should go):
-cut it yourself in an audio editor and put the result in the folder as `<date>_edit.flac`
-(or `.wav`). It is then used instead, and `--start`/`--end` is left out (giving both is an error).
+- The fades are applied last, after the loudness processing, so they stay intact in every output.
+- MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or
+  the loudness is off. They are always made from the master; without FLAC it is a temporary
+  hidden file in the date folder, removed when the run ends.
+- Existing outputs are skipped without Force. Output is written to a `.partial` file and
+  renamed when done, so an interrupted run never leaves a half-written file behind.
+- Mono is the usual choice for speech, and mono and stereo recordings both work either way.
+  With stereo, the run warns if the source is mono or its two channels are identical or nearly
+  so (difference 30 dB or more below the signal, common when a mixer sends one signal to both
+  sides): stereo output would sound the same as mono in bigger files. It also warns if one
+  channel is silent or 20 dB or more quieter than the other: stereo output would have the
+  sermon on one side only, while mono mixes both channels. It only warns.
 
 ### Archive
 
-With `--archive <folder>` the sources are kept as FLAC in an archive folder, and the date folder
-ends up with just the finished files. A relative path is relative to the date folder; an absolute
-path (e.g. on another disk) is used as is, and can be shared by all dates.
-
-```bash
-sermon-normalizer-cli run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05 --archive arkiv
-```
+With an archive folder the sources are kept as FLAC there, and the date folder ends up with
+just the finished files. A relative path is relative to the date folder; an absolute path
+(e.g. on another disk) is used as is, and can be shared by all dates.
 
 ```
 2026-10-04/
@@ -173,49 +139,7 @@ sermon-normalizer-cli run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:1
     2026-10-04_edit.flac      the sermon as cut, the input to the master
 ```
 
-- A WAV is converted to FLAC in the archive, the audio is verified with MD5, and **the WAV is deleted only if the audio is identical** (unless `--keep-wav`). A FLAC is moved.
-- A file already in the archive is never replaced without `--force`.
-
-### Notes
-
-- MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or the loudness is off.
-- Existing output files are skipped without `--force`. Output is written to a `.partial` file and
-  renamed when done, so an interrupted run never leaves a half-written file behind.
-- `--formats mp3` makes only the MP3. MP3 and Opus are always made from the master; without
-  `flac` it is a temporary hidden file in the date folder, removed when the run ends.
-- Output is mono by default, the usual choice for speech. `--channels stereo` keeps two channels
-  and moves the defaults to -16 LUFS, MP3 128k and Opus 96k; any of those given explicitly win.
-  Mono and stereo recordings both work either way. With `stereo`, the tool warns if the sermon
-  is mono or its two channels are identical or nearly so (difference 30 dB or more below the
-  signal, common when a mixer sends one signal to both sides): stereo output would then sound
-  the same as mono in bigger files. It also warns if one channel is silent or 20 dB or more
-  quieter than the other: stereo output would have the sermon on one side only, while mono mixes
-  both channels. It only warns; the output is still stereo.
-
-Flags for `run` (may go before or after the folder):
-
-| Flag | Default | |
-|---|---|---|
-| `--start` | | where the sermon starts in raw (cuts the edit automatically) |
-| `--end` | | where the sermon ends in raw |
-| `--fade-in` | 0 | seconds of fade in at the start of the sermon, 0 = off |
-| `--fade-out` | 0 | seconds of fade out at the end of the sermon, 0 = off |
-| `--formats` | flac,mp3,opus | which outputs to make; any of `flac` (master), `mp3`, `opus` |
-| `--archive` | | keep the sources as FLAC in this folder (default: leave them in place) |
-| `--channels` | mono | `mono` or `stereo` |
-| `--target-lufs` | -19 | -16 with `--channels stereo` |
-| `--true-peak` | -1.5 | max true peak for the master |
-| `--mp3-bitrate` | 96k | 128k with `--channels stereo` |
-| `--opus-bitrate` | 48k | 96k with `--channels stereo` |
-| `--noise-reduction` | 12 | dB, 0 = off |
-| `--keep-wav` | off | do not delete the WAV |
-| `--force` | off | recreate the output files |
-| `--ffmpeg` | ffmpeg | path to ffmpeg |
-
-Measuring files:
-
-```bash
-sermon-normalizer-cli measure file1.mp3 file2.flac
-```
-
-`measure` also takes `--ffmpeg`.
+- A WAV is converted to FLAC in the archive, the audio is verified with MD5, and **the WAV is
+  deleted only if the audio is identical** (unless Keep WAV). A FLAC is moved; across disks it
+  is copied, verified and only then deleted.
+- A file already in the archive is never replaced without Force.

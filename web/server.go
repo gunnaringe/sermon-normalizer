@@ -98,10 +98,6 @@ func (s *Server) Close() {
 	s.wg.Wait()
 }
 
-// Done is closed when the server is closing; long-lived responses (event
-// streams) end then.
-func (s *Server) Done() <-chan struct{} { return s.ctx.Done() }
-
 // Handler is the whole site: the front end and the API.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
