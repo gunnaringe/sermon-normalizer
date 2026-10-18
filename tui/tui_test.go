@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -328,16 +329,16 @@ func TestRunView(t *testing.T) {
 	for _, msg := range []tea.Msg{stepMsg("1. Raw recording"), logMsg("== 1. Raw recording"), logMsg("Using x"), stepMsg("3. Master"), progressMsg(0.5)} {
 		m, _ = m.update(msg)
 	}
-	v := m.view(30)
+	v := m.view(100, 30)
 	if !strings.Contains(v, "✓ 1. Raw recording") || !strings.Contains(v, "Using x") || strings.Contains(v, "== 1.") {
 		t.Errorf("running view:\n%s", v)
 	}
 	m, _ = m.update(runDoneMsg{})
-	if v := m.view(30); !strings.Contains(v, "2026-10-04 done") || !strings.Contains(v, "2026-10-04.mp3") {
+	if v := m.view(100, 30); !strings.Contains(v, "2026-10-04 done") || !strings.Contains(v, "2026-10-04.mp3") {
 		t.Errorf("done view:\n%s", v)
 	}
 	m, _ = m.update(runDoneMsg{err: errors.New("boom")})
-	if v := m.view(30); !strings.Contains(v, "failed") || !strings.Contains(v, "boom") {
+	if v := m.view(100, 30); !strings.Contains(v, "failed") || !strings.Contains(v, "boom") {
 		t.Errorf("failed view:\n%s", v)
 	}
 }
@@ -417,7 +418,7 @@ func TestCancelledRunView(t *testing.T) {
 	paths, _ := normalizer.NewPaths(t.TempDir(), "")
 	m := runModel{paths: paths, events: make(chan tea.Msg, 1)}
 	m, _ = m.update(runDoneMsg{err: context.Canceled})
-	if v := m.view(30); !strings.Contains(v, "cancelled") || strings.Contains(v, "failed") {
+	if v := m.view(100, 30); !strings.Contains(v, "cancelled") || strings.Contains(v, "failed") {
 		t.Errorf("view:\n%s", v)
 	}
 }
@@ -486,5 +487,20 @@ func TestOptionsStereo(t *testing.T) {
 	m, _ = m.update(keySpace) // back to mono
 	if opt, _, _ := m.build(); opt.Stereo || opt.TargetLUFS != -19 || opt.Mp3Bitrate != "96k" || opt.OpusBitrate != "64k" {
 		t.Errorf("mono again: %+v", opt)
+	}
+}
+
+// Warnings stand out and are repeated when the run is done.
+func TestRunWarnings(t *testing.T) {
+	paths, _ := normalizer.NewPaths(t.TempDir(), "")
+	m := runModel{paths: paths, events: make(chan tea.Msg, 1)}
+	m, _ = m.update(logMsg("WARNING: the source is mono, so stereo output is the same signal on both sides. Use --channels mono."))
+	for i := 0; i < 40; i++ {
+		m, _ = m.update(logMsg(fmt.Sprintf("line %d", i)))
+	}
+	m, _ = m.update(runDoneMsg{})
+	v := m.view(60, 30)
+	if !strings.Contains(v, "Warnings:") || !strings.Contains(v, "• the source is mono") || !strings.Contains(v, "line 39") {
+		t.Errorf("view:\n%s", v)
 	}
 }

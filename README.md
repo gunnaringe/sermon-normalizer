@@ -134,7 +134,10 @@ sermon-normalizer run /path/to/Taler/2026/2026-10-04 --start 41:20 --end 1:12:05
   `flac` it is a temporary hidden file in the date folder, removed when the run ends.
 - Output is mono by default, the usual choice for speech. `--channels stereo` keeps two channels
   and moves the defaults to -16 LUFS, MP3 128k and Opus 96k; any of those given explicitly win.
-  Mono and stereo recordings both work either way.
+  Mono and stereo recordings both work either way. With `stereo`, the tool warns if the sermon
+  is mono or its two channels are identical or nearly so (difference 30 dB or more below the
+  signal, common when a mixer sends one signal to both sides): stereo output would then sound
+  the same as mono in bigger files. It only warns; the output is still stereo.
 
 Flags for `run` (may go before or after the folder):
 

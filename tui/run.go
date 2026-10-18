@@ -27,6 +27,7 @@ type runModel struct {
 	steps      []string
 	fraction   float64
 	log        []string
+	warnings   []string
 	done       bool
 	err        error
 	cancelling bool
@@ -78,6 +79,9 @@ func (m runModel) update(msg tea.Msg) (runModel, tea.Cmd) {
 	case logMsg:
 		if line := string(msg); strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "== ") {
 			m.log = append(m.log, line)
+			if w, ok := strings.CutPrefix(line, "WARNING: "); ok {
+				m.warnings = append(m.warnings, w)
+			}
 		}
 		return m, waitEvent(m.events)
 	case stepMsg:
@@ -109,7 +113,7 @@ func (m *runModel) stop() {
 	}
 }
 
-func (m runModel) view(height int) string {
+func (m runModel) view(width, height int) string {
 	var s strings.Builder
 	title := "Processing " + m.paths.Date
 	switch {
@@ -138,10 +142,21 @@ func (m runModel) view(height int) string {
 		s.WriteString("\n  " + m.bar.ViewAs(m.fraction) + "\n")
 	}
 	s.WriteString("\n")
-	rows := max(height-len(m.steps)-12, 3)
+	rows := max(height-len(m.steps)-12-2*len(m.warnings), 3)
 	first := max(len(m.log)-rows, 0)
 	for _, l := range m.log[first:] {
-		s.WriteString(subtleStyle.Render(l) + "\n")
+		if strings.HasPrefix(l, "WARNING: ") {
+			s.WriteString(wrap(errorStyle, l, width) + "\n")
+		} else {
+			s.WriteString(subtleStyle.Render(l) + "\n")
+		}
+	}
+	if m.done && len(m.warnings) > 0 {
+		// Repeated here so they are not lost when the log scrolls.
+		s.WriteString("\n" + errorStyle.Render("Warnings:") + "\n")
+		for _, w := range m.warnings {
+			s.WriteString(wrap(errorStyle, "• "+w, width) + "\n")
+		}
 	}
 	switch {
 	case m.done && m.err == nil:

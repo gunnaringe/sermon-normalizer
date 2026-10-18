@@ -416,3 +416,59 @@ func TestMasterFilterStereo(t *testing.T) {
 		t.Errorf("filter %q", f)
 	}
 }
+
+func TestParseChannels(t *testing.T) {
+	for header, want := range map[string]int{
+		"  Stream #0:0: Audio: flac, 48000 Hz, stereo, s32 (24 bit)":                         2,
+		"  Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, 1 channels, s16": 1,
+		"  Stream #0:0: Audio: flac, 48000 Hz, mono, s32":                                    1,
+		"  Stream #0:0: Audio: pcm_s24le, 48000 Hz, 5.1(side), s32":                          3,
+	} {
+		// The output stream's header comes later and must not count.
+		got, err := parseChannels(header + "\n  Stream #0:0: Audio: pcm_s16le, 48000 Hz, mono, s16\n")
+		if err != nil || got != want {
+			t.Errorf("%q: %d, %v; want %d", header, got, err, want)
+		}
+	}
+	if _, err := parseChannels("no audio"); err == nil {
+		t.Error("expected an error")
+	}
+}
+
+func TestParseSide(t *testing.T) {
+	out := `[Parsed_astats_1 @ 0x1] Channel: 1
+[Parsed_astats_1 @ 0x1] DC offset: 0.000002
+[Parsed_astats_1 @ 0x1] RMS level dB: -22.999456
+[Parsed_astats_1 @ 0x1] Channel: 2
+[Parsed_astats_1 @ 0x1] RMS level dB: -49.030900
+[Parsed_astats_1 @ 0x1] Overall
+[Parsed_astats_1 @ 0x1] RMS level dB: -25.998939
+`
+	if got, err := parseSide(out); err != nil || math.Abs(got-(-26.03)) > 0.01 {
+		t.Errorf("got %v, %v", got, err)
+	}
+	identical := strings.Replace(out, "-49.030900", "-inf", 1)
+	if got, _ := parseSide(identical); !math.IsInf(got, -1) {
+		t.Errorf("identical: %v", got)
+	}
+	if _, err := parseSide("nothing"); err == nil {
+		t.Error("expected an error")
+	}
+}
+
+func TestEffectivelyMono(t *testing.T) {
+	for _, c := range []struct {
+		check ChannelCheck
+		want  bool
+	}{
+		{ChannelCheck{Channels: 1}, true},
+		{ChannelCheck{Channels: 2, Side: math.Inf(-1)}, true},
+		{ChannelCheck{Channels: 2, Side: -45}, true},
+		{ChannelCheck{Channels: 2, Side: -12}, false},
+		{ChannelCheck{Channels: 6}, false},
+	} {
+		if got := c.check.EffectivelyMono(); got != c.want {
+			t.Errorf("%+v: %v", c.check, got)
+		}
+	}
+}

@@ -478,3 +478,45 @@ func TestIntegrationStereo(t *testing.T) {
 		})
 	}
 }
+
+// Stereo output warns when the sermon is mono or its channels are (nearly) the same.
+func TestIntegrationStereoWarnings(t *testing.T) {
+	ff := requireFFmpeg(t)
+	speech := "0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t))"
+	for _, c := range []struct {
+		name, exprs, want string
+	}{
+		{"mono", speech, "the source is mono"},
+		{"identical", speech + "|" + speech, "are identical"},
+		{"nearly identical", speech + "|" + speech + "+0.0005*sin(2*PI*1234*t)", "are nearly identical"},
+		{"real stereo", speech + "|0.5*" + speech + "+0.05*sin(2*PI*330*t)", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := dateFolder(t)
+			if _, err := ff.Run(context.Background(), "-y", "-f", "lavfi", "-i",
+				"aevalsrc=exprs='"+c.exprs+"':s=48000:d=20", "-c:a", "flac", filepath.Join(dir, date+"_edit.flac")); err != nil {
+				t.Fatal(err)
+			}
+			opt := DefaultOptions()
+			opt.SetStereo(true)
+			opt.Outputs = Outputs{Flac: true}
+			paths, _ := NewPaths(dir, "")
+			var out bytes.Buffer
+			if err := (&Pipeline{P: paths, Opt: opt, FF: ff, Out: &out}).Run(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			warned := strings.Contains(out.String(), "WARNING: ") && strings.Contains(out.String(), "--channels mono")
+			if c.want == "" && warned || c.want != "" && !strings.Contains(out.String(), c.want) {
+				t.Errorf("output:\n%s", out.String())
+			}
+			// Mono output never checks.
+			opt.SetStereo(false)
+			opt.Force = true
+			out.Reset()
+			(&Pipeline{P: paths, Opt: opt, FF: ff, Out: &out}).Run(context.Background())
+			if strings.Contains(out.String(), "--channels mono") {
+				t.Errorf("mono output warned:\n%s", out.String())
+			}
+		})
+	}
+}

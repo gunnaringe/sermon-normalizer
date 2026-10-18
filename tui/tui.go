@@ -246,7 +246,7 @@ func (m model) View() string {
 	case screenOptions:
 		return m.opts.view(m.width)
 	case screenRun:
-		return m.run.view(m.height)
+		return m.run.view(m.width, m.height)
 	}
 	return m.browser.view(m.width, m.height)
 }

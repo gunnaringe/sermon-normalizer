@@ -482,6 +482,9 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		p.master = filepath.Join(p.P.Folder, "."+p.P.Date+".master.flac")
 		p.cleanup = append(p.cleanup, p.master)
 	}
+	if p.Opt.Stereo {
+		p.checkStereo(ctx)
+	}
 	var length float64
 	if p.Opt.FadeIn > 0 || p.Opt.FadeOut > 0 {
 		var err error
@@ -504,6 +507,31 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		length, _ = p.sermonLength(ctx)
 	}
 	return p.runTo(ctx, p.master, length, args...)
+}
+
+// checkStereo warns when stereo output would add nothing: the part that
+// becomes the sermon is mono, or its two channels are (nearly) the same.
+func (p *Pipeline) checkStereo(ctx context.Context) {
+	var c ChannelCheck
+	var err error
+	if p.edit != "" {
+		c, err = p.FF.CheckChannels(ctx, p.edit)
+	} else {
+		c, err = p.FF.CheckChannels(ctx, p.raw, p.cutArgs()...)
+	}
+	switch {
+	case err != nil:
+		p.warnf("could not check the channels: %v", err)
+	case c.Channels == 1:
+		p.warnf("the source is mono, so stereo output is the same signal on both sides: " +
+			"same sound, bigger files. Use --channels mono.")
+	case c.Channels == 2 && math.IsInf(c.Side, -1):
+		p.warnf("the two channels of the source are identical, so stereo output adds nothing: " +
+			"same sound, bigger files. Use --channels mono.")
+	case c.EffectivelyMono():
+		p.warnf("the two channels of the source are nearly identical (their difference is %.0f dB below the signal), "+
+			"so stereo output adds next to nothing. Use --channels mono.", -c.Side)
+	}
 }
 
 // sermonLength is the length in seconds of what goes into the master.
