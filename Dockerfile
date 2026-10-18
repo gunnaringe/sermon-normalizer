@@ -11,6 +11,7 @@ RUN go mod download
 COPY cmd ./cmd
 COPY normalizer ./normalizer
 COPY tui ./tui
+COPY web ./web
 RUN go vet ./... && go test ./... \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /sermon-normalizer ./cmd/sermon-normalizer
 
