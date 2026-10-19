@@ -50,6 +50,7 @@ func (a *App) ShareHandler() http.Handler {
 	mux.HandleFunc("POST /api/share/uploads", a.handleShareStart)
 	mux.HandleFunc("GET /api/share/uploads/{id}", a.handleShareStatus)
 	mux.HandleFunc("PUT /api/share/uploads/{id}", a.handleShareChunk)
+	mux.HandleFunc("DELETE /api/share/uploads/{id}", a.handleShareCancel)
 	return a.shareGuard(http.NewCrossOriginProtection().Handler(mux))
 }
 
@@ -342,6 +343,7 @@ func (a *App) handleShareChunk(w http.ResponseWriter, r *http.Request) {
 		head := make([]byte, 12)
 		n, _ := io.ReadFull(body, head)
 		if !magicOK(p.Name, head[:n]) {
+			a.dropUpload(t, sh, id) // its place in the share's limits is free again
 			writeError(w, http.StatusUnsupportedMediaType, fmt.Errorf("%s is not a %s file", p.Name, strings.TrimPrefix(filepath.Ext(p.Name), ".")))
 			return
 		}
@@ -379,6 +381,42 @@ func (a *App) handleShareChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"offset": p.Size, "name": name})
+}
+
+// dropUpload forgets an upload in progress and removes its partial file.
+func (a *App) dropUpload(t *tenant, sh *Share, id string) {
+	a.shareMu.Lock()
+	defer a.shareMu.Unlock()
+	if sh.Pending[id] == nil {
+		return
+	}
+	delete(sh.Pending, id)
+	os.Remove(partialPath(t, id))
+	if err := a.saveShares(t); err != nil {
+		a.cfg.Base.Logger.Printf("share: saving %s: %v", sharesFile, err)
+	}
+}
+
+// handleShareCancel drops an upload the page gave up on:
+// DELETE api/share/uploads/{id}.
+func (a *App) handleShareCancel(w http.ResponseWriter, r *http.Request) {
+	t, sh, _, ok := a.shareFor(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	if _, ok := a.pending(w, sh, id); !ok {
+		return
+	}
+	a.shareMu.Lock()
+	busy := a.share.busy[id]
+	a.shareMu.Unlock()
+	if busy {
+		writeError(w, http.StatusConflict, errors.New("a chunk of this upload is being received"))
+		return
+	}
+	a.dropUpload(t, sh, id)
+	writeJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
 // finishShareUpload puts a complete upload in the inbox under a free name,

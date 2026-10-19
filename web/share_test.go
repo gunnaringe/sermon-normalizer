@@ -197,6 +197,7 @@ func TestShareRefusesWhatItShould(t *testing.T) {
 	if w := st.call("PUT", "/api/share/uploads/"+id+"?offset=0", code, "1.1.1.1", bytes.Repeat([]byte("<html>"), 100)); w.Code != http.StatusUnsupportedMediaType {
 		t.Errorf("not a wav: %d %s", w.Code, w.Body)
 	}
+	id = decode[struct{ ID string }](t, st.start(code, "1.1.1.1", "c.wav", 2000000)).ID
 	// Another share's code cannot touch this upload.
 	other, _ := st.makeShare(`{"label":"T","types":[".wav"]}`)
 	if w := st.call("PUT", "/api/share/uploads/"+id+"?offset=0", other, "1.1.1.1", wav(2000)); w.Code != http.StatusNotFound {
@@ -219,6 +220,31 @@ func TestShareRefusesWhatItShould(t *testing.T) {
 	}
 	if w := st.call("GET", "/api/share", code, "1.1.1.1", nil); w.Code != http.StatusForbidden {
 		t.Errorf("deleted share: %d", w.Code)
+	}
+}
+
+// A refused or cancelled upload gives its place in the limits back.
+func TestShareRefusedUploadFreesItsPlace(t *testing.T) {
+	st := newShareTest(t, RateLimits{})
+	code, _ := st.makeShare(`{"label":"S","types":[".wav"],"maxUploads":1}`)
+	id := decode[struct{ ID string }](t, st.start(code, "1.1.1.1", "a.wav", 2000)).ID
+	if w := st.call("PUT", "/api/share/uploads/"+id+"?offset=0", code, "1.1.1.1", bytes.Repeat([]byte("x"), 2000)); w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("not a wav: %d", w.Code)
+	}
+	w := st.start(code, "1.1.1.1", "b.wav", 2000)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("start after a refused file: %d %s", w.Code, w.Body)
+	}
+	id = decode[struct{ ID string }](t, w).ID
+	st.call("PUT", "/api/share/uploads/"+id+"?offset=0", code, "1.1.1.1", wav(2000)[:1000])
+	if w := st.call("DELETE", "/api/share/uploads/"+id, code, "1.1.1.1", nil); w.Code != 200 {
+		t.Fatalf("cancel: %d %s", w.Code, w.Body)
+	}
+	if fileExists(filepath.Join(st.church, "Innboks", ".share-"+id+".partial")) {
+		t.Error("partial left after cancel")
+	}
+	if w := st.start(code, "1.1.1.1", "c.wav", 2000); w.Code != http.StatusCreated {
+		t.Errorf("start after a cancelled upload: %d %s", w.Code, w.Body)
 	}
 }
 
