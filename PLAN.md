@@ -19,7 +19,7 @@ It runs on Linux (a server or the home cluster); the cutting happens in the brow
   <date>.flac                master, mono, 48 kHz / 24-bit, -19 LUFS
   <date>.mp3                 mono, 96 kbps  (publishing)
   <date>.opus                mono, 48 kbps
-  <date>_cuts.json           the selection and cuts, kept by the editor
+  sermon.json                the saved and adjusted selection, cuts and fades
   original\                  the whole recording, unedited, after a run
     <date>_raw.flac
 ```

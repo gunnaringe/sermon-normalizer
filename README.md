@@ -89,13 +89,17 @@ cancels running jobs and waits for them to clean up.
   **Cut out:** parts of the sermon that should go, such as a song in the middle (below).
   Keys: `space` play, `s`/`e` start/end at the playhead, `c` cut out here, `[`/`]` previous/next
   silence, ←/→ 1 s (shift 0.1 s), `p` play the sermon.
+- **Saved version:** the selection, the cuts and the fades are kept in `sermon.json` in the date
+  folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
+  the next time the sermon is opened. **Save…** (after a confirmation) makes them the *saved
+  version*, which stays as it is while you adjust further; **Revert…** (after a confirmation)
+  throws the adjustments away and goes back to it. Both versions are in the file. **Run** uses
+  what is on the page; **Save and generate** saves it first.
 - **Cutting parts out:** with the sermon selected, *Cut out here* (or `c`) marks 10 s from the
   playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
   dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut must
   be inside the sermon. *Hear join* plays 3 s either side of a cut as it will sound, and with
-  *Play without the cuts* (on by default) playback jumps over the cuts. The selection and the cuts
-  are saved as you change them, in `<date>_cuts.json` in the date folder (it follows a rename), and
-  are back the next time the sermon is opened. The outputs are made from
+  *Play without the cuts* (on by default) playback jumps over the cuts. The outputs are made from
   what is left, joined with a 15 ms fade on each side so the join does not click; the length
   shown is after the cuts.
 - **Options and run:** the options below, checked as you change them; your choices carry over
@@ -189,7 +193,7 @@ apart. The browser only streams the preview; the cut is always made from the ori
 
 A run moves the whole recording into `original/` in the date folder, as FLAC, so the date folder
 ends up with the finished files, the saved cuts and that one folder. No cut file is made: the
-outputs are made straight from the original, using the selection and cuts (`<date>_cuts.json`),
+outputs are made straight from the original, using the selection and cuts (`sermon.json`),
 so there is nothing else to keep in step.
 
 ```
@@ -197,7 +201,7 @@ so there is nothing else to keep in step.
   2026-10-04.flac
   2026-10-04.mp3
   2026-10-04.opus
-  2026-10-04_cuts.json          the selection and the cuts
+  sermon.json                   the saved and adjusted selection, cuts and fades
   original/
     2026-10-04_raw.flac         the whole recording
 ```

@@ -97,7 +97,7 @@ type folderInfo struct {
 	Job       *jobSnapshot     `json:"job"`
 	Tags      *Meta            `json:"tags"` // the church's defaults filled in for this folder
 	TagsError string           `json:"tagsError,omitempty"`
-	Saved     *savedCuts       `json:"saved"` // the selection and cuts kept for this sermon
+	Sermon    *sermonFile      `json:"sermon"` // the saved and adjusted settings of this sermon
 }
 
 type outputFileInfo struct {
@@ -110,7 +110,7 @@ func (s *Server) folderInfo(abs string) (folderInfo, error) {
 	if err != nil {
 		return folderInfo{}, err
 	}
-	info := folderInfo{Path: s.relPath(abs), Date: paths.Date, Outputs: []outputFileInfo{}, Saved: readCuts(abs)}
+	info := folderInfo{Path: s.relPath(abs), Date: paths.Date, Outputs: []outputFileInfo{}, Sermon: readSermon(abs)}
 	if raw := paths.Source(); raw != "" {
 		info.Raw = s.fileInfo(raw)
 	}

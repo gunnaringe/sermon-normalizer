@@ -75,6 +75,9 @@ export async function editorView(view, path, config) {
   const runButton = h('button', { class: 'primary', disabled: true, title: 'Make the files that are missing', onclick: () => run() }, 'Run');
   const generateButton = h('button', { disabled: true, title: 'Save the cuts and make all the files again', onclick: generate }, 'Save and generate');
   const saveNote = h('span', { class: 'muted' });
+  const versionOut = h('div', {});
+  const saveButton = h('button', { disabled: true, title: 'Make the current settings the saved version', onclick: saveVersion }, 'Save…');
+  const revertButton = h('button', { disabled: true, title: 'Throw away the adjustments and go back to the saved version', onclick: revertVersion }, 'Revert…');
   const jobPanel = h('section', {});
 
   // Another date or name for this sermon: renames the folder and its files.
@@ -197,8 +200,12 @@ export async function editorView(view, path, config) {
             addCutButton,
             h('label', { class: 'check', title: 'Playback jumps over the parts that are cut out' }, skipBox, ' Play without the cuts')),
           cutHint,
-          cutList)),
-      h('p', { class: 'muted' }, 'The selection and the cuts are saved with the sermon as you change them. ', saveNote),
+          cutList),
+        h('div', { class: 'group' },
+          h('strong', {}, 'Saved version'),
+          versionOut,
+          h('div', { class: 'toolbar' }, saveButton, revertButton, saveNote),
+          h('p', { class: 'muted' }, 'The selection, cuts and fades are kept in the folder as you change them. Save makes them the saved version; Revert goes back to it. Run uses what is on the page.'))),
       h('p', { class: 'keys' },
         'Drag on the waveform to select the sermon; hold ', h('kbd', {}, 'shift'), ' and drag to cut out a part of it. Drag the edges to adjust. Grey marks silences. Keys: ',
         h('kbd', {}, 'space'), ' play · ', h('kbd', {}, 's'), '/', h('kbd', {}, 'e'), ' start/end at the playhead · ', h('kbd', {}, 'c'), ' cut out here · ',
@@ -256,7 +263,8 @@ export async function editorView(view, path, config) {
         if (r.element) r.element.style.pointerEvents = 'none'; // selections can start on a silence
       });
       regions.enableDragSelection({ color: css('--selection') });
-      if (info.saved) restoreSaved(info.saved);
+      const initial = sermon.adjusted || sermon.saved;
+      if (initial) applySettings(initial);
     });
     regions.on('region-created', (r) => {
       if (r.id.startsWith('silence-') || r.id.startsWith('cut-')) return;
@@ -469,45 +477,121 @@ export async function editorView(view, path, config) {
     return length;
   }
 
-  // ---- keeping the selection and cuts: saved in the folder as the page changes ----
+  // ---- keeping the selection, cuts and fades: sermon.json in the folder has the
+  // saved version and the adjustments, which are kept as the page changes ----
 
-  let restoring = false; // putting the saved ones back is not a change
-  let lastSaved = JSON.stringify(info.saved || null);
+  let restoring = false; // putting settings back is not a change
+  let sermon = info.sermon || { saved: null, adjusted: null };
+  let lastSent = JSON.stringify(sermon.adjusted || sermon.saved);
 
-  // savedState is what to keep, or null while there is nothing (valid) to keep.
-  function savedState() {
+  // currentSettings is what is on the page, or null while there is nothing (valid) to keep.
+  function currentSettings() {
     if (!sel || restoring) return null;
     const list = cuts.map((c) => ({ start: c.region.start, end: c.region.end }));
     if (list.some((c) => c.end - c.start < 0.05 || c.start < sel.start - 0.001 || c.end > sel.end + 0.001)) return null;
-    return { start: sel.start, end: sel.end, cuts: list };
+    if (!(opts.fadeIn >= 0) || !(opts.fadeOut >= 0)) return null;
+    return { start: sel.start, end: sel.end, cuts: list, fadeIn: opts.fadeIn, fadeOut: opts.fadeOut };
   }
 
-  async function persistCuts() {
-    const state = savedState();
-    if (!state || JSON.stringify(state) === lastSaved) return;
-    saveNote.textContent = 'Saving…';
+  // persistAdjusted keeps what is on the page as the adjustments.
+  async function persistAdjusted() {
+    const state = currentSettings();
+    if (!state || JSON.stringify(state) === lastSent) return;
+    saveNote.textContent = 'Keeping…';
     try {
-      await api('PUT', 'api/cuts?path=' + q(path), state);
-      lastSaved = JSON.stringify(state);
-      saveNote.textContent = 'Saved.';
+      sermon = await api('PUT', 'api/sermon?path=' + q(path), state);
+      lastSent = JSON.stringify(state);
+      saveNote.textContent = 'Changes kept.';
     } catch (e) {
-      saveNote.textContent = 'Not saved: ' + e.message;
+      saveNote.textContent = 'Not kept: ' + e.message;
     }
+    renderVersion();
   }
-  const saveSoon = debounce(() => { if (alive) persistCuts(); }, 700);
+  const saveSoon = debounce(() => { if (alive) persistAdjusted(); }, 700);
 
-  function restoreSaved(saved) {
+  // applySettings puts settings on the page: the selection, the cuts and the fades.
+  function applySettings(set) {
     restoring = true;
     try {
-      if (setSelection(saved.start, saved.end)) {
-        for (const c of saved.cuts) addCut(c.start, c.end);
-        reveal(saved.start);
+      for (const c of cuts) c.region.remove();
+      cuts.length = 0;
+      if (setSelection(set.start, set.end)) {
+        for (const c of set.cuts) addCut(c.start, c.end);
+        reveal(set.start);
+      }
+      for (const key of ['fadeIn', 'fadeOut']) {
+        opts[key] = set[key];
+        const input = view.querySelector(`input[name=${key}]`);
+        if (input) input.value = set[key];
       }
     } finally {
       restoring = false;
     }
-    syncCuts();
+    renderCuts();
     check();
+  }
+
+  const describe = (set) => [
+    `${formatTime(set.start, 0)} to ${formatTime(set.end, 0)}`,
+    set.cuts.length === 1 ? '1 cut' : `${set.cuts.length} cuts`,
+    set.fadeIn || set.fadeOut ? `fade ${set.fadeIn} s in, ${set.fadeOut} s out` : 'no fades',
+  ].join(', ');
+
+  function renderVersion() {
+    const { saved, adjusted } = sermon;
+    const at = sermon.savedAt ? ' ' + new Date(sermon.savedAt).toLocaleString() : '';
+    versionOut.replaceChildren(
+      saved ? h('p', {}, h('strong', {}, 'Saved' + at + ': '), describe(saved)) : h('p', { class: 'muted' }, 'Nothing is saved yet.'),
+      adjusted ? h('p', {}, h('strong', {}, 'Adjusted, not saved: '), describe(adjusted)) : '');
+    saveButton.disabled = !adjusted;
+    revertButton.disabled = !adjusted || !saved;
+  }
+
+  // saveVersion makes the adjustments the saved version, after asking.
+  async function saveVersion() {
+    await persistAdjusted();
+    if (!sermon.adjusted) return;
+    const ok = await confirmDialog({
+      title: 'Save these settings?',
+      body: [
+        sermon.saved ? [h('p', {}, 'This replaces the saved version:'), h('ul', {}, h('li', {}, describe(sermon.saved)))] : '',
+        h('p', {}, sermon.saved ? 'With:' : 'The saved version will be:'),
+        h('ul', {}, h('li', {}, describe(sermon.adjusted))),
+      ],
+      confirm: 'Save',
+    });
+    if (!ok) return;
+    try {
+      sermon = await api('POST', 'api/sermon/save?path=' + q(path));
+      saveNote.textContent = 'Saved.';
+    } catch (e) {
+      saveNote.textContent = 'Not saved: ' + e.message;
+    }
+    renderVersion();
+  }
+
+  // revertVersion drops the adjustments and goes back to the saved version, after asking.
+  async function revertVersion() {
+    if (!sermon.adjusted || !sermon.saved) return;
+    const ok = await confirmDialog({
+      title: 'Go back to the saved version?',
+      body: [
+        h('p', {}, 'Your adjustments are discarded:'), h('ul', {}, h('li', {}, describe(sermon.adjusted))),
+        h('p', {}, 'Back to the saved version:'), h('ul', {}, h('li', {}, describe(sermon.saved))),
+      ],
+      confirm: 'Revert',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      sermon = await api('POST', 'api/sermon/revert?path=' + q(path));
+      lastSent = JSON.stringify(sermon.saved);
+      applySettings(sermon.saved);
+      saveNote.textContent = 'Back to the saved version.';
+    } catch (e) {
+      saveNote.textContent = 'Not reverted: ' + e.message;
+    }
+    renderVersion();
   }
 
   function fieldsChanged() {
@@ -668,11 +752,14 @@ export async function editorView(view, path, config) {
 
   // generate makes every file again, after asking: it replaces what is there.
   async function generate() {
+    await persistAdjusted();
     const existing = lastOutputs;
+    const changes = Boolean(sermon.adjusted) || !sermon.saved; // the page differs from the saved version
     const ok = await confirmDialog({
       title: 'Save and generate?',
       body: [
-        h('p', {}, 'The sermon is cut and processed again from the recording, with the selection and cuts shown here.'),
+        h('p', {}, 'The sermon is cut and processed again from the recording, with the selection, cuts and fades shown here.'),
+        changes ? h('p', {}, sermon.saved ? 'They replace the saved version.' : 'They become the saved version.') : '',
         existing.length
           ? [h('p', {}, 'These files are replaced:'), h('ul', {}, existing.map((n) => h('li', {}, n)))]
           : h('p', {}, 'No files are made yet, so nothing is replaced.'),
@@ -680,13 +767,21 @@ export async function editorView(view, path, config) {
       confirm: 'Save and generate',
       danger: existing.length > 0,
     });
-    if (ok) await run(true);
+    if (!ok) return;
+    try {
+      if (sermon.adjusted) sermon = await api('POST', 'api/sermon/save?path=' + q(path));
+      renderVersion();
+    } catch (e) {
+      showCheck({ ...lastCheck, error: e.message });
+      return;
+    }
+    await run(true);
   }
 
   async function run(force = false) {
     runButton.disabled = generateButton.disabled = true;
     try {
-      await persistCuts();
+      await persistAdjusted();
       job = await api('POST', 'api/run?path=' + q(path), request(force));
       showJob(job);
       follow(job.id);
@@ -752,6 +847,7 @@ export async function editorView(view, path, config) {
   } else {
     waveSection.replaceChildren(h('p', {}, 'Nothing to cut yet: upload a recording, or put <date>_raw.wav in the folder.'));
   }
+  renderVersion();
   check();
   return teardown;
 }

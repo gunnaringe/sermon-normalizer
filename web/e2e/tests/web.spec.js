@@ -10,7 +10,7 @@ fs.mkdirSync(shots, { recursive: true });
 // openEditor opens a date folder and waits until the waveform is ready. The
 // saved selection and cuts of an earlier test are forgotten, unless keep is set.
 async function openEditor(page, folder, { timeout = 60_000, keep = false } = {}) {
-  if (!keep) fs.rmSync(path.join(DATA, 'root', folder, path.basename(folder) + '_cuts.json'), { force: true });
+  if (!keep) fs.rmSync(path.join(DATA, 'root', folder, 'sermon.json'), { force: true });
   await page.goto('#/folder/' + folder);
   await expect(page.locator('#waveform')).toBeVisible({ timeout });
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout });
@@ -154,27 +154,67 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   expect(await cuts()).toHaveLength(1);
 });
 
-test('the selection and cuts are kept in the folder and come back', async ({ page }) => {
+test('sermon.json keeps the adjustments; Save makes them the saved version, Revert goes back', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
+  const file = path.join(DATA, 'root/2026/2026-10-04/sermon.json');
+  const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
+  await expect(page.getByRole('button', { name: 'Save…' })).toBeDisabled();
+  await expect(page.getByText('Nothing is saved yet.')).toBeVisible();
+
+  // Adjusting is kept as you go, but nothing is saved yet.
   await editor(page, () => { window.__editor.setSelection(12, 88); window.__editor.addCut(30, 40); window.__editor.addCut(60, 66); });
-  await expect(page.getByText('Saved.')).toBeVisible();
-  const file = path.join(DATA, 'root/2026/2026-10-04/2026-10-04_cuts.json');
-  expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({
-    start: 12, end: 88, cuts: [{ start: 30, end: 40 }, { start: 60, end: 66 }],
+  await page.getByLabel('Fade in (s)').fill('2');
+  await expect(page.getByText('Changes kept.')).toBeVisible();
+  await expect.poll(() => read().adjusted?.fadeIn).toBe(2);
+  expect(read()).toMatchObject({
+    saved: null,
+    adjusted: { start: 12, end: 88, cuts: [{ start: 30, end: 40 }, { start: 60, end: 66 }], fadeIn: 2, fadeOut: 0 },
   });
 
-  // Another visit: the selection and both cuts are back, and the length counts them.
+  // Another visit brings the adjustments back: selection, both cuts and the fade.
   await openEditor(page, '2026/2026-10-04', { keep: true });
   await page.reload();
   await page.waitForFunction(() => window.__editor && window.__editor.cuts.length === 2, null, { timeout: 30_000 });
   expect(await selection(page)).toEqual({ start: 12, end: 88 });
   await expect(page.getByLabel('Cut 2 to')).toHaveValue('1:06.00');
+  await expect(page.getByLabel('Fade in (s)')).toHaveValue('2');
   await expect(page.getByText('Length 1:00.0 after the cuts')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled(); // nothing to go back to yet
 
-  // Removing a cut is kept too.
+  // Save asks first; Cancel changes nothing.
+  await page.getByRole('button', { name: 'Save…' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('The saved version will be');
+  await expect(dialog).toContainText('2 cuts');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  expect(read().saved).toBeNull();
+  await page.getByRole('button', { name: 'Save…' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
+  expect(read()).toMatchObject({ adjusted: null, saved: { start: 12, end: 88, fadeIn: 2 } });
+  expect(read().savedAt).toBeTruthy();
+  await expect(page.getByRole('button', { name: 'Save…' })).toBeDisabled();
+
+  // Adjust again: the saved version stays as it was, next to the adjustments.
   await page.locator('.cut').first().getByRole('button', { name: 'Remove' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
-  await expect.poll(() => JSON.parse(fs.readFileSync(file, 'utf8')).cuts.length).toBe(1);
+  await page.getByLabel('Fade in (s)').fill('0');
+  await expect.poll(() => read().adjusted?.cuts.length).toBe(1);
+  expect(read().saved.cuts).toHaveLength(2);
+  await expect(page.getByText('Adjusted, not saved:')).toBeVisible();
+  await page.screenshot({ path: path.join(shots, 'version.png'), fullPage: true });
+
+  // Revert asks first, then everything is back as it was saved.
+  await page.getByRole('button', { name: 'Revert…' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Your adjustments are discarded');
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+  expect(await editor(page, () => window.__editor.cuts.length)).toBe(1);
+  await page.getByRole('button', { name: 'Revert…' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Revert' }).click();
+  await expect(page.getByLabel('Cut 2 to')).toHaveValue('1:06.00');
+  expect(await editor(page, () => window.__editor.cuts.length)).toBe(2);
+  await expect(page.getByLabel('Fade in (s)')).toHaveValue('2');
+  expect(read().adjusted).toBeNull();
+  await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled();
 });
 
 test('run with chosen outputs and follow it live', async ({ page }) => {
@@ -198,7 +238,7 @@ test('run with chosen outputs and follow it live', async ({ page }) => {
   await page.screenshot({ path: path.join(shots, 'done.png'), fullPage: true });
 
   const files = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).sort();
-  expect(files).toEqual(['2026-10-04.mp3', '2026-10-04_cuts.json', 'original']); // the cuts are kept, the recording is in original/
+  expect(files).toEqual(['2026-10-04.mp3', 'original', 'sermon.json']); // the settings are kept, the recording is in original/
   expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04/original'))).toEqual(['2026-10-04_raw.flac']);
   // The options are remembered for the next folder (not Force or the cut).
   await page.reload();

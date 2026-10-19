@@ -72,6 +72,7 @@ type Server struct {
 	meta     metaStore
 	names    nameStore
 	ingestMu sync.Mutex // one inbox file moves at a time
+	sermonMu sync.Mutex // sermon.json is read, changed and written as one step
 
 	tagsMu   sync.Mutex
 	tagDates map[string]string // recording date from tags, by cacheKey ("" = none)
@@ -168,7 +169,9 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("GET /api/folder", s.handleFolder)
 	mux.HandleFunc("POST /api/check", s.handleCheck)
-	mux.HandleFunc("PUT /api/cuts", s.handleCutsPut)
+	mux.HandleFunc("PUT /api/sermon", s.handleSermonPut)
+	mux.HandleFunc("POST /api/sermon/save", s.handleSermonSave)
+	mux.HandleFunc("POST /api/sermon/revert", s.handleSermonRevert)
 	mux.HandleFunc("GET /api/file", s.handleFile)
 
 	mux.HandleFunc("GET /api/analysis", s.handleAnalysis)
