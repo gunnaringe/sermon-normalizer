@@ -1,4 +1,4 @@
-// Package web is a long-running web UI for the normalizer: browse date
+// Package web is a long-running web UI for the sermon studio: browse date
 // folders, cut the sermon on a waveform, set options, run and follow jobs,
 // and bring new recordings in: uploaded straight to a date folder, or
 // through an inbox folder that anything can drop files into.
@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 //go:embed static

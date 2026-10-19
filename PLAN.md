@@ -1,4 +1,4 @@
-# Plan: sermon-normalizer, processing of sermon recordings
+# Plan: sermon-studio, processing of sermon recordings
 
 ## Goal
 
@@ -43,9 +43,9 @@ Go also fits since it was already chosen, and its standard library has the web s
 
 ## Architecture
 
-Module `github.com/gunnaringe/sermon-normalizer`, standard library only.
+Module `github.com/gunnaringe/sermon-studio`, standard library only.
 
-- `cmd/sermon-normalizer/`: the server (flags, startup, clean shutdown)
+- `cmd/sermon-studio/`: the server (flags, startup, clean shutdown)
 - `web/`: JSON API, jobs, waveform analysis, inbox, and the embedded front end
   (`web/static/`, plain JS with wavesurfer.js bundled)
 - `normalizer/ffmpeg.go`: thin wrapper around `ffmpeg` (`-nostdin`, captures stdout and stderr)

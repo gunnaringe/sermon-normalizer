@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // peakWindow is the waveform resolution: 10 ms is finer than any cut needs.

@@ -33,7 +33,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/gunnaringe/sermon-normalizer
+          images: ghcr.io/gunnaringe/sermon-studio
           tags: |
             type=ref,event=pr
             type=sha

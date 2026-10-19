@@ -11,7 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 const maxName = 60

@@ -1,6 +1,6 @@
 dist/
-sermon-normalizer
-sermon-normalizer.exe
+sermon-studio
+sermon-studio.exe
 *.md
 .git
 web/e2e

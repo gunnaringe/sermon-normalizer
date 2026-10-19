@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 type testServer struct {

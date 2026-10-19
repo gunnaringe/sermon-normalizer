@@ -38,12 +38,12 @@ all)
 	incontainer 'apk add -q ffmpeg && test -z "$(gofmt -l cmd normalizer web)" && go vet ./... && go test "$@"' "$@"
 	;;
 e2e)
-	incontainer 'go build -o web/e2e/bin/sermon-normalizer ./cmd/sermon-normalizer'
+	incontainer 'go build -o web/e2e/bin/sermon-studio ./cmd/sermon-studio'
 	"$run" run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -w /work "$playwright" sh run.sh "$@" 2>&1 |
 		grep -v -e '^debconf' -e '^$'
 	;;
 image)
-	"$run" build -q -t sermon-normalizer .
+	"$run" build -q -t sermon-studio .
 	;;
 *)
 	sed -n '2,13p' "$0"

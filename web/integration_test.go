@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 func requireFFmpeg(t *testing.T) normalizer.FFmpeg {

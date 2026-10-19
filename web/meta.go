@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // Meta are a church's default tags for new sermons, as templates with

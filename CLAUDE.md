@@ -1,4 +1,4 @@
-# sermon-normalizer
+# sermon-studio
 
 Go web service: cut a church service recording on a waveform, get
 loudness-normalised FLAC/MP3/Opus. `README.md` = usage, `PLAN.md` = background.
@@ -21,7 +21,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 
 ## Map
 
-- `cmd/sermon-normalizer/main.go`: flags, startup, shutdown. No logic.
+- `cmd/sermon-studio/main.go`: flags, startup, shutdown. No logic.
 - `web/app.go`: `App` = the churches (tenants). A church is a folder in
   `--data-dir`: `<id>/church.json` (name, tags, names; optional), `<id>/Taler`,
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default
@@ -66,6 +66,6 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`
   in `web/e2e/package.json`.
 
-Deploy: push to `main` → GitHub Actions publishes `ghcr.io/gunnaringe/sermon-normalizer:main-<ts>-<sha>`
+Deploy: push to `main` → GitHub Actions publishes `ghcr.io/gunnaringe/sermon-studio:main-<ts>-<sha>`
 → Flux rolls it out on kate (`clusters/kate/norkirken/`, namespace `norkirken`,
 https://sermons.haxxor.xyz).

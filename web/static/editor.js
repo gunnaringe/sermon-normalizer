@@ -7,7 +7,8 @@ import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
 import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames } from './util.js';
 
-const STORE = 'sermon-normalizer-options';
+const STORE = 'sermon-studio-options';
+const OLD_STORE = 'sermon-normalizer-options'; // before the rename
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -15,7 +16,7 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 // savedOptions are the choices of the last run, except per-run ones.
 function savedOptions(config) {
   const opts = { ...config.defaults.mono, archive: config.archive || '' };
-  try { Object.assign(opts, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch {}
+  try { Object.assign(opts, JSON.parse(localStorage.getItem(STORE) || localStorage.getItem(OLD_STORE) || '{}')); } catch {}
   opts.force = false;
   return opts;
 }

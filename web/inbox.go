@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 var errNoInbox = errors.New("no inbox folder configured")

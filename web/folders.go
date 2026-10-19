@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // folderEntry is one row in the folder list.

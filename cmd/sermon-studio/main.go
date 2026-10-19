@@ -1,4 +1,4 @@
-// Command sermon-normalizer serves the web app: browse date folders, cut
+// Command sermon-studio serves the web app: browse date folders, cut
 // the sermon on a waveform, run and follow jobs, and import new recordings.
 package main
 
@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
-	"github.com/gunnaringe/sermon-normalizer/web"
+	"github.com/gunnaringe/sermon-studio/normalizer"
+	"github.com/gunnaringe/sermon-studio/web"
 )
 
 var version = "dev"
@@ -43,7 +43,7 @@ func run() error {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Println("sermon-normalizer", version)
+		fmt.Println("sermon-studio", version)
 		return nil
 	}
 	if *name != "" {
@@ -74,7 +74,7 @@ func run() error {
 	defer stop()
 	errc := make(chan error, 1)
 	go func() { errc <- hs.ListenAndServe() }()
-	logger.Printf("sermon-normalizer %s listening on %s (data dir %q, root %q)", version, *listen, *dataDir, *root)
+	logger.Printf("sermon-studio %s listening on %s (data dir %q, root %q)", version, *listen, *dataDir, *root)
 
 	select {
 	case err := <-errc:
@@ -91,7 +91,7 @@ func run() error {
 
 func defaultCacheDir() string {
 	if dir, err := os.UserCacheDir(); err == nil {
-		return filepath.Join(dir, "sermon-normalizer")
+		return filepath.Join(dir, "sermon-studio")
 	}
-	return filepath.Join(os.TempDir(), "sermon-normalizer-cache")
+	return filepath.Join(os.TempDir(), "sermon-studio-cache")
 }

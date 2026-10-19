@@ -1,4 +1,4 @@
-# sermon-normalizer
+# sermon-studio
 
 A web app that turns a recording of a church service into publish-ready sermon files:
 cut out the sermon on a waveform, then it mixes to mono (or keeps stereo), evens out the volume
@@ -14,7 +14,7 @@ See `PLAN.md` for background and design decisions.
 ## Build and test
 
 ```bash
-go build -o sermon-normalizer ./cmd/sermon-normalizer
+go build -o sermon-studio ./cmd/sermon-studio
 scripts/test.sh            # unit tests, seconds
 scripts/test.sh all        # vet + all tests with real ffmpeg (container)
 scripts/test.sh e2e        # browser tests (Playwright, container)
@@ -28,10 +28,10 @@ The integration tests run the whole pipeline with real ffmpeg on synthetic recor
 ffmpeg is a separate C program and cannot be built into the Go binary, so the image packages both.
 
 ```bash
-docker build -t sermon-normalizer .
+docker build -t sermon-studio .
 docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
   -v /path/to/data:/data -v /path/to/cache:/cache \
-  sermon-normalizer --data-dir /data --cache-dir /cache
+  sermon-studio --data-dir /data --cache-dir /cache
 ```
 
 `-u` makes the created files owned by your user, not root.
@@ -40,7 +40,7 @@ The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and li
 ## Running
 
 ```bash
-sermon-normalizer --data-dir /path/to/data --listen :8080
+sermon-studio --data-dir /path/to/data --listen :8080
 ```
 
 The data dir has a folder per church (a church is a folder with a `Taler` folder in it):

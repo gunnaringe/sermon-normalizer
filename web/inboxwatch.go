@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // inboxWatcher takes recordings that appear in the inbox by any means (a

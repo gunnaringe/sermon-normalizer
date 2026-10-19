@@ -20,7 +20,7 @@ ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$long':s=8000:d=5400" -c:a flac "$d
 # A recording waiting to be uploaded.
 ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$expr':s=48000:d=30" -c:a flac "$data/upload.flac"
 
-./bin/sermon-normalizer --listen 127.0.0.1:8080 --data-dir "$data/churches" --cache-dir "$data/cache" >"$data/server.log" 2>&1 &
+./bin/sermon-studio --listen 127.0.0.1:8080 --data-dir "$data/churches" --cache-dir "$data/cache" >"$data/server.log" 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null; wait $server 2>/dev/null || true' EXIT
 for i in $(seq 50); do

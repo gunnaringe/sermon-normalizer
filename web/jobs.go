@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gunnaringe/sermon-normalizer/normalizer"
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // keepFinished is how many finished jobs are remembered (in memory only).
