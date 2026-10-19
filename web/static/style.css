@@ -53,6 +53,10 @@ header {
 }
 header .brand { font-weight: 650; color: var(--fg); text-decoration: none; }
 header nav { display: flex; gap: 1.2rem; }
+header #logout { margin-left: auto; }
+header #logout[hidden] { display: none; }
+header button.link { background: none; border: 0; padding: 0; font: inherit; color: var(--muted); cursor: pointer; }
+header button.link:hover { color: var(--fg); text-decoration: underline; }
 header select { font: inherit; padding: 0.2rem 0.4rem; max-width: 14rem; }
 header nav a { color: var(--muted); text-decoration: none; }
 header nav a.active { color: var(--fg); font-weight: 600; }

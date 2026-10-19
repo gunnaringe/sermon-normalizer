@@ -146,3 +146,20 @@ func TestGroupsAreUnique(t *testing.T) {
 		t.Errorf("Kirke A next to kirke_a: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// The page learns where to log out before it knows whether the user has a
+// church, so a user without access can still log out.
+func TestSessionLogoutURL(t *testing.T) {
+	data := t.TempDir()
+	os.MkdirAll(filepath.Join(data, "kirke-a", "Taler"), 0o755)
+	a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data,
+		GroupsHeader: groupsHeader, LogoutURL: "https://auth.example/portals/main/logout"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a.Close)
+	got := decode[map[string]string](t, as(a.Handler(), "", "GET", "/api/session", ""))
+	if got["logoutUrl"] != "https://auth.example/portals/main/logout" {
+		t.Errorf("session: %v", got)
+	}
+}

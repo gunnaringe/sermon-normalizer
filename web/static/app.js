@@ -292,7 +292,17 @@ async function churchPicker() {
   });
 }
 
+// logoutButton shows Log out when the server knows the login proxy's logout.
+async function logoutButton() {
+  const { logoutUrl } = await api('GET', 'api/session');
+  if (!logoutUrl) return;
+  const form = document.getElementById('logout');
+  form.action = logoutUrl;
+  form.hidden = false;
+}
+
 async function start() {
+  await logoutButton();
   await churchPicker();
   config = await api('GET', 'api/config');
   window.addEventListener('hashchange', route);

@@ -35,6 +35,7 @@ func run() error {
 	root := flag.String("root", "", "a single church without a church folder: the folder with its date folders (instead of --data-dir; settings are not saved)")
 	inbox := flag.String("inbox", "", "with --root: the folder new recordings arrive in (optional)")
 	groupsHeader := flag.String("groups-header", "", "request header in which the login proxy sends the user's groups (space-separated); turns on access control: a church is for the group sermon_studio_<church id, - as _>, sermon_studio_admin sees all and can add churches")
+	logoutURL := flag.String("logout-url", "", "the login proxy's logout address (a POST); shows a Log out button in the header")
 	cacheDir := flag.String("cache-dir", defaultCacheDir(), "where waveform data and previews are kept")
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
@@ -80,7 +81,7 @@ func run() error {
 	srv, err := web.NewApp(web.AppConfig{
 		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir,
 			Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
-		DataDir: *dataDir, GroupsHeader: *groupsHeader,
+		DataDir: *dataDir, GroupsHeader: *groupsHeader, LogoutURL: *logoutURL,
 		Share: share,
 	})
 	if err != nil {

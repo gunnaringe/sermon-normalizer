@@ -41,6 +41,9 @@ type AppConfig struct {
 	// GroupsHeader is the request header in which the login proxy sends the
 	// user's groups. "" = no access control (see access.go).
 	GroupsHeader string
+	// LogoutURL is where the header's Log out button posts to (the login
+	// proxy's logout). "" = no button.
+	LogoutURL string
 	// Share turns on shares (codes for the public upload page); nil = off.
 	Share *ShareOptions
 }
@@ -311,6 +314,7 @@ func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(static, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
+	mux.HandleFunc("GET /api/session", a.handleSession)
 	mux.HandleFunc("GET /api/tenants", a.handleTenants)
 	mux.HandleFunc("POST /api/tenants", a.handleTenantCreate)
 	mux.HandleFunc("PUT /api/church", a.handleChurchRename)
@@ -333,6 +337,12 @@ func (a *App) Handler() http.Handler {
 	// Once a login proxy sets a cookie, other sites must not be able to
 	// start runs, uploads or imports on the user's behalf.
 	return http.NewCrossOriginProtection().Handler(mux)
+}
+
+// handleSession tells the page what it needs before it knows the user has
+// a church: where to log out.
+func (a *App) handleSession(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"logoutUrl": a.cfg.LogoutURL})
 }
 
 func (a *App) handleTenants(w http.ResponseWriter, r *http.Request) {

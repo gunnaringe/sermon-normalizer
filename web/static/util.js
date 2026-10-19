@@ -22,7 +22,7 @@ export async function api(method, url, body) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const resp = await fetch(url.startsWith('api/tenants') ? url : forTenant(url), opts);
+  const resp = await fetch(url.startsWith('api/tenants') || url === 'api/session' ? url : forTenant(url), opts);
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(data.error || `${resp.status} ${resp.statusText}`);
   return data;

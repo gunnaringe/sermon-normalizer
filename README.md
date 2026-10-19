@@ -61,6 +61,7 @@ the server from starting rather than being overwritten.
 | `--data-dir` | | the folder with a folder per church (see above) |
 | `--root`, `--inbox` | | one church without a church folder, instead of `--data-dir`: its date folders and the inbox where new recordings arrive. Settings are not saved. |
 | `--groups-header` | | request header in which the login proxy sends the user's groups; turns on access control (below) |
+| `--logout-url` | | the login proxy's logout address; shows a Log out button in the header (posts to it) |
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |
 | `--cache-days` | 30 | remove cached analyses not used for this long |
