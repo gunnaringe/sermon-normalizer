@@ -39,7 +39,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/sermon.go`: `<folder>/sermon.json` = `saved` (the version the user saved) + `adjusted`
   (what the editor keeps as you edit; null when equal to saved): selection, cuts, fades.
   `PUT api/sermon` (adjust), `POST api/sermon/save`, `POST api/sermon/revert`; returned as
-  `sermon` in the folder info. An earlier `<date>_cuts.json` is read as the saved version.
+  `sermon` in the folder info.
 - `web/folders.go`: folder list/info, run options, `check` (validates a run).
 - `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
 - `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3

@@ -33,11 +33,9 @@ func run() error {
 	listen := flag.String("listen", ":8080", "address to listen on")
 	dataDir := flag.String("data-dir", "", "folder with a folder per church: <id>/Taler (sermons), <id>/Innboks (inbox), <id>/church.json (name and settings); churches can be added in the app")
 	root := flag.String("root", "", "a single church without a church folder: the folder with its date folders (instead of --data-dir; settings are not saved)")
-	name := flag.String("name", "", "ignored: a church's name is in its church.json (kept so older deployments still start)")
 	inbox := flag.String("inbox", "", "with --root: the folder new recordings arrive in (optional)")
 	cacheDir := flag.String("cache-dir", defaultCacheDir(), "where waveform data and previews are kept")
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
-	archive := flag.String("archive", "", "the folder name older versions kept the whole recording in (e.g. arkiv); it is renamed to original/ in each date folder at start")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
 	ffBin := flag.String("ffmpeg", "ffmpeg", "path to ffmpeg")
 	showVersion := flag.Bool("version", false, "print the version and exit")
@@ -45,9 +43,6 @@ func run() error {
 	if *showVersion {
 		fmt.Println("sermon-studio", version)
 		return nil
-	}
-	if *name != "" {
-		fmt.Fprintln(os.Stderr, "note: --name is ignored; the name is set on the Settings page")
 	}
 	if *root == "" && *dataDir == "" {
 		return errors.New("--root or --data-dir is required")
@@ -59,7 +54,7 @@ func run() error {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	web.CleanCache(*cacheDir, time.Duration(*cacheDays)*24*time.Hour)
 	srv, err := web.NewApp(web.AppConfig{
-		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir, LegacyOriginals: *archive,
+		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir,
 			Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
 		DataDir: *dataDir,
 	})

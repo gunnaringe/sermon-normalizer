@@ -9,7 +9,6 @@ import { confirmDialog } from './dialog.js';
 import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames } from './util.js';
 
 const STORE = 'sermon-studio-options';
-const OLD_STORE = 'sermon-normalizer-options'; // before the rename
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -17,13 +16,12 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 // savedOptions are the choices of the last run, except per-run ones.
 function savedOptions(config) {
   const opts = { ...config.defaults.mono };
-  try { Object.assign(opts, JSON.parse(localStorage.getItem(STORE) || localStorage.getItem(OLD_STORE) || '{}')); } catch {}
-  delete opts.force; // from before it was a button
+  try { Object.assign(opts, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch {}
   return opts;
 }
 
 function saveOptions(opts) {
-  const { start, end, title, artist, album, archive, keepWav, ...keep } = opts; // the last two are from older versions
+  const { start, end, title, artist, album, ...keep } = opts;
   localStorage.setItem(STORE, JSON.stringify(keep));
 }
 

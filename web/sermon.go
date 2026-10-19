@@ -34,11 +34,6 @@ const sermonName = "sermon.json"
 
 func sermonPath(folder string) string { return filepath.Join(folder, sermonName) }
 
-// legacyCutsPath is where an earlier version kept the selection and cuts.
-func legacyCutsPath(folder string) string {
-	return filepath.Join(folder, filepath.Base(folder)+"_cuts.json")
-}
-
 // Validate checks the settings the way a run would.
 func (c sermonSettings) Validate() error {
 	if c.End <= 0 {
@@ -59,35 +54,26 @@ func (c *sermonSettings) normalize() {
 }
 
 // readSermon returns a folder's sermon.json, or nil if there is none (or it
-// cannot be read: the next change replaces it). An earlier version's
-// <date>_cuts.json counts as the saved version.
+// cannot be read: the next change replaces it).
 func readSermon(folder string) *sermonFile {
-	if data, err := os.ReadFile(sermonPath(folder)); err == nil {
-		var f sermonFile
-		if json.Unmarshal(data, &f) != nil {
-			return nil
-		}
-		for _, c := range []*sermonSettings{f.Saved, f.Adjusted} {
-			if c != nil && c.Validate() != nil {
-				return nil
-			}
-			c.normalize()
-		}
-		return &f
-	}
-	data, err := os.ReadFile(legacyCutsPath(folder))
+	data, err := os.ReadFile(sermonPath(folder))
 	if err != nil {
 		return nil
 	}
-	var c sermonSettings
-	if json.Unmarshal(data, &c) != nil || c.Validate() != nil {
+	var f sermonFile
+	if json.Unmarshal(data, &f) != nil {
 		return nil
 	}
-	c.normalize()
-	return &sermonFile{Saved: &c}
+	for _, c := range []*sermonSettings{f.Saved, f.Adjusted} {
+		if c != nil && c.Validate() != nil {
+			return nil
+		}
+		c.normalize()
+	}
+	return &f
 }
 
-// writeSermon replaces sermon.json (atomically) and drops the old file.
+// writeSermon replaces sermon.json (atomically).
 func writeSermon(folder string, f *sermonFile) error {
 	data, _ := json.MarshalIndent(f, "", "  ")
 	tmp := filepath.Join(folder, "."+sermonName+".partial")
@@ -98,7 +84,6 @@ func writeSermon(folder string, f *sermonFile) error {
 		os.Remove(tmp)
 		return err
 	}
-	os.Remove(legacyCutsPath(folder))
 	return nil
 }
 

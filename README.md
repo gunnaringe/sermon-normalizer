@@ -63,14 +63,12 @@ the server from starting rather than being overwritten.
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |
 | `--cache-days` | 30 | remove cached analyses not used for this long |
-| `--archive` | | only to move over from an older version: the folder it kept the recordings in (`arkiv`) is renamed to `original` in each date folder at start (see below) |
 | `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
 
 Churches: the dropdown in the header switches church (it only selects, there is no access control yet;
 a request names its church with `?tenant=<id>` or `X-Tenant`, and the first church is the default, so
-existing scripts such as `PUT api/inbox/files/<name>` keep working). Earlier versions kept the churches in
-`<data-dir>/tenants.json`; it is imported into the church folders once and renamed `tenants.json.migrated`.
+existing scripts such as `PUT api/inbox/files/<name>` keep working).
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
@@ -79,7 +77,7 @@ cancels running jobs and waits for them to clean up.
 
 ## Using it
 
-- **Folders:** the date folders with what they contain (`raw`, `edit`, `✓ flac mp3 opus`).
+- **Folders:** the date folders with what they contain (`raw`, `✓ flac mp3 opus`).
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
   ocenaudio. The controls are in three groups. **Navigate:** play, jump between silences
   (grey on the waveform), zoom (slider, `+`/`-` or ctrl+scroll). **Sermon:** drag on the waveform
@@ -210,6 +208,3 @@ so there is nothing else to keep in step.
   deleted only if the audio is identical**. A FLAC is moved; across disks it is copied, verified
   and only then deleted.
 - A recording already in `original/` is never replaced by Run; Save and generate replaces it.
-- Older versions kept it in the folder given with `--archive` (`arkiv`). Start the server with
-  `--archive arkiv` once and each date folder's `arkiv` is renamed to `original` (any old cut
-  files stay in it, unused).

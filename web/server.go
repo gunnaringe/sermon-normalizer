@@ -27,11 +27,10 @@ var static embed.FS
 
 // Config is how the server is set up.
 type Config struct {
-	Root            string // folder holding the date folders (e.g. Taler/)
-	Inbox           string // folder new recordings arrive in; "" = no inbox
-	CacheDir        string // waveform data and previews
-	LegacyOriginals string // folder name older versions used for the whole recording ("arkiv"); renamed to original/ at start
-	Layout          string // where imports go under Root, as a Go time layout
+	Root     string // folder holding the date folders (e.g. Taler/)
+	Inbox    string // folder new recordings arrive in; "" = no inbox
+	CacheDir string // waveform data and previews
+	Layout   string // where imports go under Root, as a Go time layout
 	// InboxEvery is how often the inbox is looked at, InboxSettle how long a
 	// file must stay unchanged before it is taken (0 = 10 s and 30 s).
 	InboxEvery, InboxSettle time.Duration
@@ -111,7 +110,6 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Names != nil {
 		s.names.v = *cfg.Names
 	}
-	s.migrateOriginals()
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
 	if cfg.Inbox != "" {

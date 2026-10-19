@@ -115,22 +115,3 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 		t.Errorf("damaged file: %+v", got)
 	}
 }
-
-// The file an earlier version wrote counts as the saved version, and is replaced
-// by sermon.json at the next change.
-func TestSermonFromEarlierCutsFile(t *testing.T) {
-	ts := newTestServer(t, normalizer.FFmpeg{})
-	ts.file(t, "2026/2026-10-04/2026-10-04_raw.flac", "x")
-	ts.file(t, "2026/2026-10-04/2026-10-04_cuts.json", `{"start":20,"end":80,"cuts":[{"start":30,"end":40}]}`)
-	got := decode[folderInfo](t, ts.do(t, "GET", "/api/folder?path=2026/2026-10-04", nil)).Sermon
-	if got == nil || got.Saved == nil || got.Saved.End != 80 || len(got.Saved.Cuts) != 1 || got.Adjusted != nil {
-		t.Fatalf("earlier file: %+v", got)
-	}
-	rec := ts.do(t, "PUT", "/api/sermon?path=2026/2026-10-04", json.RawMessage(sermonB))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("put: %d", rec.Code)
-	}
-	if fileExists(filepath.Join(ts.root, "2026/2026-10-04/2026-10-04_cuts.json")) || !fileExists(filepath.Join(ts.root, "2026/2026-10-04/sermon.json")) {
-		t.Error("the earlier file should be replaced by sermon.json")
-	}
-}

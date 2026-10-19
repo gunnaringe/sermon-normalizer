@@ -42,7 +42,7 @@ func TestTenantsAddAndIsolate(t *testing.T) {
 		Default string
 		CanAdd  bool
 	}](t, do(h, "GET", "/api/tenants", ""))
-	if len(list.Tenants) != 1 || list.Default != LegacyTenant || list.Tenants[0].Name != "Default" || !list.CanAdd {
+	if len(list.Tenants) != 1 || list.Default != RootTenant || list.Tenants[0].Name != "Default" || !list.CanAdd {
 		t.Fatalf("tenants %+v", list)
 	}
 
@@ -164,60 +164,5 @@ func TestBrokenChurchFileStopsStartup(t *testing.T) {
 	if a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data}); err == nil {
 		a.Close()
 		t.Error("a church.json that cannot be read must not be ignored (it would be overwritten)")
-	}
-}
-
-// The tenants.json of earlier versions is moved into the church folders.
-func TestImportOldRegistry(t *testing.T) {
-	data := t.TempDir()
-	os.MkdirAll(filepath.Join(data, "norkirken-melhus", "Taler"), 0o755)
-	os.MkdirAll(filepath.Join(data, "kirke-b", "Taler"), 0o755)
-	old := `{"tenants":[
-	  {"id":"default","name":"Norkirken Melhus","meta":{"title":"{date}","artist":"Nor","album":""},"names":{"enabled":true,"list":["Kveld"]}},
-	  {"id":"kirke-b","name":"Kirke B"}]}`
-	os.WriteFile(filepath.Join(data, "tenants.json"), []byte(old), 0o644)
-	a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer a.Close()
-	cc, err := readChurch(filepath.Join(data, "norkirken-melhus"))
-	if err != nil || cc.Name != "Norkirken Melhus" || cc.Meta == nil || cc.Meta.Artist != "Nor" || cc.Names == nil || cc.Names.List[0] != "Kveld" {
-		t.Errorf("imported %+v, %v", cc, err)
-	}
-	if got := decode[struct{ Meta Meta }](t, do(a.Handler(), "GET", "/api/settings?tenant=norkirken-melhus", "")); got.Meta.Title != "{date}" {
-		t.Errorf("settings in use: %+v", got)
-	}
-	if cc, _ := readChurch(filepath.Join(data, "kirke-b")); cc.Name != "Kirke B" {
-		t.Errorf("kirke-b: %+v", cc)
-	}
-	if _, err := os.Stat(filepath.Join(data, "tenants.json.migrated")); err != nil {
-		t.Error("the old file should be renamed")
-	}
-}
-
-// Until every church has its folder (the move happens at deploy time), the
-// old file is kept so nothing is lost.
-func TestImportOldRegistryWaitsForFolders(t *testing.T) {
-	data := t.TempDir()
-	os.MkdirAll(filepath.Join(data, "Taler"), 0o755) // the old layout
-	os.MkdirAll(filepath.Join(data, "other", "Taler"), 0o755)
-	os.WriteFile(filepath.Join(data, "tenants.json"), []byte(`{"tenants":[{"id":"default","name":"Norkirken Melhus"}]}`), 0o644)
-	a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data})
-	if err != nil {
-		t.Fatal(err)
-	}
-	a.Close()
-	if _, err := os.Stat(filepath.Join(data, "tenants.json")); err != nil {
-		t.Error("the file must stay until its churches have folders")
-	}
-	os.MkdirAll(filepath.Join(data, "norkirken-melhus", "Taler"), 0o755)
-	a, err = NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data})
-	if err != nil {
-		t.Fatal(err)
-	}
-	a.Close()
-	if cc, _ := readChurch(filepath.Join(data, "norkirken-melhus")); cc.Name != "Norkirken Melhus" {
-		t.Errorf("imported later: %+v", cc)
 	}
 }

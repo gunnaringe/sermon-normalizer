@@ -26,19 +26,15 @@ const (
 	churchFile  = "church.json"
 )
 
-// LegacyTenant is the id of the church set up with Config.Root and Inbox
+// RootTenant is the id of the church set up with Config.Root and Inbox
 // (the --root and --inbox flags): a single church without a church folder,
 // so its settings are not saved.
-const LegacyTenant = "default"
-
-// oldRegistry is the file earlier versions kept all churches in; it is
-// imported into the church folders once and renamed.
-const oldRegistry = "tenants.json"
+const RootTenant = "default"
 
 // AppConfig sets up all churches.
 type AppConfig struct {
 	// Base is the setup shared by every church (cache, layout,
-	// ffmpeg...). Its Root and Inbox, if set, make the legacy church.
+	// ffmpeg...). Its Root and Inbox, if set, make the root church.
 	Base Config
 	// DataDir holds a folder per church. "" = no churches can be added.
 	DataDir string
@@ -60,7 +56,7 @@ type TenantInfo struct {
 
 type tenant struct {
 	id  string
-	dir string // the church folder; "" for the legacy church
+	dir string // the church folder; "" for the root church
 	cfg churchConfig
 	srv *Server
 	api http.Handler
@@ -70,7 +66,7 @@ func (t *tenant) info() TenantInfo {
 	name := t.cfg.Name
 	if name == "" {
 		name = t.id
-		if t.id == LegacyTenant {
+		if t.id == RootTenant {
 			name = "Default"
 		}
 	}
@@ -91,7 +87,7 @@ type App struct {
 	tenants  []*tenant
 }
 
-// NewApp starts the legacy church (if any) and every church folder in the
+// NewApp starts the root church (if any) and every church folder in the
 // data dir.
 func NewApp(cfg AppConfig) (*App, error) {
 	if cfg.Base.Logger == nil {
@@ -100,12 +96,11 @@ func NewApp(cfg AppConfig) (*App, error) {
 	a := &App{cfg: cfg, limits: newLimits()}
 	fail := func(err error) (*App, error) { a.Close(); return nil, err }
 	if cfg.Base.Root != "" {
-		if _, err := a.start(LegacyTenant, "", churchConfig{}); err != nil {
+		if _, err := a.start(RootTenant, "", churchConfig{}); err != nil {
 			return fail(fmt.Errorf("--root: %w", err))
 		}
 	}
 	if cfg.DataDir != "" {
-		a.importOldRegistry()
 		ids, err := churchFolders(cfg.DataDir)
 		if err != nil {
 			return fail(err)
@@ -179,57 +174,6 @@ func writeChurch(dir string, cc churchConfig) error {
 	return os.Rename(tmp, path)
 }
 
-// importOldRegistry moves what earlier versions kept in <data-dir>/tenants.json
-// into the church folders (a church whose folder is named after its id, or,
-// for the first church, after its name), then renames the file.
-func (a *App) importOldRegistry() {
-	path := filepath.Join(a.cfg.DataDir, oldRegistry)
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	var reg struct {
-		Tenants []struct {
-			ID    string    `json:"id"`
-			Name  string    `json:"name"`
-			Meta  *Meta     `json:"meta"`
-			Names *NameList `json:"names"`
-		} `json:"tenants"`
-	}
-	logger := a.cfg.Base.Logger
-	if err := json.Unmarshal(b, &reg); err != nil {
-		logger.Printf("%s: %v (not imported)", oldRegistry, err)
-		return
-	}
-	imported := true
-	for _, t := range reg.Tenants {
-		id := t.ID
-		if id == LegacyTenant {
-			id = tenantID(t.Name)
-		}
-		dir := filepath.Join(a.cfg.DataDir, id)
-		if st, err := os.Stat(dir); id == "" || err != nil || !st.IsDir() {
-			logger.Printf("%s: no folder for church %q (%s) yet; its settings are not imported (the file is kept)", oldRegistry, t.Name, id)
-			imported = false
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(dir, churchFile)); err == nil {
-			continue
-		}
-		if err := writeChurch(dir, churchConfig{Name: t.Name, Meta: t.Meta, Names: t.Names}); err != nil {
-			logger.Printf("%s: church %s: %v", oldRegistry, id, err)
-			return // keep the file, try again next start
-		}
-		logger.Printf("imported the settings of %s from %s into %s/%s", t.Name, oldRegistry, id, churchFile)
-	}
-	if !imported {
-		return
-	}
-	if err := os.Rename(path, path+".migrated"); err != nil {
-		logger.Printf("%s: %v", oldRegistry, err)
-	}
-}
-
 // start brings up the Server of one church and adds it to the list.
 func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
 	cfg := a.cfg.Base
@@ -258,7 +202,7 @@ func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
 }
 
 // update changes a church's settings and saves its church.json; if saving
-// fails they are left as they were. The legacy church has no folder: its
+// fails they are left as they were. The root church has no folder: its
 // settings stay in memory.
 func (a *App) update(t *tenant, change func(*churchConfig)) error {
 	a.mu.Lock()
@@ -339,7 +283,7 @@ var reNotID = regexp.MustCompile(`[^a-z0-9]+`)
 func tenantID(name string) string {
 	r := strings.NewReplacer("æ", "ae", "ø", "o", "å", "a", "ä", "a", "ö", "o", "é", "e")
 	id := strings.Trim(reNotID.ReplaceAllString(r.Replace(strings.ToLower(name)), "-"), "-")
-	if id == LegacyTenant {
+	if id == RootTenant {
 		id = ""
 	}
 	return id
