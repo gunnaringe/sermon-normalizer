@@ -107,7 +107,8 @@ cancels running jobs and waits for them to clean up.
 - **Folders:** the date folders with what they contain (`raw`, `✓ flac mp3 opus`).
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
   ocenaudio. The controls are in three groups. **Navigate:** play, jump between silences
-  (grey on the waveform), zoom (slider, `+`/`-` or ctrl+scroll). **Sermon:** drag on the waveform
+  (grey on the waveform), zoom (slider, `+`/`-`, or scroll over the waveform: zooms at the
+  mouse; shift+scroll moves along; *Settings › Waveform* can make it need ctrl/cmd). **Sermon:** drag on the waveform
   to select the sermon and drag the edges to adjust, or set the start and end at the playhead;
   *Hear start*, *Hear end* and *Play sermon* check the cut. The start/end fields follow the
   selection and can be typed in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed).

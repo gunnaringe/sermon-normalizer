@@ -92,6 +92,50 @@ test('cut on the waveform: drag, fields, keys, playback', async ({ page }) => {
   await page.screenshot({ path: path.join(shots, 'editor.png'), fullPage: true });
 });
 
+test('scroll zooms at the mouse, sideways moves along; settings can make it need ctrl', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  const box = await page.locator('#waveform').boundingBox();
+  const mx = box.x + box.width * 0.6, my = box.y + box.height / 2;
+  const zoom = async () => +(await page.getByLabel('Zoom').inputValue());
+  const scroll = () => editor(page, () => window.__editor.ws.getScroll());
+  const timeAt = (cx) => editor(page, (cx) => {
+    const ws = window.__editor.ws, b = ws.getWrapper().getBoundingClientRect();
+    return ((cx - b.left) / b.width) * ws.getDuration();
+  }, cx);
+
+  // A plain scroll up zooms in, keeping the time under the mouse.
+  await page.mouse.move(mx, my);
+  const under = await timeAt(mx);
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -100);
+  await expect.poll(zoom).toBeGreaterThan(25);
+  expect(await timeAt(mx)).toBeCloseTo(under, 0);
+  expect(await scroll()).toBeGreaterThan(0);
+
+  // Sideways scrolling moves along the waveform without zooming.
+  const z = await zoom(), left = await scroll();
+  await page.mouse.wheel(-200, 0);
+  await expect.poll(scroll).toBeLessThan(left);
+  expect(await zoom()).toBe(z);
+
+  // Scroll down zooms back out.
+  for (let i = 0; i < 10; i++) await page.mouse.wheel(0, 100);
+  await expect.poll(zoom).toBe(0);
+
+  // With the setting, a plain scroll leaves the zoom alone; ctrl+scroll zooms.
+  await page.goto('#/settings');
+  await page.getByLabel(/Hold Ctrl/).check();
+  await openEditor(page, '2026/2026-10-04');
+  await expect(page.getByText('+scroll zooms at the mouse')).toBeVisible();
+  await page.mouse.move(mx, my);
+  await page.mouse.wheel(0, -300);
+  await page.waitForTimeout(200);
+  expect(await zoom()).toBe(0);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await expect.poll(zoom).toBeGreaterThan(0);
+});
+
 test('cut parts out of the sermon: button, fields, shift-drag, checked and removed', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   const cuts = () => editor(page, () => window.__editor.cuts);

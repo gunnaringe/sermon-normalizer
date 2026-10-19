@@ -8,6 +8,14 @@ export function setTenant(id) {
   localStorage.setItem('tenant', id);
 }
 
+// Whether the scroll wheel zooms the waveform only with ctrl/cmd held. A
+// choice of this browser, not of the church: kept in localStorage.
+export const wheelZoomNeedsKey = () => localStorage.getItem('wheelZoom') === 'key';
+export function setWheelZoomNeedsKey(on) {
+  if (on) localStorage.setItem('wheelZoom', 'key');
+  else localStorage.removeItem('wheelZoom');
+}
+
 // forTenant adds the church to a URL that is not fetched through api():
 // audio, downloads, event streams.
 export function forTenant(url) {

@@ -1,5 +1,5 @@
 // The app: a hash router over three views (folders, a folder's editor, upload).
-import { api, q, h, formatSize, formatDate, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames } from './util.js';
+import { api, q, h, formatSize, formatDate, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
@@ -252,7 +252,13 @@ async function settingsView() {
     h('h2', {}, 'Sermon names'),
     h('p', { class: 'muted' }, 'A second sermon on a day gets a name. The names used are remembered and suggested next time, ' +
       'so the same one is not typed in different ways. Remove one-off names from the list to tidy it.'),
-    namesBox);
+    namesBox,
+    h('h2', {}, 'Waveform'),
+    h('p', { class: 'muted' }, 'Kept in this browser only, for every church.'),
+    h('div', { class: 'panel' }, h('label', { class: 'check' }, h('input', {
+      type: 'checkbox', name: 'wheel-zoom-key', checked: wheelZoomNeedsKey(),
+      onchange: (e) => setWheelZoomNeedsKey(e.target.checked),
+    }), 'Hold Ctrl (Cmd on a Mac) to zoom with the scroll wheel; without it, scrolling moves the page')));
   view.replaceChildren(view_);
   preview();
   return () => {};

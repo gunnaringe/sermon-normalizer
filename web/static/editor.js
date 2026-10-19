@@ -6,7 +6,7 @@ import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
 import { confirmDialog } from './dialog.js';
-import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames, dateInput, formatDateTime } from './util.js';
+import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames, dateInput, formatDateTime, wheelZoomNeedsKey } from './util.js';
 
 const STORE = 'sermon-studio-options';
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
@@ -163,7 +163,7 @@ export async function editorView(view, path, config) {
     silenceEdges = data.silences.flatMap((s) => [s.start, s.end]);
     const minimapEl = h('div', { id: 'minimap' });
     const waveEl = h('div', { id: 'waveform' });
-    const zoom = h('input', { type: 'range', min: 0, max: 100, value: 0, 'aria-label': 'Zoom', oninput: () => applyZoom() });
+    const zoom = h('input', { type: 'range', min: 0, max: 100, step: 'any', value: 0, 'aria-label': 'Zoom', oninput: () => applyZoom() });
     const clock = h('span', { class: 'clock' });
     const playButton = h('button', { onclick: () => ws.playPause(), title: 'Play / pause (space)' }, '▶ Play');
     const button = (label, title, fn) => h('button', { title, onclick: fn }, label);
@@ -208,7 +208,9 @@ export async function editorView(view, path, config) {
         'Drag on the waveform to select the sermon; hold ', h('kbd', {}, 'shift'), ' and drag to cut out a part of it. Drag the edges to adjust. Grey marks silences. Keys: ',
         h('kbd', {}, 'space'), ' play · ', h('kbd', {}, 's'), '/', h('kbd', {}, 'e'), ' start/end at the playhead · ', h('kbd', {}, 'c'), ' cut out here · ',
         h('kbd', {}, '['), '/', h('kbd', {}, ']'), ' silences · ', h('kbd', {}, '←'), '/', h('kbd', {}, '→'), ' 1 s (shift 0.1 s) · ',
-        h('kbd', {}, '+'), '/', h('kbd', {}, '-'), ' zoom · ', h('kbd', {}, 'p'), ' play sermon'),
+        h('kbd', {}, '+'), '/', h('kbd', {}, '-'), ' zoom · ', h('kbd', {}, 'p'), ' play sermon. ',
+        wheelZoomNeedsKey() ? [h('kbd', {}, 'ctrl'), '+scroll zooms'] : 'Scroll zooms',
+        ' at the mouse, ', h('kbd', {}, 'shift'), '+scroll moves along (Settings › Waveform).'),
     );
     renderCuts();
 
@@ -307,17 +309,31 @@ export async function editorView(view, path, config) {
       else if (cutOf(r)) { sortCuts(); renderCuts(); changed(); }
     });
 
-    function applyZoom() {
+    // applyZoom zooms to the slider's value. With at ({ time, x }), time stays
+    // x pixels from the left edge (under the mouse); without, the playhead is kept in view.
+    function applyZoom(at) {
       const fit = waveEl.clientWidth / duration;
       const px = fit * Math.pow(Math.max(MAX_ZOOM / fit, 1), zoom.value / 100);
       ws.zoom(px);
-      reveal(ws.getCurrentTime());
+      if (at) ws.setScroll(Math.max(0, at.time * (ws.getWrapper().scrollWidth / duration) - at.x));
+      else reveal(ws.getCurrentTime());
     }
+    // The wheel zooms at the mouse: always with ctrl/cmd (also a trackpad pinch),
+    // without unless Settings asks for the key. Shift or sideways scrolling is
+    // left to the browser, which moves along the waveform.
     waveEl.addEventListener('wheel', (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
+      const key = e.ctrlKey || e.metaKey;
+      if (!key && (e.shiftKey || wheelZoomNeedsKey() || Math.abs(e.deltaX) > Math.abs(e.deltaY))) return;
+      const pixels = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 600 : 1);
+      const next = Math.min(100, Math.max(0, +zoom.value - Math.max(-10, Math.min(pixels / 20, 10))));
+      if (next === +zoom.value && !key) return; // all the way in or out: the page scrolls
       e.preventDefault();
-      zoom.value = Math.min(100, Math.max(0, +zoom.value + (e.deltaY < 0 ? 5 : -5)));
-      applyZoom();
+      if (next === +zoom.value) return;
+      const box = ws.getWrapper().getBoundingClientRect();
+      const x = e.clientX - waveEl.getBoundingClientRect().left;
+      const time = Math.max(0, Math.min(((e.clientX - box.left) / box.width) * duration, duration));
+      zoom.value = next;
+      applyZoom({ time, x });
     }, { passive: false });
 
     function onKey(e) {
