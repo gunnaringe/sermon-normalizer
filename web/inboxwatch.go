@@ -1,9 +1,6 @@
 package web
 
 import (
-	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -126,71 +123,4 @@ func (s *Server) ingest(name string) error {
 	s.cfg.Logger.Printf("inbox: %s is now %s", name, s.relPath(dst))
 	s.analyses.state(dst, true)
 	return nil
-}
-
-// handleInboxPut stores a recording in the inbox:
-//
-//	PUT api/inbox/files/<name>[?modified=<ms since 1970>]
-//
-// with the file as the body, streamed (no size limit; meant for other
-// services, e.g. one forwarding uploads from a file-sharing app). It is
-// written under a hidden name and renamed when complete, then moved into its
-// date folder at once (in the background). A name that is waiting in the
-// inbox is refused with 409.
-func (s *Server) handleInboxPut(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Inbox == "" {
-		writeError(w, http.StatusNotFound, errNoInbox)
-		return
-	}
-	name, err := inboxName(r.PathValue("name"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	dst := filepath.Join(s.cfg.Inbox, name)
-	if fileExists(dst) {
-		writeError(w, http.StatusConflict, fmt.Errorf("%s is already in the inbox", name))
-		return
-	}
-	tmp := filepath.Join(s.cfg.Inbox, "."+name+".partial")
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			writeError(w, http.StatusConflict, fmt.Errorf("%s is being received already", name))
-			return
-		}
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	_, err = io.Copy(f, r.Body)
-	if err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if ms, perr := strconv.ParseInt(r.URL.Query().Get("modified"), 10, 64); err == nil && perr == nil && ms > 0 {
-		t := time.UnixMilli(ms)
-		err = os.Chtimes(tmp, t, t)
-	}
-	if err == nil && fileExists(dst) {
-		err = fmt.Errorf("%s appeared in the inbox meanwhile", name)
-	}
-	if err == nil {
-		err = os.Rename(tmp, dst)
-	}
-	if err != nil {
-		os.Remove(tmp)
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	s.cfg.Logger.Printf("inbox: received %s", name)
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		if err := s.ingest(name); err != nil {
-			s.cfg.Logger.Printf("inbox: %s: %v", name, err) // the watcher retries when it changes
-		}
-	}()
-	writeJSON(w, http.StatusCreated, map[string]string{"name": name})
 }

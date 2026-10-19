@@ -436,39 +436,3 @@ func TestStaticAndConfig(t *testing.T) {
 		t.Errorf("config %+v", cfg)
 	}
 }
-
-func TestInboxPut(t *testing.T) {
-	ts := newTestServer(t, normalizer.FFmpeg{})
-	put := func(name, body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("PUT", "/api/inbox/files/"+url.PathEscape(name)+"?modified=1790000000000", strings.NewReader(body))
-		rec := httptest.NewRecorder()
-		ts.h.ServeHTTP(rec, req)
-		return rec
-	}
-	if err := os.WriteFile(filepath.Join(ts.inbox, "waiting.wav"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	for name, want := range map[string]int{"waiting.wav": http.StatusConflict, "slides.pdf": http.StatusBadRequest,
-		".hidden.wav": http.StatusBadRequest, "x.partial.flac": http.StatusBadRequest} {
-		if rec := put(name, "x"); rec.Code != want {
-			t.Errorf("%s: %d, want %d", name, rec.Code, want)
-		}
-	}
-	// A delivered recording is moved into its date folder right away.
-	if rec := put("Gudstjeneste 2026-10-04.flac", "audio"); rec.Code != http.StatusCreated {
-		t.Fatalf("put: %d %s", rec.Code, rec.Body)
-	}
-	dst := filepath.Join(ts.root, "2026", "2026-10-04", "2026-10-04_raw.flac")
-	for i := 0; i < 100 && !fileExists(dst); i++ {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if b, _ := os.ReadFile(dst); string(b) != "audio" {
-		t.Errorf("content %q", b)
-	}
-	if st, _ := os.Stat(dst); st == nil || st.ModTime().UnixMilli() != 1790000000000 {
-		t.Errorf("mtime %v", st)
-	}
-	if entries, _ := os.ReadDir(ts.inbox); len(entries) != 1 {
-		t.Errorf("inbox: %v", entries)
-	}
-}

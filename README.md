@@ -86,8 +86,7 @@ from that header, which the login proxy must set, and nothing else:
 
 The header is only trustworthy when every request comes through the proxy and the proxy replaces it
 (Traefik removes the headers named in `authResponseHeaders` before copying the auth response's).
-Clients that reach the app directly, such as `PUT api/inbox/files/<name>` from inside the cluster,
-have no groups and get nothing.
+Clients that reach the app directly have no groups and get nothing.
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
@@ -156,15 +155,12 @@ one run; a field you empty is left out. Saved in the church's `church.json` (wit
 
 ### Inbox
 
-- **The inbox is any folder**: a synced folder, a file share, or the API. A `.wav` or
+- **The inbox is any folder**: a synced folder or a file share. A `.wav` or
   `.flac` that has stopped changing for 30 s is moved into its date folder as `<date>_raw.*`
   (and converted and prepared there), without anyone opening it. The date is taken from the
   file name, else the recording's tags, else its modification time. If that date already has a
   raw recording, the new one goes in `<date> 2`, `<date> 3`... Hidden files and `*.partial*`
   are ignored, so write under such a name and rename when done if you can.
-- **`PUT api/inbox/files/<name>`** (optional `?modified=<ms>`) streams a recording into the
-  inbox, for other services, e.g. a job forwarding uploads from a file-sharing app. It is moved
-  into its date folder at once. A name still waiting in the inbox gets 409.
 
 When a recording is opened the first time, the server prepares its waveform and a small MP3
 preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` and kept

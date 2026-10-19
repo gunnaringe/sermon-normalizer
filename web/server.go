@@ -184,7 +184,6 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleJobCancel)
 
 	mux.HandleFunc("POST /api/upload", s.handleUpload)
-	mux.HandleFunc("PUT /api/inbox/files/{name}", s.handleInboxPut)
 	return mux
 }
 

@@ -50,8 +50,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/upload.go`: chunked upload straight to a date folder.
 - `web/inbox.go`: inbox file names, date suggestion, `newRawFolder`.
 - `web/inboxwatch.go`: `ingest` moves settled inbox files straight to their date
-  folder (convert + prepare happen there);
-  `PUT api/inbox/files/<name>` for other services.
+  folder (convert + prepare happen there).
 - `web/static/`: plain JS, no build. `dialog.js` = confirm/alert/prompt in the app's look
   (never use the browser's `confirm`/`alert`/`prompt`). `vendor/wavesurfer/` is wavesurfer.js
   7.12.12, unmodified.
