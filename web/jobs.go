@@ -206,8 +206,18 @@ func (js *jobs) run(ctx context.Context, j *job, pl plan) {
 		OnStep:     func(t string) { j.update(func() { j.steps = append(j.steps, t); j.progress = 0 }) },
 		OnProgress: func(f float64) { j.update(func() { j.progress = f }) },
 	}
+	// The run moves the recording into original/; its analysis moves with it.
+	var oldKey string
+	if raw := pl.paths.Source(); raw != "" {
+		oldKey, _ = cacheKey(raw)
+	}
 	err := p.Run(ctx)
 	lw.flush()
+	if oldKey != "" {
+		if raw := pl.paths.Source(); raw != "" {
+			js.s.analyses.carry(oldKey, raw)
+		}
+	}
 	var outs []outputFileInfo
 	on := map[string]bool{"flac": pl.opt.Outputs.Flac, "mp3": pl.opt.Outputs.Mp3, "opus": pl.opt.Outputs.Opus}
 	for _, o := range outputsOf(pl.paths) {

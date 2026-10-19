@@ -113,7 +113,7 @@ func TestResolve(t *testing.T) {
 func TestFolders(t *testing.T) {
 	ts := newTestServer(t, normalizer.FFmpeg{})
 	ts.file(t, "2026/2026-10-04/2026-10-04_raw.wav", "x")
-	ts.file(t, "2026/2026-09-27/2026-09-27_edit.flac", "x")
+	ts.file(t, "2026/2026-09-27/original/2026-09-27_raw.flac", "x")
 	ts.file(t, "2026/2026-09-27/2026-09-27.mp3", "x")
 	os.MkdirAll(filepath.Join(ts.root, "2026", "notes"), 0o755)
 	os.MkdirAll(filepath.Join(ts.root, "2026", ".hidden"), 0o755)
@@ -132,7 +132,7 @@ func TestFolders(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 	e := got.Entries[1]
-	if !e.Edit || e.Raw || strings.Join(e.Outputs, ",") != "mp3" || !e.Pending || e.Path != "2026/2026-09-27" {
+	if !e.Raw || strings.Join(e.Outputs, ",") != "mp3" || !e.Pending || e.Path != "2026/2026-09-27" {
 		t.Errorf("entry %+v", e)
 	}
 	if rec := ts.do(t, "GET", "/api/folders?path=nope", nil); rec.Code != http.StatusNotFound {
@@ -148,13 +148,13 @@ func TestFolderInfo(t *testing.T) {
 	ts.file(t, "2026-10-04/2026-10-04_raw.flac", "raw")
 	ts.file(t, "2026-10-04/2026-10-04.opus", "opus")
 	info := decode[folderInfo](t, ts.do(t, "GET", "/api/folder?path=2026-10-04", nil))
-	if info.Date != "2026-10-04" || info.Raw == nil || info.Raw.Name != "2026-10-04_raw.flac" || info.Edit != nil ||
+	if info.Date != "2026-10-04" || info.Raw == nil || info.Raw.Name != "2026-10-04_raw.flac" ||
 		len(info.Outputs) != 1 || info.Outputs[0].Format != "opus" || info.Outputs[0].Path != "2026-10-04/2026-10-04.opus" {
 		t.Errorf("info %+v", info)
 	}
 }
 
-func defaultRequest() runRequest { return requestFrom(normalizer.DefaultOptions(), "") }
+func defaultRequest() runRequest { return requestFrom(normalizer.DefaultOptions()) }
 
 func TestCheck(t *testing.T) {
 	ts := newTestServer(t, normalizer.FFmpeg{})
@@ -179,16 +179,15 @@ func TestCheck(t *testing.T) {
 	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "at least one output") {
 		t.Errorf("no outputs: %+v", pl)
 	}
-	// An edit file in the folder conflicts with cutting, but can be used.
-	ts.file(t, "d/2026-10-04/2026-10-04_edit.flac", "x")
+	// A folder without a recording cannot be run; one whose recording is in original/ can.
 	q = defaultRequest()
 	q.Start = 30
-	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "would conflict") {
-		t.Errorf("conflict: %+v", pl)
+	if pl := decode[plan](t, ts.do(t, "POST", "/api/check?path=d/2026-10-11", q)); pl.Error == "" {
+		t.Errorf("no folder: %+v", pl)
 	}
-	q.UseEdit = true
-	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Error != "" || ts.check(filepath.Join(ts.root, "d/2026-10-04"), q).opt.Start != 0 {
-		t.Errorf("use edit: %+v", pl)
+	ts.file(t, "d/2026-10-11/original/2026-10-11_raw.flac", "x")
+	if pl := decode[plan](t, ts.do(t, "POST", "/api/check?path=d/2026-10-11", q)); pl.Error != "" {
+		t.Errorf("recording in original/: %+v", pl)
 	}
 	if rec := ts.do(t, "POST", url, map[string]any{"bogus": 1}); rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown field: %d", rec.Code)
@@ -217,12 +216,6 @@ func TestCheckCuts(t *testing.T) {
 	q.Cuts = []cutSpan{{40, 30}}
 	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "must end after it starts") {
 		t.Errorf("backwards cut: %+v", pl)
-	}
-	// Using a hand-cut edit file ignores the selection and its cuts.
-	ts.file(t, "d/2026-10-04/2026-10-04_edit.flac", "x")
-	q.UseEdit, q.Cuts = true, []cutSpan{{30, 40}}
-	if opt := ts.check(folder, q).opt; len(opt.Cuts) != 0 {
-		t.Errorf("use edit kept cuts: %+v", opt.Cuts)
 	}
 }
 

@@ -22,7 +22,6 @@ type Options struct {
 	TargetLUFS     float64 // mono: -19, stereo: -16
 	TruePeak       float64
 	NoiseReduction int // afftdn nr in dB; 0 = off
-	KeepWav        bool
 	Force          bool
 	Start, End     float64 // cut raw to edit (seconds); 0 = from the beginning / to the end
 	Cuts           []Span  // parts of Start..End to leave out (seconds in the recording), e.g. a song
@@ -52,7 +51,7 @@ func (t Tags) args() []string {
 	return a
 }
 
-// cutting reports whether the edit is cut from raw rather than supplied by hand.
+// cutting reports whether a sermon is selected in the recording.
 func (o Options) cutting() bool { return o.Start > 0 || o.End > 0 }
 
 // joinFade is the fade (seconds) on each side of a join where a part was cut
@@ -142,17 +141,20 @@ func DefaultOptions() Options {
 
 // Paths are the files for one date folder.
 type Paths struct {
-	Folder  string
-	Date    string
-	Archive string // "" = no archive: sources stay where they are
-	Master  string
-	Mp3     string
-	Opus    string
+	Folder   string
+	Date     string
+	Original string // where the whole recording is kept: <folder>/original
+	Master   string
+	Mp3      string
+	Opus     string
 }
 
-// NewPaths resolves the files for a date folder. A relative archive is taken
-// relative to the folder; "" means no archive.
-func NewPaths(folder, archive string) (Paths, error) {
+// OriginalDir is the folder in a date folder that holds the whole recording
+// once a run has been made.
+const OriginalDir = "original"
+
+// NewPaths resolves the files for a date folder.
+func NewPaths(folder string) (Paths, error) {
 	abs, err := filepath.Abs(folder)
 	if err != nil {
 		return Paths{}, err
@@ -160,29 +162,23 @@ func NewPaths(folder, archive string) (Paths, error) {
 	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
 		return Paths{}, fmt.Errorf("%s is not a directory", abs)
 	}
-	if archive != "" && !filepath.IsAbs(archive) {
-		archive = filepath.Join(abs, archive)
-	}
 	date := filepath.Base(abs)
 	return Paths{
-		Folder:  abs,
-		Date:    date,
-		Archive: archive,
-		Master:  filepath.Join(abs, date+".flac"),
-		Mp3:     filepath.Join(abs, date+".mp3"),
-		Opus:    filepath.Join(abs, date+".opus"),
+		Folder:   abs,
+		Date:     date,
+		Original: filepath.Join(abs, OriginalDir),
+		Master:   filepath.Join(abs, date+".flac"),
+		Mp3:      filepath.Join(abs, date+".mp3"),
+		Opus:     filepath.Join(abs, date+".opus"),
 	}, nil
 }
 
-// RawArchive and EditArchive are where the sources are kept when archiving.
-func (p Paths) RawArchive() string  { return filepath.Join(p.Archive, p.Date+"_raw.flac") }
-func (p Paths) EditArchive() string { return filepath.Join(p.Archive, p.Date+"_edit.flac") }
+// RawOriginal is where the whole recording is kept after a run.
+func (p Paths) RawOriginal() string { return filepath.Join(p.Original, p.Date+"_raw.flac") }
 
-// Source names in the date folder: <date>_raw and <date>_edit, as .flac or .wav.
-const (
-	rawName  = "_raw"
-	editName = "_edit"
-)
+// rawName is the name of the whole recording in the date folder: <date>_raw,
+// as .flac or .wav.
+const rawName = "_raw"
 
 // Pipeline runs the steps for one date folder.
 type Pipeline struct {
@@ -197,7 +193,6 @@ type Pipeline struct {
 	OnProgress func(fraction float64)
 
 	raw     string   // the whole recording, if any
-	edit    string   // the sermon as a file; "" when the master is cut straight from raw
 	master  string   // the master that MP3/Opus are made from
 	cleanup []string // temporary files to remove when the run ends
 }
@@ -227,26 +222,16 @@ func (p Paths) findSource(name string) string {
 	return firstExisting(in(".flac"), in(".wav"))
 }
 
-// Sources are the inputs a run would use, found the same way as the pipeline:
-// in the date folder first, then in the archive (if any).
-type Sources struct {
-	Raw          string // the whole recording, or ""
-	Edit         string // the hand-cut sermon (or an earlier cut), or ""
-	EditInFolder bool   // Edit is in the date folder, i.e. supplied by hand
-}
-
-func (p Paths) Sources() Sources {
-	var s Sources
-	s.Raw = p.findSource(rawName)
-	if s.Raw == "" && p.Archive != "" && exists(p.RawArchive()) {
-		s.Raw = p.RawArchive()
+// Source is the whole recording a run would use, found the same way as the
+// pipeline: in the date folder first (a new arrival), then in original/.
+func (p Paths) Source() string {
+	if raw := p.findSource(rawName); raw != "" {
+		return raw
 	}
-	s.Edit = p.findSource(editName)
-	s.EditInFolder = s.Edit != ""
-	if s.Edit == "" && p.Archive != "" && exists(p.EditArchive()) {
-		s.Edit = p.EditArchive()
+	if exists(p.RawOriginal()) {
+		return p.RawOriginal()
 	}
-	return s
+	return ""
 }
 
 // runTo runs ffmpeg into dst, reporting progress against total seconds when
@@ -275,15 +260,10 @@ func (p *Pipeline) Run(ctx context.Context) error {
 			os.Remove(f)
 		}
 	}()
-	if p.P.Archive != "" {
-		if err := os.MkdirAll(p.P.Archive, 0o755); err != nil {
-			return err
-		}
+	if !p.Opt.cutting() {
+		return errors.New("select where the sermon starts and ends")
 	}
 	if err := p.stepRaw(ctx); err != nil {
-		return err
-	}
-	if err := p.stepEdit(ctx); err != nil {
 		return err
 	}
 	if err := p.stepMaster(ctx); err != nil {
@@ -295,36 +275,29 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	return p.report(ctx)
 }
 
-// --- 1. raw and 2. edit: both may arrive as WAV or FLAC -------------------
+// --- 1. raw: the whole recording may arrive as WAV or FLAC ---------------
 
 func (p *Pipeline) stepRaw(ctx context.Context) error {
 	p.step("1. Raw recording")
-	if p.P.Archive == "" {
-		p.raw = p.findSource(rawName)
-		if p.raw != "" {
-			p.logf("Using %s (no archive, left in place).", filepath.Base(p.raw))
-		} else {
-			p.warnf("no raw file found.")
-		}
-		return nil
+	if err := os.MkdirAll(p.P.Original, 0o755); err != nil {
+		return err
 	}
-	ok, err := p.ingest(ctx, p.P.RawArchive(), rawName)
+	ok, err := p.ingest(ctx, p.P.RawOriginal(), rawName)
 	if err != nil {
 		return err
 	}
-	if ok {
-		p.raw = p.P.RawArchive()
-	} else {
-		p.warnf("no raw file found.")
+	if !ok {
+		return errors.New("no raw recording to cut")
 	}
+	p.raw = p.P.RawOriginal()
+	p.logf("Cutting %s from %s to %s%s while making the master.", filepath.Base(p.raw), p.cutFrom(), p.cutTo(), p.cutsNote())
 	return nil
 }
 
-// ingest brings a source (WAV or FLAC) in the date folder into the archive as FLAC.
+// ingest brings the recording (WAV or FLAC) in the date folder into original/ as FLAC.
 //   - A FLAC in the folder is moved to dst.
 //   - A WAV is converted to dst (if dst is missing or forced), the audio is
-//     verified with MD5, and the WAV is deleted only if the audio is identical
-//     (and the WAV is not kept).
+//     verified with MD5, and the WAV is deleted only if the audio is identical.
 //
 // Returns whether dst exists afterwards.
 func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
@@ -333,7 +306,7 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 	switch {
 	case flac == "":
 	case exists(dst) && !p.Opt.Force:
-		p.warnf("%s is already in the archive; leaving %s in the folder (Save and generate replaces it).", filepath.Base(dst), filepath.Base(flac))
+		p.warnf("%s is already in original/; leaving %s in the folder (Save and generate replaces it).", filepath.Base(dst), filepath.Base(flac))
 	default:
 		if err := MoveFile(flac, dst); err != nil {
 			return false, err
@@ -356,84 +329,15 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	switch {
-	case !same:
+	if !same {
 		p.warnf("%s and %s are NOT identical. Keeping the WAV.", filepath.Base(dst), filepath.Base(wav))
-	case p.Opt.KeepWav:
-		p.logf("OK: %s is identical to the WAV. Keeping the WAV, as asked.", filepath.Base(dst))
-	default:
-		if err := os.Remove(wav); err != nil {
-			return false, err
-		}
-		p.logf("OK: %s is identical to the WAV. Deleted %s.", filepath.Base(dst), filepath.Base(wav))
+		return true, nil
 	}
+	if err := os.Remove(wav); err != nil {
+		return false, err
+	}
+	p.logf("OK: %s is identical to the WAV. Deleted %s.", filepath.Base(dst), filepath.Base(wav))
 	return true, nil
-}
-
-func (p *Pipeline) stepEdit(ctx context.Context) error {
-	p.step("2. Edit")
-	manual := p.findSource(editName)
-	if p.Opt.cutting() {
-		if manual != "" {
-			return fmt.Errorf("%s exists and a cut is given: use only one of them", filepath.Base(manual))
-		}
-		if p.raw == "" {
-			return errors.New("no raw recording to cut")
-		}
-		if p.P.Archive == "" {
-			p.logf("Cutting %s from %s to %s%s while making the master.", filepath.Base(p.raw), p.cutFrom(), p.cutTo(), p.cutsNote())
-			return nil
-		}
-		return p.cutEdit(ctx)
-	}
-	missing := fmt.Errorf("missing %s_edit.flac (or .wav): choose a cut, or cut the recording yourself and save it in %s", p.P.Date, p.P.Folder)
-	if p.P.Archive == "" {
-		if manual == "" {
-			return missing
-		}
-		p.edit = manual
-		p.logf("Using %s (no archive, left in place).", filepath.Base(manual))
-		return nil
-	}
-	ok, err := p.ingest(ctx, p.P.EditArchive(), editName)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return missing
-	}
-	p.edit = p.P.EditArchive()
-	return nil
-}
-
-// cutEdit writes the edit to the archive from raw at the cut: the selection
-// without the parts cut out of it. A recording cut by hand in another editor
-// is supplied as the _edit file instead.
-func (p *Pipeline) cutEdit(ctx context.Context) error {
-	dst := p.P.EditArchive()
-	if exists(dst) && !p.Opt.Force {
-		p.edit = dst
-		p.logf("%s exists, skipping (Save and generate cuts again).", filepath.Base(dst))
-		return nil
-	}
-	var total float64
-	if p.OnProgress != nil {
-		total, _ = p.sermonLength(ctx) // before p.edit is set: the length of the cut
-	}
-	args, graph, err := p.cutInput(ctx)
-	if err != nil {
-		return err
-	}
-	if graph != "" {
-		args = append(args, "-filter_complex", graph, "-map", "[cut]")
-	}
-	args = append(args, "-c:a", "flac")
-	if err := p.runTo(ctx, dst, total, args...); err != nil {
-		return err
-	}
-	p.edit = dst
-	p.logf("Cut %s from %s to %s%s.", filepath.Base(dst), p.cutFrom(), p.cutTo(), p.cutsNote())
-	return nil
 }
 
 // cutInput is how ffmpeg reads the sermon from the raw recording: the input
@@ -590,20 +494,14 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		}
 		p.logf("Fade in %g s, fade out %g s (sermon is %s).", p.Opt.FadeIn, p.Opt.FadeOut, FormatTime(math.Round(length)))
 	}
-	var args []string
-	if p.edit != "" {
-		args = []string{"-i", p.edit, "-af", p.masterFilter(length)}
+	args, graph, err := p.cutInput(ctx)
+	if err != nil {
+		return err
+	}
+	if graph == "" {
+		args = append(args, "-af", p.masterFilter(length))
 	} else {
-		var graph string
-		var err error
-		if args, graph, err = p.cutInput(ctx); err != nil {
-			return err
-		}
-		if graph == "" {
-			args = append(args, "-af", p.masterFilter(length))
-		} else {
-			args = append(args, "-filter_complex", graph+";[cut]"+p.masterFilter(length)+"[out]", "-map", "[out]")
-		}
+		args = append(args, "-filter_complex", graph+";[cut]"+p.masterFilter(length)+"[out]", "-map", "[out]")
 	}
 	args = append(args, "-c:a", "flac", "-sample_fmt", "s32")
 	args = append(args, p.Opt.Tags.args()...)
@@ -616,13 +514,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 // checkStereo warns when stereo output would add nothing: the part that
 // becomes the sermon is mono, or its two channels are (nearly) the same.
 func (p *Pipeline) checkStereo(ctx context.Context) {
-	var c ChannelCheck
-	var err error
-	if p.edit != "" {
-		c, err = p.FF.CheckChannels(ctx, p.edit)
-	} else {
-		c, err = p.FF.CheckChannels(ctx, p.raw, p.cutArgs()...)
-	}
+	c, err := p.FF.CheckChannels(ctx, p.raw, p.cutArgs()...)
 	switch {
 	case err != nil:
 		p.warnf("could not check the channels: %v", err)
@@ -648,9 +540,6 @@ func (p *Pipeline) checkStereo(ctx context.Context) {
 
 // sermonLength is the length in seconds of what goes into the master.
 func (p *Pipeline) sermonLength(ctx context.Context) (float64, error) {
-	if p.edit != "" {
-		return p.FF.Duration(ctx, p.edit)
-	}
 	end, err := p.FF.Duration(ctx, p.raw)
 	if err != nil {
 		return 0, err
@@ -739,9 +628,6 @@ func (p *Pipeline) report(ctx context.Context) error {
 	tw := tabwriter.NewWriter(p.Out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "File\tLUFS\tTP\tLRA\tMB")
 	var files []string
-	if p.edit != "" {
-		files = append(files, p.edit)
-	}
 	for _, f := range []struct {
 		on   bool
 		path string
@@ -757,9 +643,6 @@ func (p *Pipeline) report(ctx context.Context) error {
 		}
 		st, _ := os.Stat(f)
 		fmt.Fprintf(tw, "%s\t%.1f\t%.1f\t%.1f\t%.1f\n", filepath.Base(f), m.LUFS, m.TruePeak, m.LRA, float64(st.Size())/1048576)
-		if f == p.edit {
-			continue
-		}
 		if m.TruePeak > -1.0 {
 			defer p.warnf("%s: true peak %.1f dBTP is above -1.", filepath.Base(f), m.TruePeak)
 		}

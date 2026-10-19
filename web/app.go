@@ -37,7 +37,7 @@ const oldRegistry = "tenants.json"
 
 // AppConfig sets up all churches.
 type AppConfig struct {
-	// Base is the setup shared by every church (cache, layout, archive,
+	// Base is the setup shared by every church (cache, layout,
 	// ffmpeg...). Its Root and Inbox, if set, make the legacy church.
 	Base Config
 	// DataDir holds a folder per church. "" = no churches can be added.

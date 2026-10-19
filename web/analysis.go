@@ -291,12 +291,12 @@ func (s *Server) rawFor(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	paths, err := normalizer.NewPaths(abs, s.cfg.Archive)
+	paths, err := normalizer.NewPaths(abs)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return "", false
 	}
-	raw := paths.Sources().Raw
+	raw := paths.Source()
 	if raw == "" {
 		writeError(w, http.StatusNotFound, errors.New("no raw recording in this folder"))
 		return "", false

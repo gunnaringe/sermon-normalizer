@@ -3,7 +3,6 @@ package web
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,7 +18,6 @@ type folderEntry struct {
 	Path    string   `json:"path"`
 	Date    bool     `json:"date"` // a date folder: has sources or outputs
 	Raw     bool     `json:"raw"`
-	Edit    bool     `json:"edit"`
 	Outputs []string `json:"outputs"`
 	Pending bool     `json:"pending"`    // has sources but not all outputs
 	Convert bool     `json:"converting"` // the raw WAV is being converted to FLAC
@@ -37,14 +35,14 @@ func outputsOf(p normalizer.Paths) []output {
 
 func (s *Server) entry(abs string) folderEntry {
 	e := folderEntry{Name: filepath.Base(abs), Path: s.relPath(abs), Outputs: []string{}}
-	paths, err := normalizer.NewPaths(abs, s.cfg.Archive)
+	paths, err := normalizer.NewPaths(abs)
 	if err != nil {
 		return e
 	}
-	src := paths.Sources()
-	e.Raw, e.Edit = src.Raw != "", src.Edit != ""
+	raw := paths.Source()
+	e.Raw = raw != ""
 	if e.Raw {
-		stage := s.analyses.stage(src.Raw)
+		stage := s.analyses.stage(raw)
 		e.Convert, e.Prepare = stage == "convert", stage != "" && stage != "convert"
 	}
 	for _, o := range outputsOf(paths) {
@@ -52,8 +50,8 @@ func (s *Server) entry(abs string) folderEntry {
 			e.Outputs = append(e.Outputs, o.format)
 		}
 	}
-	e.Date = e.Raw || e.Edit || len(e.Outputs) > 0
-	e.Pending = (e.Raw || e.Edit) && len(e.Outputs) < 3
+	e.Date = e.Raw || len(e.Outputs) > 0
+	e.Pending = e.Raw && len(e.Outputs) < 3
 	if j := s.jobs.active(e.Path); j != nil {
 		e.Job = j.ID
 	}
@@ -92,16 +90,14 @@ func (s *Server) handleFolders(w http.ResponseWriter, r *http.Request) {
 
 // folderInfo is everything the cut page needs about a date folder.
 type folderInfo struct {
-	Path         string           `json:"path"`
-	Date         string           `json:"date"`
-	Raw          *fileInfo        `json:"raw"`
-	Edit         *fileInfo        `json:"edit"`
-	EditInFolder bool             `json:"editInFolder"`
-	Outputs      []outputFileInfo `json:"outputs"`
-	Job          *jobSnapshot     `json:"job"`
-	Tags         *Meta            `json:"tags"` // the church's defaults filled in for this folder
-	TagsError    string           `json:"tagsError,omitempty"`
-	Saved        *savedCuts       `json:"saved"` // the selection and cuts kept for this sermon
+	Path      string           `json:"path"`
+	Date      string           `json:"date"`
+	Raw       *fileInfo        `json:"raw"`
+	Outputs   []outputFileInfo `json:"outputs"`
+	Job       *jobSnapshot     `json:"job"`
+	Tags      *Meta            `json:"tags"` // the church's defaults filled in for this folder
+	TagsError string           `json:"tagsError,omitempty"`
+	Saved     *savedCuts       `json:"saved"` // the selection and cuts kept for this sermon
 }
 
 type outputFileInfo struct {
@@ -110,17 +106,13 @@ type outputFileInfo struct {
 }
 
 func (s *Server) folderInfo(abs string) (folderInfo, error) {
-	paths, err := normalizer.NewPaths(abs, s.cfg.Archive)
+	paths, err := normalizer.NewPaths(abs)
 	if err != nil {
 		return folderInfo{}, err
 	}
-	src := paths.Sources()
-	info := folderInfo{Path: s.relPath(abs), Date: paths.Date, EditInFolder: src.EditInFolder, Outputs: []outputFileInfo{}, Saved: readCuts(abs)}
-	if src.Raw != "" {
-		info.Raw = s.fileInfo(src.Raw)
-	}
-	if src.Edit != "" {
-		info.Edit = s.fileInfo(src.Edit)
+	info := folderInfo{Path: s.relPath(abs), Date: paths.Date, Outputs: []outputFileInfo{}, Saved: readCuts(abs)}
+	if raw := paths.Source(); raw != "" {
+		info.Raw = s.fileInfo(raw)
 	}
 	for _, o := range outputsOf(paths) {
 		if fi := s.fileInfo(o.path); fi != nil {
@@ -165,8 +157,7 @@ type cutSpan struct {
 type runRequest struct {
 	Start          float64   `json:"start"`
 	End            float64   `json:"end"`
-	Cuts           []cutSpan `json:"cuts"`    // parts of start..end to leave out
-	UseEdit        bool      `json:"useEdit"` // use the <date>_edit file instead of cutting
+	Cuts           []cutSpan `json:"cuts"` // parts of start..end to leave out
 	Flac           bool      `json:"flac"`
 	Mp3            bool      `json:"mp3"`
 	Opus           bool      `json:"opus"`
@@ -178,8 +169,6 @@ type runRequest struct {
 	TruePeak       float64   `json:"truePeak"`
 	Mp3Bitrate     string    `json:"mp3Bitrate"`
 	OpusBitrate    string    `json:"opusBitrate"`
-	Archive        string    `json:"archive"`
-	KeepWav        bool      `json:"keepWav"`
 	Force          bool      `json:"force"`
 	// Tags for this run; nil = the church's defaults for the folder, "" = no tag.
 	Title  *string `json:"title"`
@@ -187,7 +176,7 @@ type runRequest struct {
 	Album  *string `json:"album"`
 }
 
-func requestFrom(o normalizer.Options, archive string) runRequest {
+func requestFrom(o normalizer.Options) runRequest {
 	return runRequest{
 		Start: o.Start, End: o.End,
 		Cuts: cutSpans(o.Cuts),
@@ -195,7 +184,7 @@ func requestFrom(o normalizer.Options, archive string) runRequest {
 		Stereo: o.Stereo, FadeIn: o.FadeIn, FadeOut: o.FadeOut,
 		NoiseReduction: o.NoiseReduction, TargetLUFS: o.TargetLUFS, TruePeak: o.TruePeak,
 		Mp3Bitrate: o.Mp3Bitrate, OpusBitrate: o.OpusBitrate,
-		Archive: archive, KeepWav: o.KeepWav, Force: o.Force,
+		Force: o.Force,
 	}
 }
 
@@ -214,13 +203,10 @@ func (q runRequest) options() normalizer.Options {
 		Stereo:  q.Stereo, FadeIn: q.FadeIn, FadeOut: q.FadeOut,
 		NoiseReduction: q.NoiseReduction, TargetLUFS: q.TargetLUFS, TruePeak: q.TruePeak,
 		Mp3Bitrate: strings.TrimSpace(q.Mp3Bitrate), OpusBitrate: strings.TrimSpace(q.OpusBitrate),
-		KeepWav: q.KeepWav, Force: q.Force,
+		Force: q.Force,
 	}
 	for _, c := range q.Cuts {
 		o.Cuts = append(o.Cuts, normalizer.Span{Start: c.Start, End: c.End})
-	}
-	if q.UseEdit {
-		o.Start, o.End, o.Cuts = 0, 0, nil
 	}
 	return o
 }
@@ -230,20 +216,19 @@ type plan struct {
 	Error   string   `json:"error,omitempty"`
 	Notices []string `json:"notices"`
 
-	opt     normalizer.Options
-	paths   normalizer.Paths
-	archive string
+	opt   normalizer.Options
+	paths normalizer.Paths
 }
 
 // check validates a run for a folder the way the pipeline would see it,
 // so the front end can show problems before anything starts.
 func (s *Server) check(abs string, q runRequest) plan {
-	pl := plan{Notices: []string{}, opt: q.options(), archive: strings.TrimSpace(q.Archive)}
+	pl := plan{Notices: []string{}, opt: q.options()}
 	fail := func(err error) plan { pl.Error = err.Error(); return pl }
 	if err := pl.opt.Validate(); err != nil {
 		return fail(err)
 	}
-	paths, err := normalizer.NewPaths(abs, pl.archive)
+	paths, err := normalizer.NewPaths(abs)
 	if err != nil {
 		return fail(err)
 	}
@@ -252,17 +237,13 @@ func (s *Server) check(abs string, q runRequest) plan {
 	if pl.opt.Tags, note = s.runTags(abs, q); note != "" {
 		pl.Notices = append(pl.Notices, note)
 	}
-	src := paths.Sources()
+	raw := paths.Source()
 	switch {
-	case q.UseEdit && src.Edit == "":
-		return fail(fmt.Errorf("there is no %s_edit file", paths.Date))
-	case !q.UseEdit && src.Raw == "":
+	case raw == "":
 		return fail(errors.New("there is no raw recording to cut"))
-	case !q.UseEdit && src.EditInFolder:
-		return fail(fmt.Errorf("%s is in the folder and would conflict with cutting: use it, or move it away", filepath.Base(src.Edit)))
-	case !q.UseEdit && pl.opt.Start == 0 && pl.opt.End == 0:
+	case pl.opt.Start == 0 && pl.opt.End == 0:
 		return fail(errors.New("select where the sermon starts and ends"))
-	case src.Raw != "" && s.analyses.converting(src.Raw):
+	case s.analyses.converting(raw):
 		return fail(errors.New("the recording is still being converted to FLAC"))
 	}
 	if !pl.opt.Force {
@@ -275,11 +256,6 @@ func (s *Server) check(abs string, q runRequest) plan {
 		}
 		if len(existing) > 0 {
 			pl.Notices = append(pl.Notices, "Already there, kept: "+strings.Join(existing, ", ")+". Save and generate makes them again.")
-		}
-		if !q.UseEdit && pl.archive != "" {
-			if _, err := os.Stat(paths.EditArchive()); err == nil {
-				pl.Notices = append(pl.Notices, "An earlier cut is in the archive; Run uses it instead of this selection. Save and generate cuts again.")
-			}
 		}
 	}
 	return pl

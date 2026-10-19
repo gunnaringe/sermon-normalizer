@@ -196,8 +196,11 @@ func TestIntegrationRun(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if strings.Join(names, ",") != "2026-10-04.mp3,2026-10-04_raw.wav,x" {
+	if strings.Join(names, ",") != "2026-10-04.mp3,original,x" { // the recording moved to original/, as FLAC
 		t.Errorf("files %v", names)
+	}
+	if !fileExists(filepath.Join(ts.root, "2026-10-04", "original", "2026-10-04_raw.flac")) {
+		t.Error("the recording is not in original/")
 	}
 	// The output can be fetched for listening.
 	resp, err := http.Get(hs.URL + "/api/file?path=" + last.Outputs[0].Path)

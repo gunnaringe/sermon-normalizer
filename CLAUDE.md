@@ -33,7 +33,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `{yyyy}` `{mm}` `{dd}` `{date}` `{weekday}` `{name}`...), settings API, the tags of a run.
   Stored per church in its `church.json`; `normalizer.Tags` carries them to ffmpeg.
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
-  (`POST api/rename`: folder + files named after it, also in the archive).
+  (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/namelist.go`: remembered sermon names per church (suggestions on/off + list, learned on
   upload/rename; `GET/PUT api/names`), stored in `church.json` like the tags.
 - `web/cuts.go`: the selection + cuts kept in `<date>_cuts.json` in the date folder
@@ -61,8 +61,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - Outputs go through `FFmpeg.RunTo` (`.partial`, renamed on success); existing
   outputs are skipped by Run; Save and generate (Force in the API) redoes them.
 - Delete a source only after its copy is verified identical (`SameAudio` for
-  WAV→FLAC, byte MD5 for copies). Raw WAVs are replaced by verified FLAC; with
-  no archive folder, runs never touch sources.
+  WAV→FLAC, byte MD5 for copies). A run moves the whole recording into
+  `<date>/original/` (WAV → verified FLAC); the outputs are cut straight from it
+  using the selection + cuts, there is no edit file.
 - No long work inside a request: it sits behind Cloudflare (100 MB bodies,
   ~100 s timeout). Start background work on `s.ctx` under `s.wg`.
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.

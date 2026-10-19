@@ -16,14 +16,14 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 
 // savedOptions are the choices of the last run, except per-run ones.
 function savedOptions(config) {
-  const opts = { ...config.defaults.mono, archive: config.archive || '' };
+  const opts = { ...config.defaults.mono };
   try { Object.assign(opts, JSON.parse(localStorage.getItem(STORE) || localStorage.getItem(OLD_STORE) || '{}')); } catch {}
   delete opts.force; // from before it was a button
   return opts;
 }
 
 function saveOptions(opts) {
-  const { start, end, useEdit, title, artist, album, ...keep } = opts;
+  const { start, end, title, artist, album, archive, keepWav, ...keep } = opts; // the last two are from older versions
   localStorage.setItem(STORE, JSON.stringify(keep));
 }
 
@@ -39,7 +39,6 @@ export async function editorView(view, path, config) {
   const opts = savedOptions(config);
   // Tags are per sermon: the church's defaults for this folder, editable for this run.
   const tags = { title: '', artist: '', album: '', ...(info.tags || {}) };
-  let useEdit = Boolean(info.edit && info.editInFolder);
   let job = info.job;
   let sel = null; // the selection region
   let regions = null; // the waveform's regions plugin: selection, cuts, silences
@@ -66,10 +65,6 @@ export async function editorView(view, path, config) {
   const cutList = h('div', { class: 'cuts' });
   const cutHint = h('p', { class: 'muted' });
   const skipBox = h('input', { type: 'checkbox', checked: true });
-  const editChoice = info.edit && info.editInFolder
-    ? h('label', {}, h('input', { type: 'checkbox', checked: useEdit, onchange: (e) => { useEdit = e.target.checked; changed(); } }),
-      ` Use ${info.edit.name} (cut in another editor) instead of the selection`)
-    : null;
   const recordingLine = h('p', { class: 'muted' });
   const showRecording = (raw) => {
     recordingLine.textContent = raw ? `Recording: ${raw.name} · ${formatSize(raw.size)}` : 'No raw recording in this folder.';
@@ -110,7 +105,6 @@ export async function editorView(view, path, config) {
     recordingLine,
     filesSection,
     waveSection,
-    editChoice ? h('p', {}, editChoice) : '',
     h('h2', {}, 'Options'),
     optionsForm(),
     h('div', { class: 'panel' }, checkOut, h('p', {}, runButton, ' ', generateButton)),
@@ -126,11 +120,9 @@ export async function editorView(view, path, config) {
       h('strong', {}, o.name), h('span', { class: 'muted' }, formatSize(o.size)),
       h('audio', { controls: true, preload: 'none', src: fileURL(o) }),
       h('a', { href: fileURL(o, true) }, 'Download')));
-    const sources = [[inf.raw, 'whole recording'], [inf.edit, 'cut']].filter(([f]) => f)
-      .flatMap(([f, what], i) => [i ? ' · ' : '', h('a', { href: fileURL(f, true) }, f.name), ` (${what}, ${formatSize(f.size)})`]);
     filesSection.replaceChildren(
       outputs.length ? h('div', { class: 'outputs' }, outputs) : '',
-      sources.length ? h('p', { class: 'muted' }, 'Sources: ', ...sources) : '');
+      inf.raw ? h('p', { class: 'muted' }, 'Original: ', h('a', { href: fileURL(inf.raw, true) }, inf.raw.name), ` (the whole recording, ${formatSize(inf.raw.size)})`) : '');
   }
   async function refreshFiles() {
     const inf = await api('GET', 'api/folder?path=' + q(path));
@@ -605,7 +597,6 @@ export async function editorView(view, path, config) {
       h('div', { class: 'options' },
         h('div', {}, h('strong', {}, 'Outputs'), check('flac', 'FLAC master'), check('mp3', 'MP3'), check('opus', 'Opus')),
         h('div', {}, h('strong', {}, 'Sound'), check('stereo', 'Stereo (off = mono)'), num('fadeIn', 'Fade in (s)', 0.5), num('fadeOut', 'Fade out (s)', 0.5)),
-        h('div', {}, h('strong', {}, 'Files'), text('archive', 'Archive folder', 'none'), check('keepWav', 'Keep a hand-cut edit WAV')),
         info.tags ? h('div', {}, h('strong', {}, 'Tags'), tag('title', 'Title'), tag('artist', 'Artist'), tag('album', 'Album'))
           : h('div', {}, h('strong', {}, 'Tags'), h('span', { class: 'muted' }, info.tagsError || 'No tags'))),
       h('details', {}, h('summary', {}, 'More sound options'),
@@ -635,10 +626,9 @@ export async function editorView(view, path, config) {
       force,
       ...(info.tags ? tags : {}),
       noiseReduction: Math.round(opts.noiseReduction),
-      start: !useEdit && sel ? sel.start : 0,
-      end: !useEdit && sel ? sel.end : 0,
-      cuts: !useEdit && sel ? cuts.map((c) => ({ start: c.region.start, end: c.region.end })) : [],
-      useEdit,
+      start: sel ? sel.start : 0,
+      end: sel ? sel.end : 0,
+      cuts: sel ? cuts.map((c) => ({ start: c.region.start, end: c.region.end })) : [],
     };
   }
 
@@ -686,7 +676,6 @@ export async function editorView(view, path, config) {
         existing.length
           ? [h('p', {}, 'These files are replaced:'), h('ul', {}, existing.map((n) => h('li', {}, n)))]
           : h('p', {}, 'No files are made yet, so nothing is replaced.'),
-        opts.archive ? h('p', {}, 'The cut in the archive is made again too.') : '',
       ],
       confirm: 'Save and generate',
       danger: existing.length > 0,
@@ -761,10 +750,7 @@ export async function editorView(view, path, config) {
       if (alive) waveSection.replaceChildren(h('p', { class: 'error' }, e.message));
     });
   } else {
-    waveSection.replaceChildren(h('p', {}, info.edit
-      ? `Only an edit file (${info.edit.name}) is here; it will be used as the sermon.`
-      : 'Nothing to cut yet: upload a recording, or put <date>_raw.wav in the folder.'));
-    useEdit = Boolean(info.edit);
+    waveSection.replaceChildren(h('p', {}, 'Nothing to cut yet: upload a recording, or put <date>_raw.wav in the folder.'));
   }
   check();
   return teardown;

@@ -194,11 +194,12 @@ test('run with chosen outputs and follow it live', async ({ page }) => {
   // Downloads straight from the page.
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('.outputs').getByRole('link', { name: 'Download' }).click()]);
   expect(download.suggestedFilename()).toBe('2026-10-04.mp3');
-  await expect(page.getByText('Sources: 2026-10-04_raw.flac')).toBeVisible();
+  await expect(page.getByText('Original: 2026-10-04_raw.flac')).toBeVisible(); // moved into original/ by the run
   await page.screenshot({ path: path.join(shots, 'done.png'), fullPage: true });
 
   const files = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).sort();
-  expect(files).toEqual(['2026-10-04.mp3', '2026-10-04_cuts.json', '2026-10-04_raw.flac']); // the cuts file is kept
+  expect(files).toEqual(['2026-10-04.mp3', '2026-10-04_cuts.json', 'original']); // the cuts are kept, the recording is in original/
+  expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04/original'))).toEqual(['2026-10-04_raw.flac']);
   // The options are remembered for the next folder (not Force or the cut).
   await page.reload();
   await expect(page.getByLabel('FLAC master')).not.toBeChecked();

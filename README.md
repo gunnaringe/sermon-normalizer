@@ -63,7 +63,7 @@ the server from starting rather than being overwritten.
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |
 | `--cache-days` | 30 | remove cached analyses not used for this long |
-| `--archive` | | the default archive folder for runs (see below) |
+| `--archive` | | only to move over from an older version: the folder it kept the recordings in (`arkiv`) is renamed to `original` in each date folder at start (see below) |
 | `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
 
@@ -111,7 +111,7 @@ cancels running jobs and waits for them to clean up.
 - **Several sermons a day:** give the second one a name (upload form, optional). Its folder is
   `<year>/<date> <name>` and its files `<date> <name>_raw.flac`, `<date> <name>.mp3`... Without a name
   a date can hold one sermon. **Rename…** on a sermon's page changes its date or name (the folder and
-  the files named after it, also in the archive; files already made keep their tags). A recording
+  the files named after it, also in `original/`; files already made keep their tags). A recording
   from the inbox that finds its date taken lands in `<date> 2`; rename it. Names you use are
   remembered per church and suggested next time; **Settings → Sermon names** turns that off and
   lists them, so a one-off can be removed.
@@ -152,9 +152,6 @@ normalized (up to 40 dB of dynamic gain), so even a very quiet recording can be 
 cutting; the waveform keeps the original levels, where loud music and quieter speech stand
 apart. The browser only streams the preview; the cut is always made from the original.
 
-**A hand-cut recording:** to cut it in another audio editor, put the result in the date folder
-as `<date>_edit.flac` (or `.wav`). The editor then offers to use it instead of a selection.
-
 ## What a run makes
 
 ```
@@ -170,8 +167,6 @@ as `<date>_edit.flac` (or `.wav`). The editor then offers to use it instead of a
 | Outputs | FLAC, MP3, Opus | which files to make |
 | Stereo | off (mono) | stereo moves the defaults to -16 LUFS, MP3 128k, Opus 96k |
 | Fade in / out | 0 | seconds of fade at the cut points, 0 = off |
-| Archive folder | `--archive` | keep the sources as FLAC there (default: leave them in place) |
-| Keep a hand-cut edit WAV | off | when archiving, keep `<date>_edit.wav` next to its FLAC (raw WAVs always become FLAC) |
 | Noise reduction | 12 dB | 0 = off |
 | Target loudness | -19 LUFS | |
 | Max true peak | -1.5 dBTP | for the master |
@@ -190,23 +185,27 @@ as `<date>_edit.flac` (or `.wav`). The editor then offers to use it instead of a
   channel is silent or 20 dB or more quieter than the other: stereo output would have the
   sermon on one side only, while mono mixes both channels. It only warns.
 
-### Archive
+### The original recording
 
-With an archive folder the sources are kept as FLAC there, and the date folder ends up with
-just the finished files. A relative path is relative to the date folder; an absolute path
-(e.g. on another disk) is used as is, and can be shared by all dates.
+A run moves the whole recording into `original/` in the date folder, as FLAC, so the date folder
+ends up with the finished files, the saved cuts and that one folder. No cut file is made: the
+outputs are made straight from the original, using the selection and cuts (`<date>_cuts.json`),
+so there is nothing else to keep in step.
 
 ```
 2026-10-04/
   2026-10-04.flac
   2026-10-04.mp3
   2026-10-04.opus
-  arkiv/
-    2026-10-04_raw.flac       the whole recording
-    2026-10-04_edit.flac      the sermon as cut, the input to the master
+  2026-10-04_cuts.json          the selection and the cuts
+  original/
+    2026-10-04_raw.flac         the whole recording
 ```
 
-- A WAV is converted to FLAC in the archive, the audio is verified with MD5, and **the WAV is
-  deleted only if the audio is identical** (unless Keep WAV). A FLAC is moved; across disks it
-  is copied, verified and only then deleted.
-- A file already in the archive is never replaced by Run; Save and generate replaces it.
+- A WAV is converted to FLAC in `original/`, the audio is verified with MD5, and **the WAV is
+  deleted only if the audio is identical**. A FLAC is moved; across disks it is copied, verified
+  and only then deleted.
+- A recording already in `original/` is never replaced by Run; Save and generate replaces it.
+- Older versions kept it in the folder given with `--archive` (`arkiv`). Start the server with
+  `--archive arkiv` once and each date folder's `arkiv` is renamed to `original` (any old cut
+  files stay in it, unused).

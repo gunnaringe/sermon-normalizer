@@ -19,13 +19,12 @@ It runs on Linux (a server or the home cluster); the cutting happens in the brow
   <date>.flac                master, mono, 48 kHz / 24-bit, -19 LUFS
   <date>.mp3                 mono, 96 kbps  (publishing)
   <date>.opus                mono, 48 kbps
-  arkiv\                     only with the archive folder set to arkiv
-    <date>_raw.flac          the whole recording, unedited
-    <date>_edit.flac         cut version (input to the master)
+  <date>_cuts.json           the selection and cuts, kept by the editor
+  original\                  the whole recording, unedited, after a run
+    <date>_raw.flac
 ```
 
-Input placed in the folder: `<date>_raw.wav` (or `_raw.flac`), plus `<date>_edit.flac` if the sermon is cut by hand instead of in the editor.
-Without an archive folder the sources stay in the date folder untouched.
+Input placed in the folder: `<date>_raw.wav` (or `_raw.flac`); a run moves it into `original/`. There is no cut file: the outputs are cut straight from the original.
 
 ## Choice of language
 
@@ -58,7 +57,7 @@ Module `github.com/gunnaringe/sermon-studio`, standard library only.
 - `*_test.go`: unit and integration tests; `web/e2e/`: browser tests
 
 Run options (from the web form): cut start/end and parts cut out of it, fades, outputs (FLAC, MP3, Opus), mono or
-stereo (stereo defaults: -16 LUFS, 128k MP3, 96k Opus), archive folder, keep WAV, redo all (Save and generate),
+stereo (stereo defaults: -16 LUFS, 128k MP3, 96k Opus), redo all (Save and generate),
 noise reduction (12 dB), target loudness (-19 LUFS), max true peak (-1.5 dBTP),
 MP3 bitrate (96k), Opus bitrate (48k).
 

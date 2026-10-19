@@ -58,8 +58,8 @@ func TestUploadNamedSermon(t *testing.T) {
 }
 
 func TestRename(t *testing.T) {
-	ts := newTestServerWith(t, normalizer.FFmpeg{}, func(c *Config) { c.Archive = "arkiv" })
-	for _, f := range []string{"2026-10-04 2_raw.flac", "2026-10-04 2.mp3", "2026-10-04 2.flac", "arkiv/2026-10-04 2_edit.flac", "notes.txt"} {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	for _, f := range []string{"original/2026-10-04 2_raw.flac", "2026-10-04 2.mp3", "2026-10-04 2.flac", "notes.txt"} {
 		ts.file(t, "2026/2026-10-04 2/"+f, "x")
 	}
 	ts.file(t, "2026/2026-10-04/2026-10-04_raw.flac", "x")
@@ -84,7 +84,7 @@ func TestRename(t *testing.T) {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
 	dir := filepath.Join(ts.root, "2027", "2027-01-03 Nyttår")
-	for _, f := range []string{"2027-01-03 Nyttår_raw.flac", "2027-01-03 Nyttår.mp3", "2027-01-03 Nyttår.flac", "arkiv/2027-01-03 Nyttår_edit.flac", "notes.txt"} {
+	for _, f := range []string{"original/2027-01-03 Nyttår_raw.flac", "2027-01-03 Nyttår.mp3", "2027-01-03 Nyttår.flac", "notes.txt"} {
 		if !fileExists(filepath.Join(dir, f)) {
 			t.Errorf("missing %s", f)
 		}

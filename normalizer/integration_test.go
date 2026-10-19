@@ -111,9 +111,9 @@ func dateFolder(t *testing.T) string {
 	return dir
 }
 
-func run(t *testing.T, ctx context.Context, ff FFmpeg, dir, archive string, opt Options) error {
+func run(t *testing.T, ctx context.Context, ff FFmpeg, dir string, opt Options) error {
 	t.Helper()
-	paths, err := NewPaths(dir, archive)
+	paths, err := NewPaths(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,101 +177,42 @@ func checkOutputsAs(t *testing.T, ff FFmpeg, dir string, wantDuration float64, c
 	}
 }
 
-func TestIntegrationNoArchiveCut(t *testing.T) {
+func TestIntegrationCut(t *testing.T) {
 	ff := requireFFmpeg(t)
 	dir := dateFolder(t)
 	raw := filepath.Join(dir, date+"_raw.wav")
 	service(t, ff, raw, 2)
-	rawSum := fileMD5(t, raw)
 
 	opt := DefaultOptions()
 	opt.Start, opt.End = 20, 80
-	if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
 		t.Fatal(err)
 	}
-	wantFiles(t, dir, date+".flac", date+".mp3", date+".opus", date+"_raw.wav")
-	if fileMD5(t, raw) != rawSum {
-		t.Error("the raw recording was changed")
+	// The WAV was verified and replaced by a FLAC in original/; no edit file is made.
+	wantFiles(t, dir, date+".flac", date+".mp3", date+".opus", "original/"+date+"_raw.flac")
+	if pr := probeFile(t, filepath.Join(dir, "original", date+"_raw.flac")); pr.channels != 2 || !near(pr.duration, 100, 0.01) {
+		t.Errorf("original: %+v, want the whole stereo recording", pr)
 	}
 	checkOutputs(t, ff, dir, 60)
 
 	// A second run skips existing outputs.
 	master := filepath.Join(dir, date+".flac")
 	before, _ := os.Stat(master)
-	if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
 		t.Fatal(err)
 	}
 	if after, _ := os.Stat(master); !after.ModTime().Equal(before.ModTime()) {
-		t.Error("the master was rewritten without --force")
+		t.Error("the master was rewritten without Force")
 	}
 
-	// --force with new times cuts again.
+	// Force with new times cuts again, from the original.
 	opt.Force, opt.Start = true, 50
-	if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
 		t.Fatal(err)
 	}
 	if d := probeFile(t, master).duration; !near(d, 30, 0.1) {
-		t.Errorf("master after --force: %.2f s, want 30", d)
+		t.Errorf("master after Force: %.2f s, want 30", d)
 	}
-}
-
-func TestIntegrationArchiveRelativeWav(t *testing.T) {
-	ff := requireFFmpeg(t)
-	dir := dateFolder(t)
-	service(t, ff, filepath.Join(dir, date+"_raw.wav"), 2)
-
-	opt := DefaultOptions()
-	opt.Start, opt.End = 20, 80
-	if err := run(t, context.Background(), ff, dir, "arkiv", opt); err != nil {
-		t.Fatal(err)
-	}
-	// The WAV is verified and deleted; raw and the cut edit are archived as FLAC.
-	wantFiles(t, dir, date+".flac", date+".mp3", date+".opus",
-		"arkiv/"+date+"_edit.flac", "arkiv/"+date+"_raw.flac")
-	if d := probeFile(t, filepath.Join(dir, "arkiv", date+"_edit.flac")).duration; !near(d, 60, 0.01) {
-		t.Errorf("edit: %.3f s, want 60", d)
-	}
-	if pr := probeFile(t, filepath.Join(dir, "arkiv", date+"_raw.flac")); pr.channels != 2 || !near(pr.duration, 100, 0.01) {
-		t.Errorf("archived raw: %+v, want the whole stereo recording", pr)
-	}
-	checkOutputs(t, ff, dir, 60)
-}
-
-// archiveDir prefers /dev/shm, usually another file system, to exercise the
-// copy fallback when moving into the archive.
-func archiveDir(t *testing.T) string {
-	if d, err := os.MkdirTemp("/dev/shm", "archive"); err == nil {
-		t.Cleanup(func() { os.RemoveAll(d) })
-		return d
-	}
-	return t.TempDir()
-}
-
-func TestIntegrationArchiveAbsoluteManualEditMono(t *testing.T) {
-	ff := requireFFmpeg(t)
-	dir := dateFolder(t)
-	service(t, ff, filepath.Join(dir, date+"_raw.flac"), 1)
-	sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
-	archive := archiveDir(t)
-
-	if err := run(t, context.Background(), ff, dir, archive, DefaultOptions()); err != nil {
-		t.Fatal(err)
-	}
-	wantFiles(t, dir, date+".flac", date+".mp3", date+".opus")
-	wantFiles(t, archive, date+"_edit.flac", date+"_raw.flac")
-	checkOutputs(t, ff, dir, 60)
-}
-
-func TestIntegrationNoArchiveManualEdit(t *testing.T) {
-	ff := requireFFmpeg(t)
-	dir := dateFolder(t)
-	sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
-
-	if err := run(t, context.Background(), ff, dir, "", DefaultOptions()); err != nil {
-		t.Fatal(err)
-	}
-	wantFiles(t, dir, date+".flac", date+"_edit.flac", date+".mp3", date+".opus")
-	checkOutputs(t, ff, dir, 60)
 }
 
 // An interrupted run must not leave half-written files that a later run would skip.
@@ -284,12 +225,12 @@ func TestIntegrationInterrupted(t *testing.T) {
 	opt.End = 100
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
-	if err := run(t, ctx, ff, dir, "", opt); err == nil {
+	if err := run(t, ctx, ff, dir, opt); err == nil {
 		t.Skip("finished before the timeout; nothing to check")
 	}
-	wantFiles(t, dir, date+"_raw.flac")
+	wantFiles(t, dir, "original/"+date+"_raw.flac")
 
-	if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
 		t.Fatal(err)
 	}
 	checkOutputs(t, ff, dir, 100)
@@ -322,7 +263,7 @@ func TestIntegrationFades(t *testing.T) {
 
 	opt := DefaultOptions()
 	opt.Start, opt.FadeIn, opt.FadeOut = 20, 3, 3
-	if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
 		t.Fatal(err)
 	}
 	master := filepath.Join(dir, date+".flac")
@@ -344,7 +285,7 @@ func TestIntegrationFades(t *testing.T) {
 
 	// Fades longer than the sermon are an error.
 	opt.Force, opt.FadeIn, opt.FadeOut = true, 50, 50
-	if err := run(t, context.Background(), ff, dir, "", opt); err == nil || !strings.Contains(err.Error(), "longer than the sermon") {
+	if err := run(t, context.Background(), ff, dir, opt); err == nil || !strings.Contains(err.Error(), "longer than the sermon") {
 		t.Errorf("expected a fade length error, got %v", err)
 	}
 }
@@ -363,13 +304,14 @@ func TestIntegrationSelectedOutputs(t *testing.T) {
 	} {
 		t.Run(c.outputs.String(), func(t *testing.T) {
 			dir := dateFolder(t)
-			sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
+			sermon(t, ff, filepath.Join(dir, date+"_raw.flac"))
 			opt := DefaultOptions()
+			opt.End = 60
 			opt.Outputs = c.outputs
-			if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+			if err := run(t, context.Background(), ff, dir, opt); err != nil {
 				t.Fatal(err)
 			}
-			wantFiles(t, dir, append(c.want, date+"_edit.flac")...)
+			wantFiles(t, dir, append(c.want, "original/"+date+"_raw.flac")...)
 			for _, f := range c.want {
 				m, err := ff.Measure(context.Background(), filepath.Join(dir, f))
 				if err != nil {
@@ -387,14 +329,15 @@ func TestIntegrationSelectedOutputs(t *testing.T) {
 func TestIntegrationTemporaryMasterRemovedOnError(t *testing.T) {
 	ff := requireFFmpeg(t)
 	dir := dateFolder(t)
-	sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
+	sermon(t, ff, filepath.Join(dir, date+"_raw.flac"))
 	opt := DefaultOptions()
+	opt.End = 60
 	opt.Outputs = Outputs{Mp3: true}
 	opt.Mp3Bitrate = "not-a-bitrate"
-	if err := run(t, context.Background(), ff, dir, "", opt); err == nil {
+	if err := run(t, context.Background(), ff, dir, opt); err == nil {
 		t.Fatal("expected the MP3 encode to fail")
 	}
-	wantFiles(t, dir, date+"_edit.flac")
+	wantFiles(t, dir, "original/"+date+"_raw.flac")
 }
 
 // serviceWithGaps is service() with 2 s of silence at both transitions,
@@ -456,18 +399,20 @@ func TestIntegrationLevelsAndSilences(t *testing.T) {
 func TestIntegrationProgressEvents(t *testing.T) {
 	ff := requireFFmpeg(t)
 	dir := dateFolder(t)
-	sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
-	paths, _ := NewPaths(dir, "")
+	sermon(t, ff, filepath.Join(dir, date+"_raw.flac"))
+	paths, _ := NewPaths(dir)
 	var steps []string
 	var fractions []float64
-	p := &Pipeline{P: paths, Opt: DefaultOptions(), FF: ff, Out: io.Discard,
+	opt := DefaultOptions()
+	opt.End = 60
+	p := &Pipeline{P: paths, Opt: opt, FF: ff, Out: io.Discard,
 		OnStep:     func(s string) { steps = append(steps, s) },
 		OnProgress: func(f float64) { fractions = append(fractions, f) },
 	}
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(steps) != 5 || !strings.HasPrefix(steps[2], "3. Master") || !strings.HasPrefix(steps[4], "Result") {
+	if len(steps) != 4 || !strings.HasPrefix(steps[1], "3. Master") || !strings.HasPrefix(steps[3], "Result") {
 		t.Errorf("steps: %q", steps)
 	}
 	var reachedEnd bool
@@ -492,7 +437,7 @@ func TestIntegrationStereo(t *testing.T) {
 			opt := DefaultOptions()
 			opt.SetStereo(true)
 			opt.Start, opt.End = 20, 80
-			if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+			if err := run(t, context.Background(), ff, dir, opt); err != nil {
 				t.Fatal(err)
 			}
 			checkOutputsAs(t, ff, dir, 60, 2, -16)
@@ -517,13 +462,14 @@ func TestIntegrationStereoWarnings(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := dateFolder(t)
 			if _, err := ff.Run(context.Background(), "-y", "-f", "lavfi", "-i",
-				"aevalsrc=exprs='"+c.exprs+"':s=48000:d=20", "-c:a", "flac", filepath.Join(dir, date+"_edit.flac")); err != nil {
+				"aevalsrc=exprs='"+c.exprs+"':s=48000:d=20", "-c:a", "flac", filepath.Join(dir, date+"_raw.flac")); err != nil {
 				t.Fatal(err)
 			}
 			opt := DefaultOptions()
+			opt.End = 20
 			opt.SetStereo(true)
 			opt.Outputs = Outputs{Flac: true}
-			paths, _ := NewPaths(dir, "")
+			paths, _ := NewPaths(dir)
 			var out bytes.Buffer
 			if err := (&Pipeline{P: paths, Opt: opt, FF: ff, Out: &out}).Run(context.Background()); err != nil {
 				t.Fatal(err)
@@ -549,10 +495,11 @@ func TestIntegrationStereoWarnings(t *testing.T) {
 func TestIntegrationTags(t *testing.T) {
 	ff := requireFFmpeg(t)
 	dir := dateFolder(t)
-	sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
+	sermon(t, ff, filepath.Join(dir, date+"_raw.flac"))
 	opt := DefaultOptions()
+	opt.End = 60
 	opt.Tags = Tags{Title: "2026-10-04 Kveld", Artist: "Norkirken Melhus", Date: "2026-10-04"}
-	if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
 		t.Fatal(err)
 	}
 	for _, ext := range []string{".flac", ".mp3", ".opus"} {
@@ -573,35 +520,29 @@ func TestIntegrationTags(t *testing.T) {
 	}
 }
 
-// Parts cut out of the selection are left out, with or without an archive.
+// Parts cut out of the selection are left out.
 func TestIntegrationCuts(t *testing.T) {
 	ff := requireFFmpeg(t)
-	for _, archive := range []string{"", "arkiv"} {
-		dir := dateFolder(t)
-		service(t, ff, filepath.Join(dir, date+"_raw.wav"), 2)
-
-		opt := DefaultOptions()
-		opt.Start, opt.End = 10, 90
-		opt.Cuts = []Span{{60, 65}, {30, 40}} // 10-30, 40-60, 65-90 = 65 s
-		opt.FadeIn, opt.FadeOut = 1, 1
-		if err := run(t, context.Background(), ff, dir, archive, opt); err != nil {
-			t.Fatalf("archive %q: %v", archive, err)
-		}
-		checkOutputs(t, ff, dir, 65)
-		if archive != "" {
-			if d := probeFile(t, filepath.Join(dir, archive, date+"_edit.flac")).duration; !near(d, 65, 0.05) {
-				t.Errorf("edit: %.3f s, want 65", d)
-			}
-		}
-	}
-
-	// Cuts that leave nothing fail clearly.
 	dir := dateFolder(t)
-	service(t, ff, filepath.Join(dir, date+"_raw.flac"), 1)
+	service(t, ff, filepath.Join(dir, date+"_raw.wav"), 2)
+
 	opt := DefaultOptions()
 	opt.Start, opt.End = 10, 90
+	opt.Cuts = []Span{{60, 65}, {30, 40}} // 10-30, 40-60, 65-90 = 65 s
+	opt.FadeIn, opt.FadeOut = 1, 1
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
+		t.Fatal(err)
+	}
+	checkOutputs(t, ff, dir, 65)
+	wantFiles(t, dir, date+".flac", date+".mp3", date+".opus", "original/"+date+"_raw.flac")
+
+	// Cuts that leave nothing fail clearly.
+	dir = dateFolder(t)
+	service(t, ff, filepath.Join(dir, date+"_raw.flac"), 1)
+	opt = DefaultOptions()
+	opt.Start, opt.End = 10, 90
 	opt.Cuts = []Span{{10, 90}}
-	if err := run(t, context.Background(), ff, dir, "", opt); err == nil || !strings.Contains(err.Error(), "leave nothing") {
+	if err := run(t, context.Background(), ff, dir, opt); err == nil || !strings.Contains(err.Error(), "leave nothing") {
 		t.Errorf("all cut: err = %v", err)
 	}
 }

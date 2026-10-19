@@ -37,7 +37,7 @@ func run() error {
 	inbox := flag.String("inbox", "", "with --root: the folder new recordings arrive in (optional)")
 	cacheDir := flag.String("cache-dir", defaultCacheDir(), "where waveform data and previews are kept")
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
-	archive := flag.String("archive", "", "default archive folder for runs (relative to the date folder)")
+	archive := flag.String("archive", "", "the folder name older versions kept the whole recording in (e.g. arkiv); it is renamed to original/ in each date folder at start")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
 	ffBin := flag.String("ffmpeg", "ffmpeg", "path to ffmpeg")
 	showVersion := flag.Bool("version", false, "print the version and exit")
@@ -59,7 +59,7 @@ func run() error {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	web.CleanCache(*cacheDir, time.Duration(*cacheDays)*24*time.Hour)
 	srv, err := web.NewApp(web.AppConfig{
-		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir, Archive: *archive,
+		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir, LegacyOriginals: *archive,
 			Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
 		DataDir: *dataDir,
 	})

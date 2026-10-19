@@ -47,7 +47,7 @@ type renameRequest struct {
 
 // handleRename gives a sermon another date or name: the folder, and the
 // files in it that are named after it (<folder>_raw.flac, <folder>.mp3 ...,
-// also in the archive), are renamed. Outputs keep the tags they were made with.
+// also in original/), are renamed. Outputs keep the tags they were made with.
 func (s *Server) handleRename(w http.ResponseWriter, r *http.Request) {
 	abs, ok := s.pathParam(w, r)
 	if !ok {
@@ -100,8 +100,8 @@ func (s *Server) renameTarget(folder, date, name string) (string, int, error) {
 	case s.jobs.active(s.relPath(folder)) != nil:
 		return "", http.StatusConflict, errors.New("this sermon is being processed; try again when it is done")
 	}
-	if paths, err := normalizer.NewPaths(folder, s.cfg.Archive); err == nil {
-		if raw := paths.Sources().Raw; raw != "" && s.analyses.stage(raw) != "" {
+	if paths, err := normalizer.NewPaths(folder); err == nil {
+		if raw := paths.Source(); raw != "" && s.analyses.stage(raw) != "" {
 			return "", http.StatusConflict, errors.New("the recording is still being converted or prepared; try again in a moment")
 		}
 	}
@@ -111,16 +111,12 @@ func (s *Server) renameTarget(folder, date, name string) (string, int, error) {
 // rename moves the folder and renames what is named after it.
 func (s *Server) rename(src, dst string) error {
 	oldBase, newBase := filepath.Base(src), filepath.Base(dst)
-	paths, err := normalizer.NewPaths(src, s.cfg.Archive)
+	paths, err := normalizer.NewPaths(src)
 	if err != nil {
 		return err
 	}
-	archive := paths.Archive // before the move; inside the folder when relative
-	if rel, err := filepath.Rel(src, archive); err == nil && !strings.HasPrefix(rel, "..") {
-		archive = filepath.Join(dst, rel)
-	}
 	var oldKey string
-	if raw := paths.Sources().Raw; raw != "" {
+	if raw := paths.Source(); raw != "" {
 		oldKey, _ = cacheKey(raw)
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -129,11 +125,7 @@ func (s *Server) rename(src, dst string) error {
 	if err := os.Rename(src, dst); err != nil {
 		return err
 	}
-	dirs := []string{dst}
-	if archive != "" {
-		dirs = append(dirs, archive) // the archive may be outside the folder: its files are renamed too
-	}
-	for _, dir := range dirs {
+	for _, dir := range []string{dst, filepath.Join(dst, normalizer.OriginalDir)} {
 		des, _ := os.ReadDir(dir)
 		for _, de := range des {
 			rest, ok := strings.CutPrefix(de.Name(), oldBase)
@@ -145,8 +137,8 @@ func (s *Server) rename(src, dst string) error {
 			}
 		}
 	}
-	if np, err := normalizer.NewPaths(dst, s.cfg.Archive); err == nil && oldKey != "" {
-		if raw := np.Sources().Raw; raw != "" {
+	if np, err := normalizer.NewPaths(dst); err == nil && oldKey != "" {
+		if raw := np.Source(); raw != "" {
 			s.analyses.carry(oldKey, raw)
 		}
 	}
