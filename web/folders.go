@@ -23,6 +23,7 @@ type folderEntry struct {
 	Outputs []string `json:"outputs"`
 	Pending bool     `json:"pending"`    // has sources but not all outputs
 	Convert bool     `json:"converting"` // the raw WAV is being converted to FLAC
+	Prepare bool     `json:"preparing"`  // the waveform and preview are being made
 	Job     string   `json:"job,omitempty"`
 }
 
@@ -42,7 +43,10 @@ func (s *Server) entry(abs string) folderEntry {
 	}
 	src := paths.Sources()
 	e.Raw, e.Edit = src.Raw != "", src.Edit != ""
-	e.Convert = e.Raw && s.analyses.converting(src.Raw)
+	if e.Raw {
+		stage := s.analyses.stage(src.Raw)
+		e.Convert, e.Prepare = stage == "convert", stage != "" && stage != "convert"
+	}
 	for _, o := range outputsOf(paths) {
 		if _, err := os.Stat(o.path); err == nil {
 			e.Outputs = append(e.Outputs, o.format)

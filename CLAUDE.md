@@ -32,8 +32,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3
   preview, cached by path+size+mtime; `carry` moves the cache on import.
 - `web/upload.go`: chunked upload straight to a date folder.
-- `web/inbox.go`: inbox list/import, date suggestion, `newRawFolder`.
-- `web/inboxwatch.go`: takes settled files in the inbox (convert + prepare);
+- `web/inbox.go`: inbox file names, date suggestion, `newRawFolder`.
+- `web/inboxwatch.go`: `ingest` moves settled inbox files straight to their date
+  folder (convert + prepare happen there);
   `PUT api/inbox/files/<name>` for other services.
 - `web/static/`: plain JS, no build. `vendor/wavesurfer/` is wavesurfer.js
   7.12.12, unmodified.

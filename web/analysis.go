@@ -116,8 +116,9 @@ func (a *analyses) state(raw string, start bool) analysisState {
 
 func isWAV(path string) bool { return strings.EqualFold(filepath.Ext(path), ".wav") }
 
-// converting reports whether raw is being converted to FLAC right now.
-func (a *analyses) converting(raw string) bool {
+// stage is what is being done to raw right now ("convert" to FLAC, else
+// "analyze"), or "" when nothing is.
+func (a *analyses) stage(raw string) string {
 	key, _ := cacheKey(raw)
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -125,8 +126,14 @@ func (a *analyses) converting(raw string) bool {
 	if st == nil {
 		st = a.current[key]
 	}
-	return st != nil && st.State == "running" && st.Stage == "convert"
+	if st == nil || st.State != "running" {
+		return ""
+	}
+	return st.Stage
 }
+
+// converting reports whether raw is being converted to FLAC right now.
+func (a *analyses) converting(raw string) bool { return a.stage(raw) == "convert" }
 
 // carry moves the finished analysis of a recording along when the file is
 // moved (an import), so it is not redone: from the key it had before the

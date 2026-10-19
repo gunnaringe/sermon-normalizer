@@ -261,57 +261,46 @@ func TestUploadInChunks(t *testing.T) {
 	}
 }
 
-func TestInboxImport(t *testing.T) {
+func TestInboxIngest(t *testing.T) {
 	ts := newTestServer(t, normalizer.FFmpeg{})
 	write := func(name, content string) {
 		if err := os.WriteFile(filepath.Join(ts.inbox, name), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write("ZOOM0001.WAV", "audio")
-	write("Gudstjeneste 2026-09-27.flac", "audio2")
-	write("being written.partial.flac", "x")
-	write(".hidden.wav", "x")
-	write("notes.txt", "x")
+	write("Gudstjeneste 2026-09-27.flac", "audio")
+	write("again 2026-09-27.flac", "audio2")
+	write("ZOOM0001.flac", "audio3")
 	recorded := time.Date(2026, 10, 4, 11, 30, 0, 0, time.Local)
-	os.Chtimes(filepath.Join(ts.inbox, "ZOOM0001.WAV"), recorded, recorded)
+	os.Chtimes(filepath.Join(ts.inbox, "ZOOM0001.flac"), recorded, recorded)
 
-	list := decode[struct{ Files []inboxFile }](t, ts.do(t, "GET", "/api/inbox", nil))
-	if len(list.Files) != 2 {
-		t.Fatalf("files %+v", list.Files)
-	}
-	for _, f := range list.Files {
-		switch f.Name {
-		case "Gudstjeneste 2026-09-27.flac":
-			if f.SuggestedDate != "2026-09-27" || f.DateSource != "name" {
-				t.Errorf("from name: %+v", f)
-			}
-		case "ZOOM0001.WAV":
-			if f.SuggestedDate != "2026-10-04" || f.DateSource != "modified" {
-				t.Errorf("from mtime: %+v", f)
-			}
+	// The date comes from the name, else from the file's own date.
+	for _, name := range []string{"Gudstjeneste 2026-09-27.flac", "ZOOM0001.flac"} {
+		if err := ts.ingest(name); err != nil {
+			t.Fatal(err)
+		}
+		if fileExists(filepath.Join(ts.inbox, name)) {
+			t.Errorf("%s should have left the inbox", name)
 		}
 	}
-
-	rec := ts.do(t, "POST", "/api/inbox/import", importRequest{Name: "Gudstjeneste 2026-09-27.flac", Date: "2026-09-27"})
-	if rec.Code != http.StatusOK || decode[map[string]string](t, rec)["path"] != "2026/2026-09-27" {
-		t.Fatalf("import: %d %s", rec.Code, rec.Body)
-	}
-	if b, _ := os.ReadFile(filepath.Join(ts.root, "2026", "2026-09-27", "2026-09-27_raw.flac")); string(b) != "audio2" {
-		t.Error("imported file missing")
-	}
-	if fileExists(filepath.Join(ts.inbox, "Gudstjeneste 2026-09-27.flac")) {
-		t.Error("the inbox copy should be gone")
-	}
-	// A date that already has a raw recording is refused.
-	if rec := ts.do(t, "POST", "/api/inbox/import", importRequest{Name: "ZOOM0001.WAV", Date: "2026-09-27"}); rec.Code != http.StatusConflict {
-		t.Errorf("second raw: %d", rec.Code)
-	}
-	for _, q := range []importRequest{{"../x.wav", "2026-10-04"}, {"missing.wav", "2026-10-04"}, {"ZOOM0001.WAV", "04.10.2026"},
-		{"being written.partial.flac", "2026-10-04"}} {
-		if rec := ts.do(t, "POST", "/api/inbox/import", q); rec.Code < 400 {
-			t.Errorf("import %+v: %d", q, rec.Code)
+	for rel, want := range map[string]string{"2026/2026-09-27/2026-09-27_raw.flac": "audio", "2026/2026-10-04/2026-10-04_raw.flac": "audio3"} {
+		if b, _ := os.ReadFile(filepath.Join(ts.root, filepath.FromSlash(rel))); string(b) != want {
+			t.Errorf("%s: %q", rel, b)
 		}
+	}
+	// A second recording for the same date gets its own folder.
+	if err := ts.ingest("again 2026-09-27.flac"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ts.root, "2026", "2026-09-27 2", "2026-09-27 2_raw.flac")); string(b) != "audio2" {
+		t.Error("second recording of the day missing")
+	}
+	entry := ts.entry(filepath.Join(ts.root, "2026", "2026-09-27 2"))
+	if !entry.Date || !entry.Raw {
+		t.Errorf("entry %+v", entry)
+	}
+	if err := ts.ingest("gone.flac"); err != nil {
+		t.Errorf("a file taken meanwhile is not an error: %v", err)
 	}
 }
 
@@ -333,7 +322,7 @@ func TestDateGuesses(t *testing.T) {
 
 func TestCrossOriginPostRefused(t *testing.T) {
 	ts := newTestServer(t, normalizer.FFmpeg{})
-	req := httptest.NewRequest("POST", "/api/inbox/import", strings.NewReader("{}"))
+	req := httptest.NewRequest("POST", "/api/check?path=", strings.NewReader("{}"))
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	rec := httptest.NewRecorder()
 	ts.h.ServeHTTP(rec, req)
@@ -423,21 +412,28 @@ func TestInboxPut(t *testing.T) {
 		ts.h.ServeHTTP(rec, req)
 		return rec
 	}
-	if rec := put("Gudstjeneste 2026-10-04.wav", "audio"); rec.Code != http.StatusCreated {
-		t.Fatalf("put: %d %s", rec.Code, rec.Body)
+	if err := os.WriteFile(filepath.Join(ts.inbox, "waiting.wav"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	dst := filepath.Join(ts.inbox, "Gudstjeneste 2026-10-04.wav")
-	if b, _ := os.ReadFile(dst); string(b) != "audio" {
-		t.Errorf("content %q", b)
-	}
-	if st, _ := os.Stat(dst); st.ModTime().UnixMilli() != 1790000000000 {
-		t.Errorf("mtime %v", st.ModTime())
-	}
-	for name, want := range map[string]int{"Gudstjeneste 2026-10-04.wav": http.StatusConflict, "slides.pdf": http.StatusBadRequest,
+	for name, want := range map[string]int{"waiting.wav": http.StatusConflict, "slides.pdf": http.StatusBadRequest,
 		".hidden.wav": http.StatusBadRequest, "x.partial.flac": http.StatusBadRequest} {
 		if rec := put(name, "x"); rec.Code != want {
 			t.Errorf("%s: %d, want %d", name, rec.Code, want)
 		}
+	}
+	// A delivered recording is moved into its date folder right away.
+	if rec := put("Gudstjeneste 2026-10-04.flac", "audio"); rec.Code != http.StatusCreated {
+		t.Fatalf("put: %d %s", rec.Code, rec.Body)
+	}
+	dst := filepath.Join(ts.root, "2026", "2026-10-04", "2026-10-04_raw.flac")
+	for i := 0; i < 100 && !fileExists(dst); i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if b, _ := os.ReadFile(dst); string(b) != "audio" {
+		t.Errorf("content %q", b)
+	}
+	if st, _ := os.Stat(dst); st == nil || st.ModTime().UnixMilli() != 1790000000000 {
+		t.Errorf("mtime %v", st)
 	}
 	if entries, _ := os.ReadDir(ts.inbox); len(entries) != 1 {
 		t.Errorf("inbox: %v", entries)

@@ -490,7 +490,7 @@ export async function editorView(view, path, config) {
   } else {
     waveSection.replaceChildren(h('p', {}, info.edit
       ? `Only an edit file (${info.edit.name}) is here; it will be used as the sermon.`
-      : 'Nothing to cut yet: import a recording from the inbox, or put <date>_raw.wav in the folder.'));
+      : 'Nothing to cut yet: upload a recording, or put <date>_raw.wav in the folder.'));
     useEdit = Boolean(info.edit);
   }
   check();

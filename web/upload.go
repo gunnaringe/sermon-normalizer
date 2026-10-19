@@ -45,7 +45,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid size or offset"))
 		return
 	}
-	folder, status, err := s.newRawFolder(date)
+	folder, status, err := s.newRawFolder(date, "")
 	if err != nil {
 		writeError(w, status, err)
 		return

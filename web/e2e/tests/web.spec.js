@@ -158,16 +158,17 @@ test('upload straight into a new date folder, in chunks', async ({ page }) => {
   await expect(page.getByText('already has a raw recording')).toBeVisible();
 });
 
-test('inbox: import into a new date folder', async ({ page }) => {
-  await page.goto('#/inbox');
-  await expect(page.getByText('The inbox is empty.')).toBeVisible();
+test('inbox: a recording lands in its date folder by itself', async ({ page }) => {
+  await page.goto('#/');
+  await expect(page.getByRole('link', { name: 'Inbox' })).toHaveCount(0);
   fs.copyFileSync(path.join(DATA, 'upload.flac'), path.join(DATA, 'inbox', 'Gudstjeneste 2026-09-20.flac'));
-  const row = page.locator('tr', { hasText: 'Gudstjeneste 2026-09-20.flac' });
-  await expect(row).toBeVisible({ timeout: 10_000 }); // the page refreshes itself
-  await expect(row.locator('input[type=date]')).toHaveValue('2026-09-20');
-  await expect(row).toContainText('from the name');
-  await row.getByRole('button', { name: 'Import' }).click();
-  await expect(page).toHaveURL(/#\/folder\/2026\/2026-09-20$/);
+  await page.goto('#/folders/2026');
+  // The server takes it once it has been quiet for a while; the list is read on load.
+  await expect(async () => {
+    await page.reload();
+    await expect(page.getByRole('link', { name: '2026-09-20' })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
+  await page.getByRole('link', { name: '2026-09-20' }).click();
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
   expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-09-20'))).toEqual(['2026-09-20_raw.flac']);
   expect(fs.readdirSync(path.join(DATA, 'inbox'))).toEqual([]);

@@ -299,29 +299,29 @@ func TestIntegrationInboxWatcher(t *testing.T) {
 	content, _ := os.ReadFile(wav)
 
 	// Arriving slowly, like a sync client writing it in place.
-	dst := filepath.Join(ts.inbox, "ZOOM0001.WAV")
+	dst := filepath.Join(ts.inbox, "ZOOM0001 2026-10-04.WAV")
+	folder := filepath.Join(ts.root, "2026", "2026-10-04")
+	flac := filepath.Join(folder, "2026-10-04_raw.flac")
 	if err := os.WriteFile(dst, content[:len(content)/2], 0o644); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(200 * time.Millisecond)
-	if st := decode[struct{ Files []inboxFile }](t, ts.do(t, "GET", "/api/inbox", nil)); len(st.Files) != 1 || st.Files[0].State != "waiting" {
-		t.Errorf("while arriving: %+v", st.Files)
+	if !fileExists(dst) || fileExists(folder) {
+		t.Errorf("a file still arriving must stay in the inbox")
 	}
 	f, _ := os.OpenFile(dst, os.O_APPEND|os.O_WRONLY, 0)
 	f.Write(content[len(content)/2:])
 	f.Close()
 
-	flac := filepath.Join(ts.inbox, "ZOOM0001.flac")
-	var files []inboxFile
+	// Once it has settled it is in its date folder, converted and prepared.
 	for i := 0; i < 600; i++ {
-		files = decode[struct{ Files []inboxFile }](t, ts.do(t, "GET", "/api/inbox", nil)).Files
-		if len(files) == 1 && files[0].State == "ready" {
+		if st := ts.analyses.state(flac, false); st.State == "done" && fileExists(flac) {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if len(files) != 1 || files[0].Name != "ZOOM0001.flac" || files[0].State != "ready" || fileExists(dst) {
-		t.Fatalf("inbox %+v", files)
+	if st := ts.analyses.state(flac, false); st.State != "done" || fileExists(dst) {
+		t.Fatalf("analysis %+v, inbox copy exists: %v", st, fileExists(dst))
 	}
 	if same, err := ff.SameAudio(context.Background(), wav, flac); err != nil || !same {
 		t.Errorf("FLAC differs: %v %v", same, err)

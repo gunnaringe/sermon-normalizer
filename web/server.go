@@ -63,6 +63,7 @@ type Server struct {
 	jobs     *jobs
 	analyses *analyses
 	inbox    *inboxWatcher
+	ingestMu sync.Mutex // one inbox file moves at a time
 
 	tagsMu   sync.Mutex
 	tagDates map[string]string // recording date from tags, by cacheKey ("" = none)
@@ -158,9 +159,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleJobCancel)
 
 	mux.HandleFunc("POST /api/upload", s.handleUpload)
-	mux.HandleFunc("GET /api/inbox", s.handleInbox)
 	mux.HandleFunc("PUT /api/inbox/files/{name}", s.handleInboxPut)
-	mux.HandleFunc("POST /api/inbox/import", s.handleInboxImport)
 	return mux
 }
 

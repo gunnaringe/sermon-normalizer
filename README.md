@@ -48,7 +48,7 @@ sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
 | `--root` | | the folder with the date folders of the first church (needed unless `--data-dir` is set) |
 | `--name` | `Default` | display name of the `--root` church |
 | `--data-dir` | | holds `tenants.json` and a folder per added church (`<id>/Taler`, `<id>/Innboks`); enables "Add church" in the UI |
-| `--inbox` | | where new recordings arrive; enables the Inbox page |
+| `--inbox` | | where new recordings arrive; they are moved into their date folder |
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |
 | `--cache-days` | 30 | remove cached analyses not used for this long |
@@ -85,27 +85,29 @@ cancels running jobs and waits for them to clean up.
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
   and continue after a dropped connection. No inbox needed.
-- **Inbox** (with `--inbox`): recordings that arrived by other means wait there, already
-  converted and prepared; import one into its date folder. The date is suggested from the file
-  name, the recording's tags or its date. The page updates itself.
+- **Inbox** (with `--inbox`): recordings that arrive by other means go into their date folder
+  by themselves (see below); there is no inbox page. The folder list shows a "converting" or
+  "preparing" tag while a recording is made ready.
 
-**A WAV is converted to FLAC as soon as it arrives** (upload, import, or opening a folder that
+**A WAV is converted to FLAC as soon as it arrives** (upload, inbox, or opening a folder that
 has one), verified identical by MD5 of the audio, and then replaces the WAV. Right after, the
 server prepares the waveform and the listening preview, so cutting can start at once.
 
 ### Inbox
 
 - **The inbox is any folder**: a synced folder, a file share, or the API. A `.wav` or
-  `.flac` that has stopped changing for 30 s is taken: converted to FLAC and prepared, without
-  anyone opening it. Hidden files and `*.partial*` are ignored, so write under such a name
-  and rename when done if you can.
+  `.flac` that has stopped changing for 30 s is moved into its date folder as `<date>_raw.*`
+  (and converted and prepared there), without anyone opening it. The date is taken from the
+  file name, else the recording's tags, else its modification time. If that date already has a
+  raw recording, the new one goes in `<date> 2`, `<date> 3`... Hidden files and `*.partial*`
+  are ignored, so write under such a name and rename when done if you can.
 - **`PUT api/inbox/files/<name>`** (optional `?modified=<ms>`) streams a recording into the
-  inbox, for other services, e.g. a job forwarding uploads from a file-sharing app. An existing
-  name gets 409, so a sender can tell it was delivered already.
+  inbox, for other services, e.g. a job forwarding uploads from a file-sharing app. It is moved
+  into its date folder at once. A name still waiting in the inbox gets 409.
 
 When a recording is opened the first time, the server prepares its waveform and a small MP3
-preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` and carried along
-when a recording is imported. The preview is
+preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` and kept
+when a recording is moved. The preview is
 normalized (up to 40 dB of dynamic gain), so even a very quiet recording can be heard while
 cutting; the waveform keeps the original levels, where loud music and quieter speech stand
 apart. The browser only streams the preview; the cut is always made from the original.

@@ -5,26 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/gunnaringe/sermon-normalizer/normalizer"
 )
-
-// inboxFile is a recording waiting in the inbox.
-type inboxFile struct {
-	Name          string    `json:"name"`
-	Size          int64     `json:"size"`
-	Modified      time.Time `json:"modified"`
-	SuggestedDate string    `json:"suggestedDate"`
-	DateSource    string    `json:"dateSource"` // name, metadata, modified
-	State         string    `json:"state"`      // waiting (still arriving), converting, preparing, ready, error
-	Error         string    `json:"error,omitempty"`
-}
 
 var errNoInbox = errors.New("no inbox folder configured")
 
@@ -100,53 +87,11 @@ func (s *Server) suggestDate(ctx context.Context, path string, mod time.Time) (s
 	return mod.Format("2006-01-02"), "modified"
 }
 
-func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Inbox == "" {
-		writeError(w, http.StatusNotFound, errNoInbox)
-		return
-	}
-	des, err := os.ReadDir(s.cfg.Inbox)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	files := []inboxFile{}
-	for _, de := range des {
-		name, err := inboxName(de.Name())
-		info, ierr := de.Info()
-		if err != nil || ierr != nil || !info.Mode().IsRegular() {
-			continue
-		}
-		path := filepath.Join(s.cfg.Inbox, name)
-		f := inboxFile{Name: name, Size: info.Size(), Modified: info.ModTime()}
-		f.SuggestedDate, f.DateSource = s.suggestDate(r.Context(), path, info.ModTime())
-		switch st := s.analyses.state(path, false); {
-		case st.State == "done":
-			f.State = "ready"
-		case st.State == "error":
-			f.State, f.Error = "error", st.Error
-		case st.State == "running" && st.Stage == "convert":
-			f.State = "converting"
-		case st.State == "running":
-			f.State = "preparing"
-		default:
-			f.State = "waiting"
-		}
-		files = append(files, f)
-	}
-	sort.Slice(files, func(i, j int) bool { return files[i].Modified.After(files[j].Modified) })
-	writeJSON(w, http.StatusOK, map[string]any{"files": files, "layout": s.cfg.Layout})
-}
-
-type importRequest struct {
-	Name string `json:"name"`
-	Date string `json:"date"`
-}
-
-// newRawFolder is the date folder for a new raw recording of date (made
-// after the layout, not created here). It fails if the folder already has a
-// raw recording; the status is the HTTP status for the error.
-func (s *Server) newRawFolder(date string) (string, int, error) {
+// newRawFolder is the folder for a new raw recording of date (made after the
+// layout, not created here): <date>, or <date> <name> when there is a name,
+// for a second sermon the same day. It fails if the folder already has a raw
+// recording; the status is the HTTP status for the error.
+func (s *Server) newRawFolder(date, name string) (string, int, error) {
 	d, err := time.Parse("2006-01-02", date)
 	if err != nil {
 		return "", http.StatusBadRequest, fmt.Errorf("invalid date %q (use YYYY-MM-DD)", date)
@@ -157,6 +102,11 @@ func (s *Server) newRawFolder(date string) (string, int, error) {
 	}
 	if filepath.Base(folder) != date {
 		return "", http.StatusInternalServerError, fmt.Errorf("the layout %q must end in the date (2006-01-02)", s.cfg.Layout)
+	}
+	if name != "" {
+		if folder, err = s.resolve(s.relPath(filepath.Dir(folder)) + "/" + date + " " + name); err != nil {
+			return "", http.StatusBadRequest, err
+		}
 	}
 	if !fileExists(folder) {
 		return folder, 0, nil
@@ -169,53 +119,4 @@ func (s *Server) newRawFolder(date string) (string, int, error) {
 		return "", http.StatusConflict, fmt.Errorf("%s already has a raw recording (%s)", date, filepath.Base(raw))
 	}
 	return folder, 0, nil
-}
-
-// handleInboxImport moves a recording from the inbox into its date folder
-// as <date>_raw.<ext>, creating the folder after the layout.
-func (s *Server) handleInboxImport(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Inbox == "" {
-		writeError(w, http.StatusNotFound, errNoInbox)
-		return
-	}
-	var q importRequest
-	if err := decodeRequest(r, &q); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	name, err := inboxName(q.Name)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	src := filepath.Join(s.cfg.Inbox, name)
-	if !fileExists(src) {
-		writeError(w, http.StatusNotFound, fmt.Errorf("%s is not in the inbox", name))
-		return
-	}
-	if s.analyses.converting(src) {
-		writeError(w, http.StatusConflict, fmt.Errorf("%s is being converted to FLAC; import it when that is done", name))
-		return
-	}
-	folder, status, err := s.newRawFolder(q.Date)
-	if err != nil {
-		writeError(w, status, err)
-		return
-	}
-	if err := os.MkdirAll(folder, 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	dst := filepath.Join(folder, q.Date+"_raw"+strings.ToLower(filepath.Ext(name)))
-	oldKey, _ := cacheKey(src)
-	// The inbox may be on another disk: MoveFile copies, verifies, then
-	// deletes. Keep them on one, or a long recording outlasts the request.
-	if err := normalizer.MoveFile(src, dst); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	s.analyses.carry(oldKey, dst)
-	s.cfg.Logger.Printf("inbox: imported %s as %s", name, s.relPath(dst))
-	s.analyses.state(dst, true) // a WAV is converted now; else usually done already
-	writeJSON(w, http.StatusOK, map[string]string{"path": s.relPath(folder)})
 }

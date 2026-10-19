@@ -1,4 +1,4 @@
-// The app: a hash router over four views (folders, a folder's editor, upload, the inbox).
+// The app: a hash router over three views (folders, a folder's editor, upload).
 import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant } from './util.js';
 import { editorView } from './editor.js';
 
@@ -12,12 +12,11 @@ async function route() {
   const hash = decodeURIComponent(location.hash.slice(1)) || '/';
   const [, section, ...rest] = hash.split('/');
   const path = rest.join('/');
-  const nav = ['inbox', 'upload'].includes(section) ? section : 'folders';
+  const nav = section === 'upload' ? section : 'folders';
   for (const a of document.querySelectorAll('header nav a')) a.classList.toggle('active', a.dataset.nav === nav);
   try {
     if (section === 'folder') teardown = await editorView(view, path, config);
     else if (section === 'upload') uploadView();
-    else if (section === 'inbox' && config.inbox) teardown = await inboxView();
     else await foldersView(section === 'folders' ? path : '');
   } catch (err) {
     view.replaceChildren(h('p', { class: 'error' }, err.message));
@@ -28,6 +27,7 @@ function badges(e) {
   const out = [];
   if (e.job) out.push(h('span', { class: 'badge busy' }, 'processing'));
   if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
+  if (e.preparing) out.push(h('span', { class: 'badge busy' }, 'preparing'));
   if (e.raw) out.push(h('span', { class: 'badge' }, 'raw'));
   if (e.edit) out.push(h('span', { class: 'badge' }, 'edit'));
   for (const f of ['flac', 'mp3', 'opus']) {
@@ -49,7 +49,7 @@ async function foldersView(path) {
     rows.length
       ? h('table', { class: 'list' }, h('tbody', {}, rows))
       : h('p', { class: 'muted' }, 'No folders here yet. ', h('a', { href: '#/upload' }, 'Upload a recording'),
-        config.inbox ? ', or import one from the inbox.' : '.'));
+        config.inbox ? ', or put one in the inbox folder.' : '.'));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -164,55 +164,6 @@ function uploadView() {
     drop, input, chosen, status, progress);
 }
 
-async function inboxView() {
-  const list = h('div', {}, h('p', { class: 'muted' }, 'Loading…'));
-  let alive = true;
-  const states = {
-    waiting: 'still arriving', converting: 'converting to FLAC…', preparing: 'preparing the waveform…', ready: 'ready',
-  };
-
-  async function refresh() {
-    const data = await api('GET', 'api/inbox');
-    if (!alive) return;
-    if (!data.files.length) {
-      list.replaceChildren(h('p', { class: 'muted' }, 'The inbox is empty.'));
-      return;
-    }
-    // Leave rows alone while someone is choosing a date in them.
-    if (list.contains(document.activeElement)) return;
-    list.replaceChildren(h('table', { class: 'list' }, h('tbody', {}, data.files.map((f) => {
-      const date = h('input', { type: 'date', value: f.suggestedDate, required: true });
-      const err = h('span', { class: 'error' });
-      const button = h('button', { class: 'primary', onclick: async () => {
-        button.disabled = true;
-        try {
-          const res = await api('POST', 'api/inbox/import', { name: f.name, date: date.value });
-          location.hash = '#/folder/' + res.path;
-        } catch (e) {
-          err.textContent = e.message;
-          button.disabled = false;
-        }
-      } }, 'Import');
-      button.disabled = f.state === 'converting';
-      const source = { name: 'from the name', metadata: 'from the recording', modified: 'from the file date' }[f.dateSource];
-      return h('tr', {},
-        h('td', {}, h('strong', {}, f.name), h('div', { class: 'muted' }, formatSize(f.size), ' · ', new Date(f.modified).toLocaleString()),
-          h('div', { class: f.state === 'error' ? 'error' : 'muted' }, f.state === 'error' ? 'Could not read it: ' + f.error : states[f.state])),
-        h('td', {}, date, h('div', { class: 'muted' }, source)),
-        h('td', {}, button, ' ', err));
-    }))));
-  }
-
-  view.replaceChildren(
-    h('h1', {}, 'Inbox'),
-    h('p', { class: 'muted' }, 'Recordings put in the inbox folder (by a synced folder, a file share or another service) ' +
-      'are converted to FLAC and prepared here. Import one to make its date folder, then cut it there.'),
-    list);
-  await refresh();
-  const timer = setInterval(() => refresh().catch(() => {}), 5000);
-  return () => { alive = false; clearInterval(timer); };
-}
-
 // churchPicker fills the dropdown in the header and switches church.
 async function churchPicker() {
   const select = document.getElementById('church');
@@ -239,7 +190,6 @@ async function churchPicker() {
     }
     fill();
     config = await api('GET', 'api/config');
-    document.querySelector('[data-nav=inbox]').hidden = !config.inbox;
     if (location.hash && location.hash !== '#/') location.hash = '#/';
     else route();
   });
@@ -248,7 +198,6 @@ async function churchPicker() {
 async function start() {
   await churchPicker();
   config = await api('GET', 'api/config');
-  document.querySelector('[data-nav=inbox]').hidden = !config.inbox;
   window.addEventListener('hashchange', route);
   route();
 }
