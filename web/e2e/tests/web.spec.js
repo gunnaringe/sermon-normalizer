@@ -243,3 +243,28 @@ test('settings: default tags are saved and used on the sermon page', async ({ pa
   await expect(page.locator('input[name=title]')).toHaveValue('2026-10-04');
   await expect(page.locator('input[name=artist]')).toHaveValue('Norkirken Melhus');
 });
+
+test('a second sermon the same day: upload with a name, then rename', async ({ page }) => {
+  await page.goto('#/upload');
+  await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
+  await page.locator('input[type=date]').fill('2026-11-01');
+  await page.getByRole('button', { name: 'Upload' }).click();
+  await expect(page).toHaveURL(/#\/folder\/2026\/2026-11-01$/);
+
+  await page.goto('#/upload');
+  await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
+  await page.locator('input[type=date]').fill('2026-11-01');
+  await page.getByRole('button', { name: 'Upload' }).click();
+  await expect(page.getByText('give it a name')).toBeVisible();
+  await page.locator('input[aria-label=Name]').fill('Kveld');
+  await page.getByRole('button', { name: 'Upload' }).click();
+  await expect(page).toHaveURL(/#\/folder\/2026\/2026-11-01%20Kveld$|#\/folder\/2026\/2026-11-01 Kveld$/);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('2026-11-01 Kveld');
+
+  await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 }); // prepared: it can be renamed
+  await page.getByRole('button', { name: 'Rename…' }).click();
+  await page.locator('input[aria-label=Name]').fill('Aften');
+  await page.getByRole('button', { name: 'Rename', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('2026-11-01 Aften', { timeout: 10_000 });
+  expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-11-01 Aften'))).toContain('2026-11-01 Aften_raw.flac');
+});

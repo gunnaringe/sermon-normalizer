@@ -70,9 +70,30 @@ export async function editorView(view, path, config) {
   const runButton = h('button', { class: 'primary', disabled: true, onclick: run }, 'Run');
   const jobPanel = h('section', {});
 
+  // Another date or name for this sermon: renames the folder and its files.
+  const renamePanel = h('div', { class: 'panel', hidden: true });
+  const renameButton = h('button', { class: 'link', title: 'Change the date or name of this sermon', onclick: () => {
+    const [, d = '', n = ''] = info.date.match(/^(\d{4}-\d{2}-\d{2})(?: (.*))?$/) || [];
+    const date = h('input', { type: 'date', value: d, required: true, 'aria-label': 'Date' });
+    const name = h('input', { type: 'text', value: n, maxlength: 60, placeholder: 'optional, e.g. Evening', 'aria-label': 'Name' });
+    const msg = h('span', { class: 'error' });
+    const save = h('button', { class: 'primary', onclick: async () => {
+      try {
+        const res = await api('POST', 'api/rename?path=' + q(path), { date: date.value, name: name.value });
+        location.hash = '#/folder/' + res.path;
+      } catch (err) { msg.textContent = err.message; }
+    } }, 'Rename');
+    renamePanel.replaceChildren(
+      h('label', {}, 'Date ', date), ' ', h('label', {}, 'Name ', name), ' ', save, ' ',
+      h('button', { onclick: () => { renamePanel.hidden = true; } }, 'Cancel'), ' ', msg,
+      h('p', { class: 'muted' }, 'The folder and the files named after it are renamed. Files already made keep their tags.'));
+    renamePanel.hidden = false;
+  } }, 'Rename…');
+
   view.replaceChildren(
     crumbs(path.split('/').slice(0, -1).join('/'), info.date),
-    h('h1', {}, info.date),
+    h('h1', {}, info.date, ' ', renameButton),
+    renamePanel,
     recordingLine,
     filesSection,
     waveSection,

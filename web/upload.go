@@ -22,13 +22,13 @@ const MaxChunk = 64 << 20
 const uploadStale = 2 * time.Minute
 
 // handleUpload receives one chunk of a recording uploaded straight into its
-// date folder (no inbox needed):
+// date folder (no inbox needed; "sermon" names a second sermon of the day):
 //
-//	POST api/upload?date=2026-10-04&name=x.wav&size=<total>&offset=<n>&modified=<ms>
+//	POST api/upload?date=2026-10-04[&sermon=Evening]&name=x.wav&size=<total>&offset=<n>&modified=<ms>
 //
 // with the bytes from offset n as the body. Chunks are appended to a hidden
 // file in the date folder; a chunk at the wrong offset gets 409 with the
-// offset to continue from. The last chunk renames it to <date>_raw.<ext>
+// offset to continue from. The last chunk renames it to <folder>_raw.<ext>
 // and starts the FLAC conversion (for a WAV) and the waveform right away,
 // without waiting for them.
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +45,12 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid size or offset"))
 		return
 	}
-	folder, status, err := s.newRawFolder(date, "")
+	sermon, err := cleanName(q.Get("sermon"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	folder, status, err := s.newRawFolder(date, sermon)
 	if err != nil {
 		writeError(w, status, err)
 		return
@@ -55,8 +60,9 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(name))
-	final := filepath.Join(folder, date+"_raw"+ext)
-	tmp := filepath.Join(folder, "."+date+"_raw.upload") // one per date, whatever the format
+	base := filepath.Base(folder) // <date> or <date> <name>
+	final := filepath.Join(folder, base+"_raw"+ext)
+	tmp := filepath.Join(folder, "."+base+"_raw.upload") // one per sermon, whatever the format
 
 	conflict := func(msg string, at int64) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": msg, "offset": at})

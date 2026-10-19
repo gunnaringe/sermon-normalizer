@@ -85,6 +85,11 @@ cancels running jobs and waits for them to clean up.
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
   and continue after a dropped connection. No inbox needed.
+- **Several sermons a day:** give the second one a name (upload form, optional). Its folder is
+  `<year>/<date> <name>` and its files `<date> <name>_raw.flac`, `<date> <name>.mp3`... Without a name
+  a date can hold one sermon. **Rename…** on a sermon's page changes its date or name (the folder and
+  the files named after it, also in the archive; files already made keep their tags). A recording
+  from the inbox that finds its date taken lands in `<date> 2`; rename it.
 - **Inbox** (with `--inbox`): recordings that arrive by other means go into their date folder
   by themselves (see below); there is no inbox page. The folder list shows a "converting" or
   "preparing" tag while a recording is made ready.

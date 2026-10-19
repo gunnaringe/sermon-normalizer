@@ -116,7 +116,7 @@ func (s *Server) newRawFolder(date, name string) (string, int, error) {
 		return "", http.StatusInternalServerError, err
 	}
 	if raw := paths.Sources().Raw; raw != "" {
-		return "", http.StatusConflict, fmt.Errorf("%s already has a raw recording (%s)", date, filepath.Base(raw))
+		return "", http.StatusConflict, fmt.Errorf("%s already has a raw recording (%s); to add another sermon that day, give it a name", filepath.Base(folder), filepath.Base(raw))
 	}
 	return folder, 0, nil
 }

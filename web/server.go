@@ -164,6 +164,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/peaks", s.handlePeaks)
 	mux.HandleFunc("GET /api/preview", s.handlePreview)
 
+	mux.HandleFunc("POST /api/rename", s.handleRename)
 	mux.HandleFunc("POST /api/run", s.handleRun)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleJob)
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.handleJobEvents)

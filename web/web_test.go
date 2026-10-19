@@ -208,6 +208,15 @@ func chunk(t *testing.T, ts *testServer, date, name string, size, offset int64, 
 	return rec
 }
 
+// chunkNamed uploads a whole (small) recording for a named sermon in one chunk.
+func chunkNamed(t *testing.T, ts *testServer, date, sermon, file, data string) *httptest.ResponseRecorder {
+	t.Helper()
+	u := fmt.Sprintf("/api/upload?date=%s&sermon=%s&name=%s&size=%d&offset=0", date, url.QueryEscape(sermon), url.QueryEscape(file), len(data))
+	rec := httptest.NewRecorder()
+	ts.h.ServeHTTP(rec, httptest.NewRequest("POST", u, strings.NewReader(data)))
+	return rec
+}
+
 func TestUploadInChunks(t *testing.T) {
 	ts := newTestServer(t, normalizer.FFmpeg{})
 	recorded := time.Date(2026, 10, 4, 11, 30, 0, 0, time.Local)

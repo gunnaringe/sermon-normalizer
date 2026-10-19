@@ -142,3 +142,4 @@ pre.log { max-height: 14rem; overflow: auto; background: var(--bg); border: 1px 
 .tags label .muted { grid-column: 2; font-size: 0.9em; }
 .tags input[type=text] { width: 100%; }
 .options .tag input[type=text] { width: 14em; }
+button.link { border: 0; background: none; color: var(--accent); font-size: 0.9rem; padding: 0 0.3rem; cursor: pointer; }

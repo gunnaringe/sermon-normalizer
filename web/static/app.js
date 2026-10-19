@@ -70,13 +70,13 @@ function suggestDate(file) {
 // sendFile uploads file into the date folder in chunks: each request stays
 // small (proxies limit request bodies), and after a network error or a
 // server restart it continues where the server has it.
-async function sendFile(file, date, onProgress) {
+async function sendFile(file, date, sermon, onProgress) {
   const chunk = Number(localStorage.getItem('uploadChunk')) || Math.min(32 << 20, config.chunk);
   let offset = 0;
   let failures = 0;
   let sent = false; // a chunk may have arrived even if its answer did not
   for (;;) {
-    const url = forTenant(`api/upload?date=${q(date)}&name=${q(file.name)}&size=${file.size}&offset=${offset}&modified=${file.lastModified}`);
+    const url = forTenant(`api/upload?date=${q(date)}&sermon=${q(sermon)}&name=${q(file.name)}&size=${file.size}&offset=${offset}&modified=${file.lastModified}`);
     let resp;
     let data = {};
     try {
@@ -126,20 +126,21 @@ function uploadView() {
     }
     const guess = suggestDate(file);
     const date = h('input', { type: 'date', value: guess.date, required: true, 'aria-label': 'Date' });
+    const sermon = h('input', { type: 'text', maxlength: 60, placeholder: 'optional, e.g. Evening', 'aria-label': 'Name' });
     const button = h('button', { class: 'primary', onclick: async () => {
       if (!date.value) return;
-      button.disabled = date.disabled = true;
+      button.disabled = date.disabled = sermon.disabled = true;
       progress.hidden = false;
       progress.value = 0;
       status.className = 'muted';
       status.textContent = `Uploading ${file.name} (${formatSize(file.size)})…`;
       try {
-        const path = await sendFile(file, date.value, (p) => { progress.value = p; });
+        const path = await sendFile(file, date.value, sermon.value.trim(), (p) => { progress.value = p; });
         location.hash = '#/folder/' + path;
       } catch (e) {
         status.className = 'error';
         status.textContent = `${file.name}: ${e.message}`;
-        button.disabled = date.disabled = false;
+        button.disabled = date.disabled = sermon.disabled = false;
         progress.hidden = true;
       }
     } }, 'Upload');
@@ -147,6 +148,7 @@ function uploadView() {
     chosen.replaceChildren(h('div', { class: 'panel' },
       h('p', {}, h('strong', {}, file.name), ' · ', formatSize(file.size)),
       h('p', {}, h('label', {}, 'Date ', date), ' ', h('span', { class: 'muted' }, guess.source)),
+      h('p', {}, h('label', {}, 'Name ', sermon), ' ', h('span', { class: 'muted' }, 'Only needed for a second sermon the same day.')),
       h('p', {}, button)));
   }
 
