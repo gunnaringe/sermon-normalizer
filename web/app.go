@@ -214,6 +214,9 @@ func writeChurch(dir string, cc churchConfig) error {
 
 // start brings up the Server of one church and adds it to the list.
 func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
+	if o := a.sameGroup(id); o != "" {
+		return nil, fmt.Errorf("churches %s and %s would have the same group, %s", o, id, groupOf(id))
+	}
 	cfg := a.cfg.Base
 	cfg.limits = a.limits
 	t := &tenant{id: id, dir: dir, cfg: cc}
@@ -273,6 +276,19 @@ func (a *App) Close() {
 			t.srv.Close()
 		}
 	}
+}
+
+// sameGroup returns the church, if any, whose group is the same as id's
+// (a-b and a_b are both sermon_studio_a_b).
+func (a *App) sameGroup(id string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, t := range a.tenants {
+		if groupOf(t.id) == groupOf(id) {
+			return t.id
+		}
+	}
+	return ""
 }
 
 // tenantFor picks the church a request is for: the one it names, else the
@@ -401,6 +417,10 @@ func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := os.Stat(dir); err == nil {
 		writeError(w, http.StatusConflict, fmt.Errorf("the folder %s already exists", id))
+		return
+	}
+	if o := a.sameGroup(id); o != "" {
+		writeError(w, http.StatusConflict, fmt.Errorf("the church %s already has the group %s: pick another name", o, groupOf(id)))
 		return
 	}
 	cc := churchConfig{Name: name}

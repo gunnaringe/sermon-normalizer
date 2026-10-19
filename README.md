@@ -82,8 +82,10 @@ Without `--groups-header` there is no access control: everyone sees every church
 churches. With `--groups-header X-Forwarded-Groups` the app reads the user's groups (space-separated)
 from that header, which the login proxy must set, and nothing else:
 
-- a church `<id>` is for the members of the group **`sermon-studio-<id>`**
-- members of **`sermon-studio-admin`** see every church and are the only ones who can add churches
+- a church `<id>` is for the members of the group **`sermon_studio_<id>`**, with underscores for the hyphens in the id
+  (`norkirken-melhus` → `sermon_studio_norkirken_melhus`, like Pocket ID names groups); two churches
+  that would get the same group (`a-b`, `a_b`) are refused
+- members of **`sermon_studio_admin`** see every church and are the only ones who can add churches
   (the app tells them the group to create)
 - users in no matching group get a 403 page; a church they do not see answers as if it did not exist
 - **`admin`** (and `default`) cannot be a church id, so no church's group can ever be the

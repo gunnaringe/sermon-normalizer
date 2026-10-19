@@ -8,23 +8,25 @@ import (
 
 // Access control. The login proxy (Pocket ID's forward-auth) puts the user's
 // groups in a request header (AppConfig.GroupsHeader), space-separated. A
-// church <id> is for the members of the group GroupPrefix+<id>; members of
-// GroupPrefix+AdminID see every church and can add churches. Without
+// church is for the members of its group, groupOf(id): "sermon_studio_" and
+// the id with underscores for hyphens, like Pocket ID's own group names;
+// members of sermon_studio_admin see every church and can add churches. Without
 // GroupsHeader there is no access control: everyone sees everything.
 const (
 	// GroupPrefix starts the name of every group the app looks at.
-	GroupPrefix = "sermon-studio-"
+	GroupPrefix = "sermon_studio_"
 	// AdminID is the group name (after the prefix) of the administrators.
 	// No church may have this id, or its members would be administrators.
 	AdminID = "admin"
 )
 
 // reservedID reports ids that cannot be churches: "default" is the church
-// of --root, "admin" is the administrators' group.
-func reservedID(id string) bool { return id == RootTenant || id == AdminID }
+// of --root, and no church may have the administrators' group.
+func reservedID(id string) bool { return id == RootTenant || groupOf(id) == groupOf(AdminID) }
 
-// groupOf is the group of a church.
-func groupOf(id string) string { return GroupPrefix + id }
+// groupOf is the group of a church: norkirken-melhus is for
+// sermon_studio_norkirken_melhus.
+func groupOf(id string) string { return GroupPrefix + strings.ReplaceAll(id, "-", "_") }
 
 // user is who a request is from.
 type user struct {

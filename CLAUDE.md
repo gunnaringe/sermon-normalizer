@@ -27,8 +27,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default
   = first), shared one-encode/one-decode limits. A `Server` is one church.
   `--root`/`--inbox` = one church without a folder (settings not saved).
-- `web/access.go`: `--groups-header` access control: group `sermon-studio-<church id>` = that church,
-  `sermon-studio-admin` = all + add churches; `admin`/`default` are reserved ids. Every church request
+- `web/access.go`: `--groups-header` access control: group `sermon_studio_<church id, - → _>` = that church,
+  `sermon_studio_admin` = all + add churches; `admin`/`default` are reserved ids. Every church request
   goes through `App.tenantFor`, which only picks churches the user sees.
 - `web/server.go`: Config, routes, `resolve` (every path parameter: inside the
   root, no `..`, no hidden names, no symlinks out).

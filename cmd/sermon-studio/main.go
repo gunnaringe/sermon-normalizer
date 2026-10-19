@@ -34,7 +34,7 @@ func run() error {
 	dataDir := flag.String("data-dir", "", "folder with a folder per church: <id>/Taler (sermons), <id>/Innboks (inbox), <id>/church.json (name and settings); churches can be added in the app")
 	root := flag.String("root", "", "a single church without a church folder: the folder with its date folders (instead of --data-dir; settings are not saved)")
 	inbox := flag.String("inbox", "", "with --root: the folder new recordings arrive in (optional)")
-	groupsHeader := flag.String("groups-header", "", "request header in which the login proxy sends the user's groups (space-separated); turns on access control: a church is for the group sermon-studio-<church>, sermon-studio-admin sees all and can add churches")
+	groupsHeader := flag.String("groups-header", "", "request header in which the login proxy sends the user's groups (space-separated); turns on access control: a church is for the group sermon_studio_<church id, - as _>, sermon_studio_admin sees all and can add churches")
 	cacheDir := flag.String("cache-dir", defaultCacheDir(), "where waveform data and previews are kept")
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
