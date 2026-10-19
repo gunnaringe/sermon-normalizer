@@ -93,11 +93,14 @@ cancels running jobs and waits for them to clean up.
   playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
   dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut must
   be inside the sermon. *Hear join* plays 3 s either side of a cut as it will sound, and with
-  *Play without the cuts* (on by default) playback jumps over the cuts. The outputs are made from
+  *Play without the cuts* (on by default) playback jumps over the cuts. The selection and the cuts
+  are saved as you change them, in `<date>_cuts.json` in the date folder (it follows a rename), and
+  are back the next time the sermon is opened. The outputs are made from
   what is left, joined with a 15 ms fade on each side so the join does not click; the length
   shown is after the cuts.
 - **Options and run:** the options below, checked as you change them; your choices carry over
-  to the next folder (except Force). The run is followed live and keeps going if the browser is
+  to the next folder. **Run** makes the files that are missing; **Save and generate** (after a
+  confirmation) makes all of them again, replacing what is there. The run is followed live and keeps going if the browser is
   closed. Cancelling leaves nothing half-written.
 - **Files:** each date's page lists its finished files to play and download, and links to
   the sources (whole recording and cut).
@@ -169,7 +172,6 @@ as `<date>_edit.flac` (or `.wav`). The editor then offers to use it instead of a
 | Fade in / out | 0 | seconds of fade at the cut points, 0 = off |
 | Archive folder | `--archive` | keep the sources as FLAC there (default: leave them in place) |
 | Keep a hand-cut edit WAV | off | when archiving, keep `<date>_edit.wav` next to its FLAC (raw WAVs always become FLAC) |
-| Force | off | redo existing outputs (and cut again) |
 | Noise reduction | 12 dB | 0 = off |
 | Target loudness | -19 LUFS | |
 | Max true peak | -1.5 dBTP | for the master |
@@ -179,7 +181,7 @@ as `<date>_edit.flac` (or `.wav`). The editor then offers to use it instead of a
 - MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or
   the loudness is off. They are always made from the master; without FLAC it is a temporary
   hidden file in the date folder, removed when the run ends.
-- Existing outputs are skipped without Force. Output is written to a `.partial` file and
+- Existing outputs are skipped by Run; Save and generate redoes them (and cuts again). Output is written to a `.partial` file and
   renamed when done, so an interrupted run never leaves a half-written file behind.
 - Mono is the usual choice for speech, and mono and stereo recordings both work either way.
   With stereo, the run warns if the source is mono or its two channels are identical or nearly
@@ -207,4 +209,4 @@ just the finished files. A relative path is relative to the date folder; an abso
 - A WAV is converted to FLAC in the archive, the audio is verified with MD5, and **the WAV is
   deleted only if the audio is identical** (unless Keep WAV). A FLAC is moved; across disks it
   is copied, verified and only then deleted.
-- A file already in the archive is never replaced without Force.
+- A file already in the archive is never replaced by Run; Save and generate replaces it.

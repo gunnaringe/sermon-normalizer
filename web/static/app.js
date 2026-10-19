@@ -1,6 +1,7 @@
 // The app: a hash router over three views (folders, a folder's editor, upload).
 import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames } from './util.js';
 import { editorView } from './editor.js';
+import { alertDialog, promptDialog } from './dialog.js';
 
 const view = document.getElementById('view');
 let config = { inbox: false, defaults: {} };
@@ -211,7 +212,7 @@ async function settingsView() {
   const saveNames = async () => {
     try {
       Object.assign(names, await api('PUT', 'api/names', names));
-    } catch (err) { alert(err.message); }
+    } catch (err) { alertDialog({ body: err.message }); }
     showNames();
   };
   function showNames() {
@@ -272,13 +273,13 @@ async function churchPicker() {
   window.addEventListener('churches-changed', async () => { data = await api('GET', 'api/tenants'); fill(); });
   select.addEventListener('change', async () => {
     if (select.value === '+') {
-      const name = prompt('Name of the new church');
+      const name = await promptDialog({ title: 'Add a church', label: 'Name of the new church', confirm: 'Add church' });
       if (name && name.trim()) {
         try {
           const t = await api('POST', 'api/tenants', { name });
           data.tenants.push(t);
           setTenant(t.id);
-        } catch (err) { alert(err.message); }
+        } catch (err) { alertDialog({ body: err.message }); }
       }
     } else {
       setTenant(select.value);

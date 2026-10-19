@@ -82,6 +82,7 @@ button, .button {
 }
 button:hover:not(:disabled), .button:hover { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: default; }
+button.danger { background: var(--error); border-color: var(--error); color: #fff; font-weight: 600; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
 input[type=text], input[type=number], input[type=date] {
   font: inherit;
@@ -154,3 +155,12 @@ pre.log { max-height: 14rem; overflow: auto; background: var(--bg); border: 1px 
 button.link { border: 0; background: none; color: var(--accent); font-size: 0.9rem; padding: 0 0.3rem; cursor: pointer; }
 ul.names { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0; margin: 0.6rem 0 0; }
 ul.names li { border: 1px solid var(--line); border-radius: 1rem; padding: 0.1rem 0.3rem 0.1rem 0.8rem; background: var(--panel); }
+
+.dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--fg); padding: 0; width: min(32rem, calc(100vw - 2rem)); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); }
+.dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.dialog-body { padding: 1.2rem 1.4rem; }
+.dialog-body h2 { margin: 0 0 0.6rem; font-size: 1.15rem; }
+.dialog-body p { margin: 0.5rem 0; }
+.dialog-body ul { margin: 0.4rem 0 0.6rem; padding-left: 1.3rem; }
+.dialog-body input[type=text] { width: 100%; box-sizing: border-box; margin-top: 0.3rem; }
+.dialog-buttons { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.1rem; }

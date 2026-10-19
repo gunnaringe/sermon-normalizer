@@ -58,7 +58,7 @@ Module `github.com/gunnaringe/sermon-studio`, standard library only.
 - `*_test.go`: unit and integration tests; `web/e2e/`: browser tests
 
 Run options (from the web form): cut start/end and parts cut out of it, fades, outputs (FLAC, MP3, Opus), mono or
-stereo (stereo defaults: -16 LUFS, 128k MP3, 96k Opus), archive folder, keep WAV, force,
+stereo (stereo defaults: -16 LUFS, 128k MP3, 96k Opus), archive folder, keep WAV, redo all (Save and generate),
 noise reduction (12 dB), target loudness (-19 LUFS), max true peak (-1.5 dBTP),
 MP3 bitrate (96k), Opus bitrate (48k).
 
@@ -69,7 +69,7 @@ MP3 bitrate (96k), Opus bitrate (48k).
   or the loudness is off. The gain is limited by the peak ceiling.
 - Measure with `ebur128` (fast), not `loudnorm` (upsamples to 192 kHz and is slow).
 - Call ffmpeg with an argument list, never through a shell (avoids quoting bugs like `-c:a` in PowerShell).
-- Existing output files are skipped without Force.
+- Existing output files are skipped by Run; Save and generate redoes them.
 
 ## Phases
 

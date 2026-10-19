@@ -167,6 +167,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("GET /api/folder", s.handleFolder)
 	mux.HandleFunc("POST /api/check", s.handleCheck)
+	mux.HandleFunc("PUT /api/cuts", s.handleCutsPut)
 	mux.HandleFunc("GET /api/file", s.handleFile)
 
 	mux.HandleFunc("GET /api/analysis", s.handleAnalysis)

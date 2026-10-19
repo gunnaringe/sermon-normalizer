@@ -5,6 +5,7 @@ import RegionsPlugin from './vendor/wavesurfer/plugins/regions.esm.js';
 import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
+import { confirmDialog } from './dialog.js';
 import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames } from './util.js';
 
 const STORE = 'sermon-studio-options';
@@ -17,12 +18,12 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 function savedOptions(config) {
   const opts = { ...config.defaults.mono, archive: config.archive || '' };
   try { Object.assign(opts, JSON.parse(localStorage.getItem(STORE) || localStorage.getItem(OLD_STORE) || '{}')); } catch {}
-  opts.force = false;
+  delete opts.force; // from before it was a button
   return opts;
 }
 
 function saveOptions(opts) {
-  const { start, end, useEdit, force, title, artist, album, ...keep } = opts;
+  const { start, end, useEdit, title, artist, album, ...keep } = opts;
   localStorage.setItem(STORE, JSON.stringify(keep));
 }
 
@@ -76,7 +77,9 @@ export async function editorView(view, path, config) {
   showRecording(info.raw);
   const filesSection = h('section', {});
   const checkOut = h('div', {});
-  const runButton = h('button', { class: 'primary', disabled: true, onclick: run }, 'Run');
+  const runButton = h('button', { class: 'primary', disabled: true, title: 'Make the files that are missing', onclick: () => run() }, 'Run');
+  const generateButton = h('button', { disabled: true, title: 'Save the cuts and make all the files again', onclick: generate }, 'Save and generate');
+  const saveNote = h('span', { class: 'muted' });
   const jobPanel = h('section', {});
 
   // Another date or name for this sermon: renames the folder and its files.
@@ -110,13 +113,15 @@ export async function editorView(view, path, config) {
     editChoice ? h('p', {}, editChoice) : '',
     h('h2', {}, 'Options'),
     optionsForm(),
-    h('div', { class: 'panel' }, checkOut, h('p', {}, runButton)),
+    h('div', { class: 'panel' }, checkOut, h('p', {}, runButton, ' ', generateButton)),
     jobPanel,
   );
 
   // ---- files: the outputs to listen to and download, and the sources ----
   const fileURL = (f, download) => forTenant('api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path));
+  let lastOutputs = info.outputs.map((o) => o.name); // the files a new run would replace
   function showFiles(inf) {
+    lastOutputs = inf.outputs.map((o) => o.name);
     const outputs = inf.outputs.map((o) => h('div', { class: 'out' },
       h('strong', {}, o.name), h('span', { class: 'muted' }, formatSize(o.size)),
       h('audio', { controls: true, preload: 'none', src: fileURL(o) }),
@@ -201,6 +206,7 @@ export async function editorView(view, path, config) {
             h('label', { class: 'check', title: 'Playback jumps over the parts that are cut out' }, skipBox, ' Play without the cuts')),
           cutHint,
           cutList)),
+      h('p', { class: 'muted' }, 'The selection and the cuts are saved with the sermon as you change them. ', saveNote),
       h('p', { class: 'keys' },
         'Drag on the waveform to select the sermon; hold ', h('kbd', {}, 'shift'), ' and drag to cut out a part of it. Drag the edges to adjust. Grey marks silences. Keys: ',
         h('kbd', {}, 'space'), ' play · ', h('kbd', {}, 's'), '/', h('kbd', {}, 'e'), ' start/end at the playhead · ', h('kbd', {}, 'c'), ' cut out here · ',
@@ -258,6 +264,7 @@ export async function editorView(view, path, config) {
         if (r.element) r.element.style.pointerEvents = 'none'; // selections can start on a silence
       });
       regions.enableDragSelection({ color: css('--selection') });
+      if (info.saved) restoreSaved(info.saved);
     });
     regions.on('region-created', (r) => {
       if (r.id.startsWith('silence-') || r.id.startsWith('cut-')) return;
@@ -316,7 +323,7 @@ export async function editorView(view, path, config) {
     }, { passive: false });
 
     function onKey(e) {
-      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
       const step = e.shiftKey ? 0.1 : 1;
       const keys = {
         ' ': () => ws.playPause(),
@@ -470,6 +477,47 @@ export async function editorView(view, path, config) {
     return length;
   }
 
+  // ---- keeping the selection and cuts: saved in the folder as the page changes ----
+
+  let restoring = false; // putting the saved ones back is not a change
+  let lastSaved = JSON.stringify(info.saved || null);
+
+  // savedState is what to keep, or null while there is nothing (valid) to keep.
+  function savedState() {
+    if (!sel || restoring) return null;
+    const list = cuts.map((c) => ({ start: c.region.start, end: c.region.end }));
+    if (list.some((c) => c.end - c.start < 0.05 || c.start < sel.start - 0.001 || c.end > sel.end + 0.001)) return null;
+    return { start: sel.start, end: sel.end, cuts: list };
+  }
+
+  async function persistCuts() {
+    const state = savedState();
+    if (!state || JSON.stringify(state) === lastSaved) return;
+    saveNote.textContent = 'Saving…';
+    try {
+      await api('PUT', 'api/cuts?path=' + q(path), state);
+      lastSaved = JSON.stringify(state);
+      saveNote.textContent = 'Saved.';
+    } catch (e) {
+      saveNote.textContent = 'Not saved: ' + e.message;
+    }
+  }
+  const saveSoon = debounce(() => { if (alive) persistCuts(); }, 700);
+
+  function restoreSaved(saved) {
+    restoring = true;
+    try {
+      if (setSelection(saved.start, saved.end)) {
+        for (const c of saved.cuts) addCut(c.start, c.end);
+        reveal(saved.start);
+      }
+    } finally {
+      restoring = false;
+    }
+    syncCuts();
+    check();
+  }
+
   function fieldsChanged() {
     const start = startInput.value.trim() === '' ? 0 : parseTime(startInput.value);
     const end = endInput.value.trim() === '' ? duration : parseTime(endInput.value);
@@ -557,7 +605,7 @@ export async function editorView(view, path, config) {
       h('div', { class: 'options' },
         h('div', {}, h('strong', {}, 'Outputs'), check('flac', 'FLAC master'), check('mp3', 'MP3'), check('opus', 'Opus')),
         h('div', {}, h('strong', {}, 'Sound'), check('stereo', 'Stereo (off = mono)'), num('fadeIn', 'Fade in (s)', 0.5), num('fadeOut', 'Fade out (s)', 0.5)),
-        h('div', {}, h('strong', {}, 'Files'), text('archive', 'Archive folder', 'none'), check('keepWav', 'Keep a hand-cut edit WAV'), check('force', 'Force (redo existing)')),
+        h('div', {}, h('strong', {}, 'Files'), text('archive', 'Archive folder', 'none'), check('keepWav', 'Keep a hand-cut edit WAV')),
         info.tags ? h('div', {}, h('strong', {}, 'Tags'), tag('title', 'Title'), tag('artist', 'Artist'), tag('album', 'Album'))
           : h('div', {}, h('strong', {}, 'Tags'), h('span', { class: 'muted' }, info.tagsError || 'No tags'))),
       h('details', {}, h('summary', {}, 'More sound options'),
@@ -581,9 +629,10 @@ export async function editorView(view, path, config) {
     }
   }
 
-  function request() {
+  function request(force = false) {
     return {
       ...opts,
+      force,
       ...(info.tags ? tags : {}),
       noiseReduction: Math.round(opts.noiseReduction),
       start: !useEdit && sel ? sel.start : 0,
@@ -611,6 +660,7 @@ export async function editorView(view, path, config) {
   function changed() {
     saveOptions(opts);
     check();
+    saveSoon();
   }
 
   function showCheck(res) {
@@ -622,12 +672,33 @@ export async function editorView(view, path, config) {
   }
 
   function busy() { return job && (job.state === 'queued' || job.state === 'running'); }
-  function updateRunButton() { runButton.disabled = Boolean(lastCheck.error) || busy(); }
+  function updateRunButton() {
+    runButton.disabled = generateButton.disabled = Boolean(lastCheck.error) || busy();
+  }
 
-  async function run() {
-    runButton.disabled = true;
+  // generate makes every file again, after asking: it replaces what is there.
+  async function generate() {
+    const existing = lastOutputs;
+    const ok = await confirmDialog({
+      title: 'Save and generate?',
+      body: [
+        h('p', {}, 'The sermon is cut and processed again from the recording, with the selection and cuts shown here.'),
+        existing.length
+          ? [h('p', {}, 'These files are replaced:'), h('ul', {}, existing.map((n) => h('li', {}, n)))]
+          : h('p', {}, 'No files are made yet, so nothing is replaced.'),
+        opts.archive ? h('p', {}, 'The cut in the archive is made again too.') : '',
+      ],
+      confirm: 'Save and generate',
+      danger: existing.length > 0,
+    });
+    if (ok) await run(true);
+  }
+
+  async function run(force = false) {
+    runButton.disabled = generateButton.disabled = true;
     try {
-      job = await api('POST', 'api/run?path=' + q(path), request());
+      await persistCuts();
+      job = await api('POST', 'api/run?path=' + q(path), request(force));
       showJob(job);
       follow(job.id);
     } catch (e) {

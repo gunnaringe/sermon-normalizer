@@ -7,8 +7,10 @@ const DATA = process.env.DATA;
 const shots = path.join(import.meta.dirname, '..', 'screenshots');
 fs.mkdirSync(shots, { recursive: true });
 
-// openEditor opens a date folder and waits until the waveform is ready.
-async function openEditor(page, folder, timeout = 60_000) {
+// openEditor opens a date folder and waits until the waveform is ready. The
+// saved selection and cuts of an earlier test are forgotten, unless keep is set.
+async function openEditor(page, folder, { timeout = 60_000, keep = false } = {}) {
+  if (!keep) fs.rmSync(path.join(DATA, 'root', folder, path.basename(folder) + '_cuts.json'), { force: true });
   await page.goto('#/folder/' + folder);
   await expect(page.locator('#waveform')).toBeVisible({ timeout });
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout });
@@ -152,6 +154,29 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   expect(await cuts()).toHaveLength(1);
 });
 
+test('the selection and cuts are kept in the folder and come back', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await editor(page, () => { window.__editor.setSelection(12, 88); window.__editor.addCut(30, 40); window.__editor.addCut(60, 66); });
+  await expect(page.getByText('Saved.')).toBeVisible();
+  const file = path.join(DATA, 'root/2026/2026-10-04/2026-10-04_cuts.json');
+  expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({
+    start: 12, end: 88, cuts: [{ start: 30, end: 40 }, { start: 60, end: 66 }],
+  });
+
+  // Another visit: the selection and both cuts are back, and the length counts them.
+  await openEditor(page, '2026/2026-10-04', { keep: true });
+  await page.reload();
+  await page.waitForFunction(() => window.__editor && window.__editor.cuts.length === 2, null, { timeout: 30_000 });
+  expect(await selection(page)).toEqual({ start: 12, end: 88 });
+  await expect(page.getByLabel('Cut 2 to')).toHaveValue('1:06.00');
+  await expect(page.getByText('Length 1:00.0 after the cuts')).toBeVisible();
+
+  // Removing a cut is kept too.
+  await page.locator('.cut').first().getByRole('button', { name: 'Remove' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  await expect.poll(() => JSON.parse(fs.readFileSync(file, 'utf8')).cuts.length).toBe(1);
+});
+
 test('run with chosen outputs and follow it live', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await page.getByLabel('Start').fill('0:21');
@@ -173,7 +198,7 @@ test('run with chosen outputs and follow it live', async ({ page }) => {
   await page.screenshot({ path: path.join(shots, 'done.png'), fullPage: true });
 
   const files = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).sort();
-  expect(files).toEqual(['2026-10-04.mp3', '2026-10-04_raw.flac']);
+  expect(files).toEqual(['2026-10-04.mp3', '2026-10-04_cuts.json', '2026-10-04_raw.flac']); // the cuts file is kept
   // The options are remembered for the next folder (not Force or the cut).
   await page.reload();
   await expect(page.getByLabel('FLAC master')).not.toBeChecked();
@@ -188,9 +213,19 @@ test('a run can be cancelled', async ({ page }) => {
   await page.getByLabel('Start').fill('0:01');
   await page.getByLabel('Start').press('Enter');
   await page.getByLabel('FLAC master').check();
-  await page.getByLabel('Force (redo existing)').check();
-  await page.getByRole('button', { name: 'Run' }).click();
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  // Making everything again asks first; Cancel in the dialog changes nothing.
+  await expect(page.getByLabel('Force')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save and generate' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('These files are replaced');
+  await expect(dialog).toContainText('2026-10-04.mp3');
+  await page.screenshot({ path: path.join(shots, 'dialog.png') });
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Processing…' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save and generate' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Save and generate' }).click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Cancelled' })).toBeVisible({ timeout: 30_000 });
   const left = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).filter((f) => f.includes('.partial') || f.startsWith('.'));
   expect(left).toEqual([]);
@@ -239,7 +274,7 @@ test('inbox: a recording lands in its date folder by itself', async ({ page }) =
 test('a 90-minute recording stays responsive', async ({ page }) => {
   test.setTimeout(300_000);
   const started = Date.now();
-  await openEditor(page, '2026/2026-08-30', 240_000);
+  await openEditor(page, '2026/2026-08-30', { timeout: 240_000 });
   console.log(`analysis + first render: ${((Date.now() - started) / 1000).toFixed(1)} s`);
   expect(await editor(page, () => window.__editor.ws.getDuration())).toBeCloseTo(5400, 0);
 
@@ -278,8 +313,9 @@ test('churches: add one, folders are separate, the choice is remembered', async 
   await page.goto('#/');
   await expect(page.locator('#church')).toHaveValue('first-church');
   await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
-  page.once('dialog', (d) => d.accept('Second church'));
   await page.locator('#church').selectOption('+');
+  await page.getByRole('dialog').getByLabel('Name of the new church').fill('Second church');
+  await page.getByRole('dialog').getByRole('button', { name: 'Add church' }).click();
   await expect(page.locator('#church')).toHaveValue('second-church');
   await expect(page.getByText('No folders here yet.')).toBeVisible();
   await page.reload();

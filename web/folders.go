@@ -101,6 +101,7 @@ type folderInfo struct {
 	Job          *jobSnapshot     `json:"job"`
 	Tags         *Meta            `json:"tags"` // the church's defaults filled in for this folder
 	TagsError    string           `json:"tagsError,omitempty"`
+	Saved        *savedCuts       `json:"saved"` // the selection and cuts kept for this sermon
 }
 
 type outputFileInfo struct {
@@ -114,7 +115,7 @@ func (s *Server) folderInfo(abs string) (folderInfo, error) {
 		return folderInfo{}, err
 	}
 	src := paths.Sources()
-	info := folderInfo{Path: s.relPath(abs), Date: paths.Date, EditInFolder: src.EditInFolder, Outputs: []outputFileInfo{}}
+	info := folderInfo{Path: s.relPath(abs), Date: paths.Date, EditInFolder: src.EditInFolder, Outputs: []outputFileInfo{}, Saved: readCuts(abs)}
 	if src.Raw != "" {
 		info.Raw = s.fileInfo(src.Raw)
 	}
@@ -273,11 +274,11 @@ func (s *Server) check(abs string, q runRequest) plan {
 			}
 		}
 		if len(existing) > 0 {
-			pl.Notices = append(pl.Notices, "Already there, skipped unless Force: "+strings.Join(existing, ", "))
+			pl.Notices = append(pl.Notices, "Already there, kept: "+strings.Join(existing, ", ")+". Save and generate makes them again.")
 		}
 		if !q.UseEdit && pl.archive != "" {
 			if _, err := os.Stat(paths.EditArchive()); err == nil {
-				pl.Notices = append(pl.Notices, "An earlier cut is in the archive; it is used instead of this selection unless Force.")
+				pl.Notices = append(pl.Notices, "An earlier cut is in the archive; Run uses it instead of this selection. Save and generate cuts again.")
 			}
 		}
 	}

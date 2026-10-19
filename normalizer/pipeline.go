@@ -333,7 +333,7 @@ func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
 	switch {
 	case flac == "":
 	case exists(dst) && !p.Opt.Force:
-		p.warnf("%s is already in the archive; leaving %s in the folder (force to replace it).", filepath.Base(dst), filepath.Base(flac))
+		p.warnf("%s is already in the archive; leaving %s in the folder (Save and generate replaces it).", filepath.Base(dst), filepath.Base(flac))
 	default:
 		if err := MoveFile(flac, dst); err != nil {
 			return false, err
@@ -413,7 +413,7 @@ func (p *Pipeline) cutEdit(ctx context.Context) error {
 	dst := p.P.EditArchive()
 	if exists(dst) && !p.Opt.Force {
 		p.edit = dst
-		p.logf("%s exists, skipping (force to cut again).", filepath.Base(dst))
+		p.logf("%s exists, skipping (Save and generate cuts again).", filepath.Base(dst))
 		return nil
 	}
 	var total float64
@@ -560,7 +560,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 	case o.Flac:
 		p.step(fmt.Sprintf("3. Master (%s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
 		if !p.pending(p.P.Master) {
-			p.logf("Already exists, skipping (force to redo).")
+			p.logf("Already exists, skipping (Save and generate redoes it).")
 			return nil
 		}
 	case !lossy:
