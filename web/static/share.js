@@ -3,7 +3,7 @@
 // header; the code is kept in sessionStorage (this tab only), never in the
 // address bar once read. Files are sent in chunks, so they pass Cloudflare's
 // limits and continue after a dropped connection or a reload.
-import { h, formatSize } from './util.js';
+import { h, formatSize, formatDateTime } from './util.js';
 
 const view = document.getElementById('view');
 let code = '';
@@ -78,7 +78,7 @@ function limitsText() {
   const parts = [`${info.types.join(' or ')} files up to ${formatSize(info.maxFileSize)}`];
   if (info.uploadsLeft !== undefined) parts.push(`${info.uploadsLeft} more file${info.uploadsLeft === 1 ? '' : 's'}`);
   if (info.bytesLeft !== undefined) parts.push(`${formatSize(info.bytesLeft)} left`);
-  if (info.expires) parts.push('until ' + new Date(info.expires).toLocaleString());
+  if (info.expires) parts.push('until ' + formatDateTime(info.expires));
   return parts.join(' · ');
 }
 

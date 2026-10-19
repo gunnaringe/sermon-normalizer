@@ -1,5 +1,5 @@
 // The app: a hash router over three views (folders, a folder's editor, upload).
-import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames } from './util.js';
+import { api, q, h, formatSize, formatDate, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
@@ -64,9 +64,7 @@ function suggestDate(file) {
     const d = `${m[1]}-${m[2]}-${m[3]}`;
     if (!Number.isNaN(Date.parse(d))) return { date: d, source: 'from the name' };
   }
-  const t = new Date(file.lastModified);
-  const pad = (n) => String(n).padStart(2, '0');
-  return { date: `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`, source: "from the file's date" };
+  return { date: formatDate(file.lastModified), source: "from the file's date" };
 }
 
 // sendFile uploads file into the date folder in chunks: each request stays
@@ -127,7 +125,7 @@ function uploadView() {
       return;
     }
     const guess = suggestDate(file);
-    const date = h('input', { type: 'date', value: guess.date, required: true, 'aria-label': 'Date' });
+    const date = dateInput({ name: 'date', value: guess.date, required: true, 'aria-label': 'Date' });
     const sermon = h('input', { type: 'text', maxlength: 60, placeholder: 'optional, e.g. Evening', 'aria-label': 'Name' });
     const button = h('button', { class: 'primary', onclick: async () => {
       if (!date.value) return;

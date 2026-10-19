@@ -386,13 +386,13 @@ test('settings: default tags are saved and used on the sermon page', async ({ pa
 test('a second sermon the same day: upload with a name, then rename', async ({ page }) => {
   await page.goto('#/upload');
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
-  await page.locator('input[type=date]').fill('2026-11-01');
+  await page.locator('input[name=date]').fill('2026-11-01');
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page).toHaveURL(/#\/folder\/2026\/2026-11-01$/);
 
   await page.goto('#/upload');
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
-  await page.locator('input[type=date]').fill('2026-11-01');
+  await page.locator('input[name=date]').fill('2026-11-01');
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page.getByText('give it a name')).toBeVisible();
   await page.locator('input[aria-label=Name]').fill('Kveld');
@@ -413,7 +413,7 @@ test('names: remembered, suggested, and tidied in settings', async ({ page }) =>
 
   await page.goto('#/upload');
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
-  await page.locator('input[type=date]').fill('2026-12-06');
+  await page.locator('input[name=date]').fill('2026-12-06');
   await page.locator('input[aria-label=Name]').fill('Engangs');
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page).toHaveURL(/#\/folder\/2026\/2026-12-06/);
@@ -447,6 +447,10 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await page.goto('#/shares');
   await page.locator('input[name=label]').fill('Sound desk');
   await page.locator('input[name=maxUploads]').fill('3');
+  await page.locator('input[name=expires]').fill('2099-02-30');
+  await page.getByRole('button', { name: 'Make share' }).click();
+  await expect(page.getByText('Write the expiry as yyyy-mm-dd')).toBeVisible();
+  await page.locator('input[name=expires]').fill('2099-12-31');
   await page.getByRole('button', { name: 'Make share' }).click();
   const dialog = page.getByRole('dialog');
   const link = await dialog.locator('.share-link').textContent();
@@ -460,7 +464,7 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await up.goto(link);
   await expect(up.getByRole('heading', { name: 'Sound desk' })).toBeVisible();
   expect(up.url()).not.toContain('code');
-  await expect(up.getByText('3 more files')).toBeVisible();
+  await expect(up.getByText('3 more files · until 2099-12-31 23:59')).toBeVisible();
   await up.locator('input[type=file]').setInputFiles({
     name: 'Gudstjeneste 2026-09-13.flac', mimeType: 'audio/flac',
     buffer: fs.readFileSync(path.join(DATA, 'upload.flac')),

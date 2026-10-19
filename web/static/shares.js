@@ -1,7 +1,7 @@
 // Shares: codes that let people without a login send recordings to this
 // church's inbox from the public upload page. A code is shown once, when the
 // share is made.
-import { api, h, formatSize } from './util.js';
+import { api, h, formatSize, formatDate, formatDateTime } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
 
 const GB = 1 << 30;
@@ -16,8 +16,23 @@ function limits(s) {
   const out = [`up to ${formatSize(s.maxFileSize)} per file`, s.types.join(' ')];
   if (s.maxUploads) out.push(`${s.maxUploads} files`);
   if (s.maxTotal) out.push(`${formatSize(s.maxTotal)} in all`);
-  out.push(s.expires ? 'until ' + new Date(s.expires).toLocaleString() : 'no expiry');
+  out.push(s.expires ? 'until ' + formatDateTime(s.expires) : 'no expiry');
   return out.join(' · ');
+}
+
+// parseExpiry reads yyyy-mm-dd or yyyy-mm-dd hh:mm in local time; a day
+// alone lasts to its end. Empty = never.
+function parseExpiry(s) {
+  s = s.trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?$/);
+  const d = m && (m[4] === undefined
+    ? new Date(+m[1], m[2] - 1, +m[3], 23, 59, 59)
+    : new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]));
+  if (!d || d.getMonth() !== m[2] - 1 || d.getDate() !== +m[3] || (m[4] !== undefined && (+m[4] > 23 || +m[5] > 59))) {
+    throw new Error('Write the expiry as yyyy-mm-dd or yyyy-mm-dd hh:mm.');
+  }
+  return d.toISOString();
 }
 
 function linkFor(url, code) {
@@ -44,7 +59,8 @@ export async function sharesView(view) {
   const fileSize = num('maxFileSize', { value: data.defaultFileSize / GB, min: 0.01 });
   const uploads = num('maxUploads', { step: 1, placeholder: 'no limit' });
   const total = num('maxTotal', { placeholder: 'no limit' });
-  const expires = h('input', { type: 'datetime-local', name: 'expires' });
+  const expires = h('input', { type: 'text', name: 'expires', class: 'date', maxlength: 16, autocomplete: 'off',
+    placeholder: 'yyyy-mm-dd [hh:mm]' });
   const status = h('span', { class: 'error' });
   const create = h('button', { class: 'primary', name: 'create-share', onclick: async () => {
     status.textContent = '';
@@ -55,7 +71,7 @@ export async function sharesView(view) {
         maxFileSize: Math.round(Number(fileSize.value) * GB),
         maxUploads: Number(uploads.value) || 0,
         maxTotal: Math.round(Number(total.value) * GB) || 0,
-        expires: expires.value ? new Date(expires.value).toISOString() : null,
+        expires: parseExpiry(expires.value),
       });
       await showCode(data.url, made.code);
       await sharesView(view);
@@ -77,10 +93,10 @@ export async function sharesView(view) {
     h('p', {}, h('strong', {}, s.label), ' ', stateText(s), ' ',
       h('span', { class: 'muted mono' }, '…' + s.hint)),
     h('p', { class: 'muted' }, limits(s)),
-    h('p', {}, `${s.count} file${s.count === 1 ? '' : 's'} received (${formatSize(s.bytes)}) · made ${new Date(s.created).toLocaleDateString()}`),
+    h('p', {}, `${s.count} file${s.count === 1 ? '' : 's'} received (${formatSize(s.bytes)}) · made ${formatDate(s.created)}`),
     s.log.length ? h('details', {}, h('summary', {}, 'Uploads'),
       h('table', { class: 'list' }, s.log.map((u) => h('tr', {},
-        h('td', {}, new Date(u.time).toLocaleString()), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
+        h('td', {}, formatDateTime(u.time)), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
     h('p', {}, s.state !== 'revoked' ? h('button', { name: 'revoke', onclick: act(s, 'revoke') }, 'Revoke') : '', ' ',
       h('button', { name: 'delete', onclick: act(s, 'delete') }, 'Delete'))));
 

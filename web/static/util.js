@@ -69,6 +69,25 @@ export function formatTime(t, decimals = 2) {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 }
 
+// Dates are shown as 2026-10-04 and times as 2026-10-04 18:30, whatever the
+// browser's locale.
+const pad2 = (n) => String(n).padStart(2, '0');
+export function formatDate(d) {
+  d = new Date(d);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+export function formatDateTime(d) {
+  d = new Date(d);
+  return `${formatDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// dateInput is a text field for a date as yyyy-mm-dd (the browser's date
+// picker would show the locale's format, e.g. mm/dd/yyyy).
+export function dateInput(attrs = {}) {
+  return h('input', { type: 'text', class: 'date', maxlength: 10, inputmode: 'numeric', placeholder: 'yyyy-mm-dd',
+    pattern: '\\d{4}-\\d{2}-\\d{2}', autocomplete: 'off', ...attrs });
+}
+
 export function formatSize(bytes) {
   if (bytes >= 1 << 30) return (bytes / (1 << 30)).toFixed(1) + ' GB';
   if (bytes >= 1 << 20) return (bytes / (1 << 20)).toFixed(1) + ' MB';

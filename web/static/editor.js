@@ -6,7 +6,7 @@ import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
 import { confirmDialog } from './dialog.js';
-import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames } from './util.js';
+import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames, dateInput, formatDateTime } from './util.js';
 
 const STORE = 'sermon-studio-options';
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
@@ -82,7 +82,7 @@ export async function editorView(view, path, config) {
   const renamePanel = h('div', { class: 'panel', hidden: true });
   const renameButton = h('button', { class: 'link', title: 'Change the date or name of this sermon', onclick: () => {
     const [, d = '', n = ''] = info.date.match(/^(\d{4}-\d{2}-\d{2})(?: (.*))?$/) || [];
-    const date = h('input', { type: 'date', value: d, required: true, 'aria-label': 'Date' });
+    const date = dateInput({ name: 'date', value: d, required: true, 'aria-label': 'Date' });
     const name = h('input', { type: 'text', value: n, maxlength: 60, placeholder: 'optional, e.g. Evening', 'aria-label': 'Name' });
     const msg = h('span', { class: 'error' });
     const save = h('button', { class: 'primary', onclick: async () => {
@@ -537,7 +537,7 @@ export async function editorView(view, path, config) {
 
   function renderVersion() {
     const { saved, adjusted } = sermon;
-    const at = sermon.savedAt ? ' ' + new Date(sermon.savedAt).toLocaleString() : '';
+    const at = sermon.savedAt ? ' ' + formatDateTime(sermon.savedAt) : '';
     versionOut.replaceChildren(
       saved ? h('p', {}, h('strong', {}, 'Saved' + at + ': '), describe(saved)) : h('p', { class: 'muted' }, 'Nothing is saved yet.'),
       adjusted ? h('p', {}, h('strong', {}, 'Adjusted, not saved: '), describe(adjusted)) : '');
