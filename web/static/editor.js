@@ -21,7 +21,7 @@ function savedOptions(config) {
 }
 
 function saveOptions(opts) {
-  const { start, end, title, artist, album, ...keep } = opts;
+  const { sections, cuts, title, artist, album, ...keep } = opts;
   localStorage.setItem(STORE, JSON.stringify(keep));
 }
 
@@ -38,16 +38,15 @@ export async function editorView(view, path, config) {
   // Tags are per sermon: the church's defaults for this folder, editable for this run.
   const tags = { title: '', artist: '', album: '', ...(info.tags || {}) };
   let job = info.job;
-  let sel = null; // the selection region
-  let regions = null; // the waveform's regions plugin: selection, cuts, silences
-  const cuts = []; // parts cut out of the selection: { region, row, ... }, in time order
-  let cutSeq = 0;
+  let regions = null; // the waveform's regions plugin: sections, cuts, silences
+  const sections = []; // the parts of the recording that are the sermon: { region, row, ... }, in time order
+  const cuts = []; // parts cut out of the sections: { region, row, ... }, in time order
+  let sectionSeq = 0, cutSeq = 0;
   let ws = null;
   let duration = 0;
   let silenceEdges = [];
-  let setSelection = () => false; // set once the waveform exists
   let stopAt = null; // playback pauses here (hear start/end, play selection)
-  let addCutButton = null; // disabled until there is a selection
+  let addCutButton = null; // disabled until there is a section
   let skipNow = false; // this playback jumps over the cuts even with "play without the cuts" off
   let lastCheck = { error: 'Checking…' };
   let events = null; // the job's event stream
@@ -55,11 +54,9 @@ export async function editorView(view, path, config) {
 
   // ---- layout ----
   const waveSection = h('section', {});
-  const startInput = h('input', { type: 'text', class: 'time', placeholder: 'start', 'aria-label': 'Start' });
-  const endInput = h('input', { type: 'text', class: 'time', placeholder: 'end', 'aria-label': 'End' });
-  const lengthOut = h('span', { class: 'muted' });
-  const selection = h('div', { class: 'selection' },
-    h('label', {}, 'Start ', startInput), h('label', {}, 'End ', endInput), lengthOut);
+  const lengthOut = h('p', { class: 'length' });
+  const sectionList = h('div', { class: 'sections' });
+  const sectionHint = h('p', { class: 'muted' });
   const cutList = h('div', { class: 'cuts' });
   const cutHint = h('p', { class: 'muted' });
   const skipBox = h('input', { type: 'checkbox', checked: true });
@@ -185,27 +182,29 @@ export async function editorView(view, path, config) {
         h('div', { class: 'group' },
           h('strong', {}, 'Sermon'),
           h('div', { class: 'toolbar' },
-            button('Set start', 'The sermon starts at the playhead (s)', markStart),
-            button('Set end', 'The sermon ends at the playhead (e)', markEnd),
+            button('Set start', 'The section at the playhead (or the next one) starts there (s)', markStart),
+            button('Set end', 'The section at the playhead (or the one before) ends there (e)', markEnd),
             h('span', { class: 'sep' }),
-            button('Hear start', 'Play 5 s from the start of the sermon', () => sel && playFor(sel.start, 5)),
-            button('Hear end', 'Play the last 5 s of the sermon', () => sel && playFor(Math.max(sel.end - 5, 0), sel.end - Math.max(sel.end - 5, 0))),
-            button('Play sermon', 'Play the whole selection (p)', playSelection)),
-          selection),
+            button('Hear start', 'Play 5 s from the start of the sermon', hearStart),
+            button('Hear end', 'Play the last 5 s of the sermon', hearEnd),
+            button('Play sermon', 'Play all the sections (p)', playSelection)),
+          sectionHint,
+          sectionList,
+          lengthOut),
         h('div', { class: 'group' },
           h('strong', {}, 'Cut out'),
           h('div', { class: 'toolbar' },
             addCutButton,
-            h('label', { class: 'check', title: 'Playback jumps over the parts that are cut out' }, skipBox, ' Play without the cuts')),
+            h('label', { class: 'check', title: 'Playback jumps over the parts that are cut out and the gaps between sections' }, skipBox, ' Play without the cuts')),
           cutHint,
           cutList),
         h('div', { class: 'group' },
           h('strong', {}, 'Saved version'),
           versionOut,
           h('div', { class: 'toolbar' }, saveButton, revertButton, saveNote),
-          h('p', { class: 'muted' }, 'The selection, cuts and fades are kept in the folder as you change them. Save makes them the saved version; Revert goes back to it. Run uses what is on the page.'))),
+          h('p', { class: 'muted' }, 'The sections, cuts and fades are kept in the folder as you change them. Save makes them the saved version; Revert goes back to it. Run uses what is on the page.'))),
       h('p', { class: 'keys' },
-        'Drag on the waveform to select the sermon; hold ', h('kbd', {}, 'shift'), ' and drag to cut out a part of it. Drag the edges to adjust. Grey marks silences. Keys: ',
+        'Drag on the waveform to select the sermon; drag on an empty part to add another section, or hold ', h('kbd', {}, 'shift'), ' and drag to cut out a part. Drag the edges to adjust. Grey marks silences. Keys: ',
         h('kbd', {}, 'space'), ' play · ', h('kbd', {}, 's'), '/', h('kbd', {}, 'e'), ' start/end at the playhead · ', h('kbd', {}, 'c'), ' cut out here · ',
         h('kbd', {}, '['), '/', h('kbd', {}, ']'), ' silences · ', h('kbd', {}, '←'), '/', h('kbd', {}, '→'), ' 1 s (shift 0.1 s) · ',
         h('kbd', {}, '+'), '/', h('kbd', {}, '-'), ' zoom · ', h('kbd', {}, 'p'), ' play sermon. ',
@@ -250,8 +249,8 @@ export async function editorView(view, path, config) {
         return;
       }
       if ((skipBox.checked || skipNow) && ws.isPlaying()) {
-        const cut = cuts.find((c) => t >= c.region.start - 0.03 && t < c.region.end);
-        if (cut) ws.setTime(cut.region.end);
+        const cut = skipped().find((c) => t >= c.start - 0.03 && t < c.end);
+        if (cut) ws.setTime(cut.end);
       }
     });
     ws.on('pause', () => { skipNow = false; });
@@ -265,17 +264,20 @@ export async function editorView(view, path, config) {
       regions.enableDragSelection({ color: css('--selection') });
       const initial = sermon.adjusted || sermon.saved;
       if (initial) applySettings(initial);
+      else renderSections();
     });
+    // A drag on the waveform makes a region: it becomes a section. Sections
+    // added by the page are created with their id, and are kept by addSection.
     regions.on('region-created', (r) => {
-      if (r.id.startsWith('silence-') || r.id.startsWith('cut-')) return;
-      if (sel && sel !== r) sel.remove();
-      sel = r;
-      selectionChanged();
+      if (/^(silence|cut|section)-/.test(r.id)) return;
+      r.setOptions({ id: 'section-' + (++sectionSeq) });
+      sections.push({ region: r });
+      tidySections();
     });
     // Shift-drag draws a cut. It is handled here, not by the regions plugin,
     // because it must work on top of the selection, which a plain drag would move.
     waveEl.addEventListener('pointerdown', (down) => {
-      if (!down.shiftKey || down.button !== 0 || !sel) return;
+      if (!down.shiftKey || down.button !== 0 || !sections.length) return;
       down.preventDefault();
       down.stopPropagation();
       const timeAt = (e) => {
@@ -301,11 +303,10 @@ export async function editorView(view, path, config) {
       window.addEventListener('pointerup', up, { once: true });
     }, true);
     regions.on('region-update', (r) => {
-      if (r === sel) selectionChanged();
-      else if (cutOf(r)) syncCuts();
+      if (sectionOf(r)) { syncSections(); syncCuts(); changed(); } else if (cutOf(r)) syncCuts();
     });
     regions.on('region-updated', (r) => {
-      if (r === sel) selectionChanged();
+      if (sectionOf(r)) tidySections();
       else if (cutOf(r)) { sortCuts(); renderCuts(); changed(); }
     });
 
@@ -361,31 +362,142 @@ export async function editorView(view, path, config) {
     document.addEventListener('keydown', onKey);
     cleanups.push(() => document.removeEventListener('keydown', onKey));
 
-    // setSelection is used by the fields and buttons; the waveform makes its own.
-    function setSelectionImpl(start, end) {
-      start = Math.max(0, Math.min(start, duration));
-      end = Math.max(0, Math.min(end, duration));
-      if (end <= start) return false;
-      if (sel) sel.setOptions({ start, end });
-      else regions.addRegion({ start, end, color: css('--selection'), drag: true, resize: true });
-      selectionChanged();
-      return true;
-    }
-    setSelection = setSelectionImpl;
-    window.__editor = { ws, regions, get selection() { return sel; }, get cuts() { return cuts.map((c) => ({ start: c.region.start, end: c.region.end })); }, setSelection, addCut }; // for tests and the console
+    const spans = (list) => list.map((x) => ({ start: x.region.start, end: x.region.end }));
+    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut }; // for tests and the console
     cleanups.push(() => { delete window.__editor; });
   }
 
-  // ---- selection ----
+  // ---- sections: the parts of the recording that make the sermon ----
 
-  function selectionChanged() {
-    if (!sel) return;
-    if (document.activeElement !== startInput) startInput.value = formatTime(sel.start);
-    if (document.activeElement !== endInput) endInput.value = formatTime(sel.end);
-    startInput.classList.remove('invalid');
-    endInput.classList.remove('invalid');
-    syncCuts();
+  // rebuild replaces a list's rows. Removing a focused field makes the browser
+  // send it a change event; edits ignore those (rebuilding), as the rows are new.
+  let rebuilding = false;
+  function rebuild(list, ...rows) {
+    rebuilding = true;
+    try { list.replaceChildren(...rows); } finally { rebuilding = false; }
+  }
+
+  const sectionOf = (r) => sections.find((x) => x.region === r);
+  const first = () => sections[0].region.start;
+  const last = () => sections[sections.length - 1].region.end;
+
+  // addSection adds a section between two times; it returns it, or null if empty.
+  function addSection(start, end) {
+    start = Math.max(0, Math.min(start, duration));
+    end = Math.max(0, Math.min(end, duration));
+    if (end - start < 0.05) return null;
+    const section = { region: regions.addRegion({ id: 'section-' + (++sectionSeq), start, end, color: css('--selection'), drag: true, resize: true }) };
+    sections.push(section);
+    tidySections();
+    return section;
+  }
+
+  // tidySections sorts the sections and makes those that overlap or touch one
+  // (as the server does), then shows them.
+  function tidySections() {
+    sections.sort((a, b) => a.region.start - b.region.start);
+    for (let i = 1; i < sections.length;) {
+      const a = sections[i - 1].region, b = sections[i].region;
+      if (b.start > a.end) { i++; continue; }
+      if (b.end > a.end) a.setOptions({ end: b.end });
+      b.remove();
+      sections.splice(i, 1);
+    }
+    renderSections();
     changed();
+  }
+
+  function removeSection(x) {
+    x.region.remove();
+    sections.splice(sections.indexOf(x), 1);
+    renderSections();
+    changed();
+  }
+
+  // setEdge moves the start or end of a section to t; false if it would be empty.
+  function setEdge(x, which, t) {
+    const r = x.region;
+    if (which === 'start' ? t > r.end - 0.05 : t < r.start + 0.05) return false;
+    r.setOptions({ [which]: t });
+    tidySections();
+    return true;
+  }
+
+  // renderSections rebuilds the list of sections; syncSections only refreshes its
+  // values. With none, an empty row makes the first one from typed times.
+  function renderSections() {
+    if (!sections.length) {
+      const startIn = h('input', { type: 'text', class: 'time', placeholder: 'start', 'aria-label': 'Sermon from' });
+      const endIn = h('input', { type: 'text', class: 'time', placeholder: 'end', 'aria-label': 'Sermon to' });
+      const edit = () => {
+        if (rebuilding) return;
+        const start = startIn.value.trim() === '' ? 0 : parseTime(startIn.value);
+        const end = endIn.value.trim() === '' ? duration : parseTime(endIn.value);
+        startIn.classList.toggle('invalid', Number.isNaN(start));
+        endIn.classList.toggle('invalid', Number.isNaN(end) || end <= start);
+        if (!Number.isNaN(start) && !Number.isNaN(end) && addSection(start, end)) reveal(start);
+      };
+      for (const input of [startIn, endIn]) {
+        input.addEventListener('change', edit);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { edit(); input.blur(); } });
+      }
+      rebuild(sectionList, h('div', { class: 'section' }, h('strong', {}, 'Sermon'),
+        h('label', {}, 'From ', startIn), h('label', {}, 'to ', endIn)));
+      syncSections();
+      syncCuts();
+      return;
+    }
+    rebuild(sectionList, ...sections.map((x, i) => {
+      const r = x.region;
+      const name = sections.length > 1 ? `Section ${i + 1}` : 'Sermon';
+      const startIn = x.startIn = h('input', { type: 'text', class: 'time', 'aria-label': `${name} from` });
+      const endIn = x.endIn = h('input', { type: 'text', class: 'time', 'aria-label': `${name} to` });
+      x.info = h('span', { class: 'muted' });
+      const edit = () => {
+        if (rebuilding) return;
+        const start = startIn.value.trim() === '' ? 0 : parseTime(startIn.value);
+        const end = endIn.value.trim() === '' ? duration : parseTime(endIn.value);
+        startIn.classList.toggle('invalid', Number.isNaN(start));
+        endIn.classList.toggle('invalid', Number.isNaN(end) || end <= start);
+        if (!Number.isNaN(start) && !Number.isNaN(end) && end - start >= 0.05) {
+          r.setOptions({ start: Math.max(0, start), end: Math.min(end, duration) });
+          tidySections();
+          reveal(start);
+        }
+      };
+      for (const input of [startIn, endIn]) {
+        input.addEventListener('change', edit);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { edit(); input.blur(); } });
+      }
+      x.row = h('div', { class: 'section' },
+        h('strong', {}, name),
+        h('label', {}, 'From ', x.startIn), h('label', {}, 'to ', x.endIn), x.info,
+        h('button', { title: 'Play this section', onclick: () => playFor(r.start, r.end - r.start) }, 'Play'),
+        h('button', { onclick: () => removeSection(x) }, 'Remove'));
+      return x.row;
+    }));
+    syncSections();
+    syncCuts();
+  }
+
+  function syncSections() {
+    for (const x of sections) {
+      const r = x.region;
+      if (document.activeElement !== x.startIn) x.startIn.value = formatTime(r.start);
+      if (document.activeElement !== x.endIn) x.endIn.value = formatTime(r.end);
+      x.info.textContent = 'length ' + formatTime(r.end - r.start, 1);
+    }
+    sectionHint.textContent = sections.length
+      ? 'Drag on an empty part of the waveform to add another section; the parts between sections are left out.'
+      : 'Drag on the waveform to select the sermon, or set its start and end at the playhead (s, e).';
+  }
+
+  // skipped are the parts left out between the first section's start and the
+  // last one's end: the gaps between sections and the cuts, in time order.
+  function skipped() {
+    const list = cuts.map((c) => ({ start: c.region.start, end: c.region.end }));
+    for (let i = 1; i < sections.length; i++) list.push({ start: sections[i - 1].region.end, end: sections[i].region.start });
+    return list.sort((a, b) => a.start - b.start);
   }
 
   // ---- cuts: parts of the sermon that are left out ----
@@ -409,9 +521,9 @@ export async function editorView(view, path, config) {
   // addCutHere cuts out the next 10 s from the playhead (inside the sermon);
   // the edges are then adjusted by dragging or typing.
   function addCutHere() {
-    if (!sel) return;
-    const start = Math.min(Math.max(ws.getCurrentTime(), sel.start), sel.end - 0.1);
-    addCut(start, Math.min(start + 10, sel.end));
+    if (!sections.length) return;
+    const start = Math.min(Math.max(ws.getCurrentTime(), first()), last() - 0.1);
+    addCut(start, Math.min(start + 10, last()));
   }
 
   function removeCut(c) {
@@ -423,12 +535,13 @@ export async function editorView(view, path, config) {
 
   // renderCuts rebuilds the list of cuts; syncCuts only refreshes its values.
   function renderCuts() {
-    cutList.replaceChildren(...cuts.map((c, i) => {
+    rebuild(cutList, ...cuts.map((c, i) => {
       const r = c.region;
       c.startIn = h('input', { type: 'text', class: 'time', 'aria-label': `Cut ${i + 1} from` });
       c.endIn = h('input', { type: 'text', class: 'time', 'aria-label': `Cut ${i + 1} to` });
       c.info = h('span', { class: 'muted' });
       const edit = () => {
+        if (rebuilding) return;
         const start = parseTime(c.startIn.value), end = parseTime(c.endIn.value);
         c.startIn.classList.toggle('invalid', Number.isNaN(start));
         c.endIn.classList.toggle('invalid', Number.isNaN(end) || end <= start);
@@ -471,21 +584,23 @@ export async function editorView(view, path, config) {
       const r = c.region;
       if (document.activeElement !== c.startIn) c.startIn.value = formatTime(r.start);
       if (document.activeElement !== c.endIn) c.endIn.value = formatTime(r.end);
-      const outside = !sel || r.start < sel.start - 0.001 || r.end > sel.end + 0.001;
+      const outside = !sections.some((x) => r.start < x.region.end && r.end > x.region.start);
       c.row.classList.toggle('outside', outside);
       c.info.textContent = (outside ? 'outside the sermon · ' : '') + 'length ' + formatTime(r.end - r.start, 1);
     }
-    cutHint.textContent = !sel ? 'Select the sermon first; then cut out the parts of it that should go, such as a song.'
+    cutHint.textContent = !sections.length ? 'Select the sermon first; then cut out the parts of it that should go, such as a song.'
       : cuts.length ? '' : 'Nothing cut out. Use the button, press c, or shift-drag on the waveform.';
-    if (addCutButton) addCutButton.disabled = !sel;
-    lengthOut.textContent = sel ? 'Length ' + formatTime(keptLength(), 1) + (cuts.length ? ' after the cuts' : '') : '';
+    if (addCutButton) addCutButton.disabled = !sections.length;
+    const parts = sections.length > 1 ? `${sections.length} sections` : '';
+    const what = [parts, cuts.length ? (cuts.length === 1 ? '1 cut' : `${cuts.length} cuts`) : ''].filter(Boolean).join(' and ');
+    lengthOut.textContent = sections.length ? 'Length ' + formatTime(keptLength(), 1) + (what ? ` (${what})` : '') : '';
   }
 
-  // keptLength is the sermon without the cuts: what the outputs will last.
+  // keptLength is the sections without the cuts: what the outputs will last.
   function keptLength() {
-    let length = sel.end - sel.start, at = sel.start;
-    for (const c of cuts) { // in time order; overlaps count once
-      const from = Math.max(c.region.start, at, sel.start), to = Math.min(c.region.end, sel.end);
+    let length = last() - first(), at = first();
+    for (const c of skipped()) { // in time order; overlaps count once
+      const from = Math.max(c.start, at), to = Math.min(c.end, last());
       if (to > from) { length -= to - from; at = to; }
     }
     return length;
@@ -500,11 +615,13 @@ export async function editorView(view, path, config) {
 
   // currentSettings is what is on the page, or null while there is nothing (valid) to keep.
   function currentSettings() {
-    if (!sel || restoring) return null;
+    if (!sections.length || restoring) return null;
+    const secs = sections.map((x) => ({ start: x.region.start, end: x.region.end }));
     const list = cuts.map((c) => ({ start: c.region.start, end: c.region.end }));
-    if (list.some((c) => c.end - c.start < 0.05 || c.start < sel.start - 0.001 || c.end > sel.end + 0.001)) return null;
+    if (secs.some((x) => x.end - x.start < 0.05)) return null;
+    if (list.some((c) => c.end - c.start < 0.05 || c.start < first() || c.end > last())) return null;
     if (!(opts.fadeIn >= 0) || !(opts.fadeOut >= 0)) return null;
-    return { start: sel.start, end: sel.end, cuts: list, fadeIn: opts.fadeIn, fadeOut: opts.fadeOut };
+    return { sections: secs, cuts: list, fadeIn: opts.fadeIn, fadeOut: opts.fadeOut };
   }
 
   // persistAdjusted keeps what is on the page as the adjustments.
@@ -523,15 +640,16 @@ export async function editorView(view, path, config) {
   }
   const saveSoon = debounce(() => { if (alive) persistAdjusted(); }, 700);
 
-  // applySettings puts settings on the page: the selection, the cuts and the fades.
+  // applySettings puts settings on the page: the sections, the cuts and the fades.
   function applySettings(set) {
     restoring = true;
     try {
-      for (const c of cuts) c.region.remove();
-      cuts.length = 0;
-      if (setSelection(set.start, set.end)) {
+      for (const x of [...sections, ...cuts]) x.region.remove();
+      sections.length = cuts.length = 0;
+      for (const x of set.sections) addSection(x.start, x.end);
+      if (sections.length) {
         for (const c of set.cuts) addCut(c.start, c.end);
-        reveal(set.start);
+        reveal(first());
       }
       for (const key of ['fadeIn', 'fadeOut']) {
         opts[key] = set[key];
@@ -541,12 +659,13 @@ export async function editorView(view, path, config) {
     } finally {
       restoring = false;
     }
+    renderSections();
     renderCuts();
     check();
   }
 
   const describe = (set) => [
-    `${formatTime(set.start, 0)} to ${formatTime(set.end, 0)}`,
+    set.sections.map((x) => `${formatTime(x.start, 0)} to ${formatTime(x.end, 0)}`).join(' and '),
     set.cuts.length === 1 ? '1 cut' : `${set.cuts.length} cuts`,
     set.fadeIn || set.fadeOut ? `fade ${set.fadeIn} s in, ${set.fadeOut} s out` : 'no fades',
   ].join(', ');
@@ -608,18 +727,6 @@ export async function editorView(view, path, config) {
     renderVersion();
   }
 
-  function fieldsChanged() {
-    const start = startInput.value.trim() === '' ? 0 : parseTime(startInput.value);
-    const end = endInput.value.trim() === '' ? duration : parseTime(endInput.value);
-    startInput.classList.toggle('invalid', Number.isNaN(start));
-    endInput.classList.toggle('invalid', Number.isNaN(end) || end <= start);
-    if (!Number.isNaN(start) && !Number.isNaN(end) && setSelection(start, end)) reveal(start);
-  }
-  for (const input of [startInput, endInput]) {
-    input.addEventListener('change', fieldsChanged);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { fieldsChanged(); input.blur(); } });
-  }
-
   function seek(t) {
     t = Math.max(0, Math.min(t, duration));
     ws.setTime(t);
@@ -635,16 +742,25 @@ export async function editorView(view, path, config) {
     if (t < left || t > left + visible) ws.setScrollTime(Math.max(0, t - visible / 2));
   }
 
+  // sectionAt is the section around t, or null.
+  const sectionAt = (t) => sections.find((x) => t >= x.region.start && t <= x.region.end) || null;
+
+  // markStart starts the section at the playhead there, or else the next one;
+  // with none after it, a new section runs from there to the end.
   function markStart() {
     const t = ws.getCurrentTime();
-    if (sel && t < sel.end) setSelection(t, sel.end);
-    else setSelection(t, duration);
+    const x = sectionAt(t) || sections.find((y) => y.region.start > t);
+    if (x) setEdge(x, 'start', t);
+    else addSection(t, duration);
   }
 
+  // markEnd ends the section at the playhead there, or else the one before;
+  // with none before it, a new section runs from the beginning to there.
   function markEnd() {
     const t = ws.getCurrentTime();
-    if (sel && t > sel.start) setSelection(sel.start, t);
-    else setSelection(0, t);
+    const x = sectionAt(t) || [...sections].reverse().find((y) => y.region.end < t);
+    if (x) setEdge(x, 'end', t);
+    else addSection(0, t);
   }
 
   function jump(dir) {
@@ -664,8 +780,18 @@ export async function editorView(view, path, config) {
     ws.play();
   }
 
+  // playSelection plays the sermon: all the sections, without the gaps
+  // between them (and without the cuts if "play without the cuts" is on).
   function playSelection() {
-    if (sel) playFor(sel.start, sel.end - sel.start);
+    if (sections.length) playFor(first(), last() - first());
+  }
+
+  function hearStart() {
+    if (sections.length) playFor(first(), Math.min(5, last() - first()));
+  }
+
+  function hearEnd() {
+    if (sections.length) playFor(Math.max(last() - 5, first()), Math.min(5, last() - first()));
   }
 
   // ---- options ----
@@ -724,9 +850,8 @@ export async function editorView(view, path, config) {
       force,
       ...(info.tags ? tags : {}),
       noiseReduction: Math.round(opts.noiseReduction),
-      start: sel ? sel.start : 0,
-      end: sel ? sel.end : 0,
-      cuts: sel ? cuts.map((c) => ({ start: c.region.start, end: c.region.end })) : [],
+      sections: sections.map((x) => ({ start: x.region.start, end: x.region.end })),
+      cuts: sections.length ? cuts.map((c) => ({ start: c.region.start, end: c.region.end })) : [],
     };
   }
 
@@ -772,7 +897,7 @@ export async function editorView(view, path, config) {
     const ok = await confirmDialog({
       title: 'Save and generate?',
       body: [
-        h('p', {}, 'The sermon is cut and processed again from the recording, with the selection, cuts and fades shown here.'),
+        h('p', {}, 'The sermon is cut and processed again from the recording, with the sections, cuts and fades shown here.'),
         changes ? h('p', {}, sermon.saved ? 'They replace the saved version.' : 'They become the saved version.') : '',
         existing.length
           ? [h('p', {}, 'These files are replaced:'), h('ul', {}, existing.map((n) => h('li', {}, n)))]

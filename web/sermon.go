@@ -12,14 +12,12 @@ import (
 	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
-// sermonSettings are what the editor keeps of a sermon: where it starts and
-// ends in the recording, the parts cut out of it, and its fades.
+// sermonSettings are what the editor keeps of a sermon: its sections of the
+// recording, the parts cut out of them, and its fades.
 type sermonSettings struct {
-	Start   float64   `json:"start"`
-	End     float64   `json:"end"`
-	Cuts    []cutSpan `json:"cuts"`
-	FadeIn  float64   `json:"fadeIn"`
-	FadeOut float64   `json:"fadeOut"`
+	cutting
+	FadeIn  float64 `json:"fadeIn"`
+	FadeOut float64 `json:"fadeOut"`
 }
 
 // sermonFile is <folder>/sermon.json. The editor keeps the adjustments as you
@@ -34,23 +32,17 @@ const sermonName = "sermon.json"
 
 func sermonPath(folder string) string { return filepath.Join(folder, sermonName) }
 
-// Validate checks the settings the way a run would.
+// Validate checks the settings the way a run would. c must be normalized.
 func (c sermonSettings) Validate() error {
-	if c.End <= 0 {
-		return errors.New("select where the sermon starts and ends")
+	if len(c.Sections) == 0 {
+		return errors.New("select the sermon: drag on the waveform")
 	}
 	o := normalizer.DefaultOptions()
-	o.Start, o.End, o.FadeIn, o.FadeOut = c.Start, c.End, c.FadeIn, c.FadeOut
-	for _, x := range c.Cuts {
-		o.Cuts = append(o.Cuts, normalizer.Span{Start: x.Start, End: x.End})
+	o.FadeIn, o.FadeOut = c.FadeIn, c.FadeOut
+	if err := c.apply(&o); err != nil {
+		return err
 	}
 	return o.Validate()
-}
-
-func (c *sermonSettings) normalize() {
-	if c != nil && c.Cuts == nil {
-		c.Cuts = []cutSpan{}
-	}
 }
 
 // readSermon returns a folder's sermon.json, or nil if there is none (or it
@@ -65,10 +57,13 @@ func readSermon(folder string) *sermonFile {
 		return nil
 	}
 	for _, c := range []*sermonSettings{f.Saved, f.Adjusted} {
-		if c != nil && c.Validate() != nil {
-			return nil
+		if c == nil {
+			continue
 		}
 		c.normalize()
+		if c.Validate() != nil {
+			return nil // also one from before sections: the sermon is selected again
+		}
 	}
 	return &f
 }
@@ -121,11 +116,11 @@ func (s *Server) handleSermonPut(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	c.normalize()
 	if err := c.Validate(); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	c.normalize()
 	s.changeSermon(w, r, func(f *sermonFile) error {
 		if f.Saved != nil && reflect.DeepEqual(*f.Saved, c) {
 			f.Adjusted = nil

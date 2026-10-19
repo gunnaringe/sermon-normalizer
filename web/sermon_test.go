@@ -12,8 +12,11 @@ import (
 	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
-const sermonA = `{"start":20,"end":80,"cuts":[{"start":30,"end":40},{"start":60,"end":65}],"fadeIn":1,"fadeOut":2}`
-const sermonB = `{"start":10,"end":90,"cuts":[],"fadeIn":0,"fadeOut":0}`
+const sermonA = `{"sections":[{"start":20,"end":80}],"cuts":[{"start":30,"end":40},{"start":60,"end":65}],"fadeIn":1,"fadeOut":2}`
+const sermonB = `{"sections":[{"start":10,"end":50},{"start":60,"end":90}],"cuts":[],"fadeIn":0,"fadeOut":0}`
+
+// start is where the first section begins.
+func start(c *sermonSettings) float64 { return c.Sections[0].Start }
 
 // sermon.json keeps the saved version and the adjustments apart: the editor
 // keeps adjusting, Save makes them the saved version, Revert drops them.
@@ -52,7 +55,7 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 	}
 	// Saving makes them the saved version.
 	c, f = call("POST", "/save", "")
-	if c != http.StatusOK || f.Saved == nil || f.Saved.End != 80 || f.Adjusted != nil || f.SavedAt == nil {
+	if c != http.StatusOK || f.Saved == nil || f.Saved.Sections[0].End != 80 || f.Adjusted != nil || f.SavedAt == nil {
 		t.Fatalf("save: %d %+v", c, f)
 	}
 	if got := info(); got == nil || got.Saved == nil || got.Adjusted != nil {
@@ -65,7 +68,7 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 
 	// Adjustments sit next to the saved version, which stays as it was.
 	c, f = call("PUT", "", sermonB)
-	if c != http.StatusOK || f.Saved == nil || f.Saved.Start != 20 || f.Adjusted == nil || f.Adjusted.Start != 10 {
+	if c != http.StatusOK || f.Saved == nil || start(f.Saved) != 20 || f.Adjusted == nil || start(f.Adjusted) != 10 || len(f.Adjusted.Sections) != 2 {
 		t.Fatalf("adjust again: %d %+v", c, f)
 	}
 	data, _ := os.ReadFile(filepath.Join(ts.root, folder, "sermon.json"))
@@ -79,26 +82,42 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 	// Reverting drops the adjustments.
 	call("PUT", "", sermonB)
 	c, f = call("POST", "/revert", "")
-	if c != http.StatusOK || f.Adjusted != nil || f.Saved == nil || f.Saved.Start != 20 {
+	if c != http.StatusOK || f.Adjusted != nil || f.Saved == nil || start(f.Saved) != 20 {
 		t.Errorf("revert: %d %+v", c, f)
 	}
 
 	// Nothing invalid is kept.
 	for name, body := range map[string]string{
-		"no end":        `{"start":0,"end":0,"cuts":[]}`,
-		"cut outside":   `{"start":20,"end":80,"cuts":[{"start":70,"end":90}]}`,
-		"backwards cut": `{"start":20,"end":80,"cuts":[{"start":40,"end":30}]}`,
-		"end first":     `{"start":50,"end":20,"cuts":[]}`,
-		"negative fade": `{"start":20,"end":80,"cuts":[],"fadeIn":-1}`,
-		"unknown field": `{"start":20,"end":80,"cuts":[],"x":1}`,
+		"no sections":   `{"sections":[],"cuts":[]}`,
+		"cut outside":   `{"sections":[{"start":20,"end":80}],"cuts":[{"start":70,"end":90}]}`,
+		"backwards cut": `{"sections":[{"start":20,"end":80}],"cuts":[{"start":40,"end":30}]}`,
+		"end first":     `{"sections":[{"start":50,"end":20}],"cuts":[]}`,
+		"negative fade": `{"sections":[{"start":20,"end":80}],"cuts":[],"fadeIn":-1}`,
+		"unknown field": `{"sections":[{"start":20,"end":80}],"cuts":[],"x":1}`,
+		"start and end": `{"start":20,"end":80,"cuts":[]}`,
 	} {
 		if c, _ := call("PUT", "", body); c != http.StatusBadRequest {
 			t.Errorf("%s: %d, want 400", name, c)
 		}
 	}
-	if got := info(); got.Saved == nil || got.Saved.Start != 20 || got.Adjusted != nil {
+	if got := info(); got.Saved == nil || start(got.Saved) != 20 || got.Adjusted != nil {
 		t.Errorf("invalid changes altered the file: %+v", got)
 	}
+
+	// Sections are kept sorted and merged where they overlap, so a reorder is no change.
+	call("PUT", "", sermonA)
+	call("POST", "/save", "")
+	if _, f = call("PUT", "", `{"sections":[{"start":50,"end":80},{"start":20,"end":55}],"cuts":[{"start":60,"end":65},{"start":30,"end":40}],"fadeIn":1,"fadeOut":2}`); f.Adjusted != nil {
+		t.Errorf("the saved version in another order: %+v", f.Adjusted)
+	}
+
+	// One from before there were sections is ignored: the sermon is selected again.
+	os.WriteFile(filepath.Join(ts.root, folder, "sermon.json"), []byte(`{"saved":{"start":20,"end":80,"cuts":[]},"adjusted":null}`), 0o644)
+	if got := info(); got != nil {
+		t.Errorf("old file: %+v", got)
+	}
+	call("PUT", "", sermonA)
+	call("POST", "/save", "")
 
 	// A rename takes it along; a damaged file is ignored.
 	call("PUT", "", sermonB)

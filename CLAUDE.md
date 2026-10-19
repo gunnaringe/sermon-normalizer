@@ -40,7 +40,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/namelist.go`: remembered sermon names per church (suggestions on/off + list, learned on
   upload/rename; `GET/PUT api/names`), stored in `church.json` like the tags.
 - `web/sermon.go`: `<folder>/sermon.json` = `saved` (the version the user saved) + `adjusted`
-  (what the editor keeps as you edit; null when equal to saved): selection, cuts, fades.
+  (what the editor keeps as you edit; null when equal to saved): sections, cuts, fades.
+  `cutting` (`folders.go`) turns sections + cuts into the pipeline's Start/End/Cuts (gaps become cuts).
   `PUT api/sermon` (adjust), `POST api/sermon/save`, `POST api/sermon/revert`; returned as
   `sermon` in the folder info.
 - `web/folders.go`: folder list/info, run options, `check` (validates a run).

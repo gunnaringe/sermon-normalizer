@@ -3,6 +3,8 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -148,39 +150,118 @@ func (s *Server) handleFolder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, info)
 }
 
-type cutSpan struct {
+// span is a part of the recording, in seconds.
+type span struct {
 	Start float64 `json:"start"`
 	End   float64 `json:"end"`
 }
 
+// cutting is what of the recording becomes the sermon: the sections, in
+// order, without the cuts. One section with cuts and several sections give
+// the same kind of result; the gaps between sections are left out like cuts.
+type cutting struct {
+	Sections []span `json:"sections"`
+	Cuts     []span `json:"cuts"`
+}
+
+// normalize sorts the sections and merges those that overlap or touch, and
+// sorts the cuts. Empty lists are [] in JSON.
+func (c *cutting) normalize() {
+	sort.Slice(c.Sections, func(i, j int) bool { return c.Sections[i].Start < c.Sections[j].Start })
+	merged := []span{}
+	for _, x := range c.Sections {
+		if n := len(merged); n > 0 && x.Start <= merged[n-1].End {
+			merged[n-1].End = math.Max(merged[n-1].End, x.End)
+		} else {
+			merged = append(merged, x)
+		}
+	}
+	c.Sections = merged
+	if c.Cuts == nil {
+		c.Cuts = []span{}
+	}
+	sort.Slice(c.Cuts, func(i, j int) bool { return c.Cuts[i].Start < c.Cuts[j].Start })
+}
+
+// apply checks the sections and cuts and puts them in o the way the pipeline
+// takes them: from the first section's start to the last one's end, with the
+// gaps between sections and the cuts left out. c must be normalized.
+func (c cutting) apply(o *normalizer.Options) error {
+	for _, x := range c.Sections {
+		if x.Start < 0 || x.End-x.Start < minSpan {
+			return errors.New("a section must end after it starts")
+		}
+	}
+	if len(c.Sections) == 0 {
+		if len(c.Cuts) > 0 {
+			return errors.New("select the sermon before cutting parts out of it")
+		}
+		o.Start, o.End, o.Cuts = 0, 0, nil
+		return nil
+	}
+	first, last := c.Sections[0], c.Sections[len(c.Sections)-1]
+	o.Start, o.End, o.Cuts = first.Start, last.End, nil
+	for i := 1; i < len(c.Sections); i++ {
+		o.Cuts = append(o.Cuts, normalizer.Span{Start: c.Sections[i-1].End, End: c.Sections[i].Start})
+	}
+	for _, x := range c.Cuts {
+		switch {
+		case x.Start < 0 || x.End-x.Start < minSpan:
+			return errors.New("a cut must end after it starts")
+		case x.Start < first.Start || x.End > last.End:
+			return errors.New("a cut must be inside the sermon")
+		}
+		o.Cuts = append(o.Cuts, normalizer.Span{Start: x.Start, End: x.End})
+	}
+	return nil
+}
+
+// minSpan is the shortest section or cut (seconds), as in the editor.
+const minSpan = 0.05
+
+// idleCuts are the cuts that fall wholly between sections, so leave nothing out.
+func (c cutting) idleCuts() int {
+	n := 0
+	for _, x := range c.Cuts {
+		inside := false
+		for _, s := range c.Sections {
+			if x.Start < s.End && x.End > s.Start {
+				inside = true
+			}
+		}
+		if !inside {
+			n++
+		}
+	}
+	return n
+}
+
 // runRequest is the cut and the options, as sent by the front end.
 type runRequest struct {
-	Start          float64   `json:"start"`
-	End            float64   `json:"end"`
-	Cuts           []cutSpan `json:"cuts"` // parts of start..end to leave out
-	Flac           bool      `json:"flac"`
-	Mp3            bool      `json:"mp3"`
-	Opus           bool      `json:"opus"`
-	Stereo         bool      `json:"stereo"`
-	FadeIn         float64   `json:"fadeIn"`
-	FadeOut        float64   `json:"fadeOut"`
-	NoiseReduction int       `json:"noiseReduction"`
-	TargetLUFS     float64   `json:"targetLufs"`
-	TruePeak       float64   `json:"truePeak"`
-	Mp3Bitrate     string    `json:"mp3Bitrate"`
-	OpusBitrate    string    `json:"opusBitrate"`
-	Force          bool      `json:"force"`
+	cutting
+	Flac           bool    `json:"flac"`
+	Mp3            bool    `json:"mp3"`
+	Opus           bool    `json:"opus"`
+	Stereo         bool    `json:"stereo"`
+	FadeIn         float64 `json:"fadeIn"`
+	FadeOut        float64 `json:"fadeOut"`
+	NoiseReduction int     `json:"noiseReduction"`
+	TargetLUFS     float64 `json:"targetLufs"`
+	TruePeak       float64 `json:"truePeak"`
+	Mp3Bitrate     string  `json:"mp3Bitrate"`
+	OpusBitrate    string  `json:"opusBitrate"`
+	Force          bool    `json:"force"`
 	// Tags for this run; nil = the church's defaults for the folder, "" = no tag.
 	Title  *string `json:"title"`
 	Artist *string `json:"artist"`
 	Album  *string `json:"album"`
 }
 
+// requestFrom is the defaults of a run, without a sermon selected.
 func requestFrom(o normalizer.Options) runRequest {
 	return runRequest{
-		Start: o.Start, End: o.End,
-		Cuts: cutSpans(o.Cuts),
-		Flac: o.Outputs.Flac, Mp3: o.Outputs.Mp3, Opus: o.Outputs.Opus,
+		cutting: cutting{Sections: []span{}, Cuts: []span{}},
+		Flac:    o.Outputs.Flac, Mp3: o.Outputs.Mp3, Opus: o.Outputs.Opus,
 		Stereo: o.Stereo, FadeIn: o.FadeIn, FadeOut: o.FadeOut,
 		NoiseReduction: o.NoiseReduction, TargetLUFS: o.TargetLUFS, TruePeak: o.TruePeak,
 		Mp3Bitrate: o.Mp3Bitrate, OpusBitrate: o.OpusBitrate,
@@ -188,27 +269,16 @@ func requestFrom(o normalizer.Options) runRequest {
 	}
 }
 
-func cutSpans(cuts []normalizer.Span) []cutSpan {
-	var out []cutSpan
-	for _, c := range cuts {
-		out = append(out, cutSpan{c.Start, c.End})
-	}
-	return out
-}
-
-func (q runRequest) options() normalizer.Options {
+func (q runRequest) options() (normalizer.Options, error) {
 	o := normalizer.Options{
-		Start: q.Start, End: q.End,
 		Outputs: normalizer.Outputs{Flac: q.Flac, Mp3: q.Mp3, Opus: q.Opus},
 		Stereo:  q.Stereo, FadeIn: q.FadeIn, FadeOut: q.FadeOut,
 		NoiseReduction: q.NoiseReduction, TargetLUFS: q.TargetLUFS, TruePeak: q.TruePeak,
 		Mp3Bitrate: strings.TrimSpace(q.Mp3Bitrate), OpusBitrate: strings.TrimSpace(q.OpusBitrate),
 		Force: q.Force,
 	}
-	for _, c := range q.Cuts {
-		o.Cuts = append(o.Cuts, normalizer.Span{Start: c.Start, End: c.End})
-	}
-	return o
+	q.normalize()
+	return o, q.apply(&o)
 }
 
 // plan is a checked run: the options, or why it cannot run, plus notices.
@@ -223,10 +293,19 @@ type plan struct {
 // check validates a run for a folder the way the pipeline would see it,
 // so the front end can show problems before anything starts.
 func (s *Server) check(abs string, q runRequest) plan {
-	pl := plan{Notices: []string{}, opt: q.options()}
+	pl := plan{Notices: []string{}}
 	fail := func(err error) plan { pl.Error = err.Error(); return pl }
+	var err error
+	if pl.opt, err = q.options(); err != nil {
+		return fail(err)
+	}
 	if err := pl.opt.Validate(); err != nil {
 		return fail(err)
+	}
+	if n := q.idleCuts(); n == 1 {
+		pl.Notices = append(pl.Notices, "A cut is between two sections, outside the sermon: it leaves nothing out.")
+	} else if n > 1 {
+		pl.Notices = append(pl.Notices, fmt.Sprintf("%d cuts are between sections, outside the sermon: they leave nothing out.", n))
 	}
 	paths, err := normalizer.NewPaths(abs)
 	if err != nil {

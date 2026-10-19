@@ -8,7 +8,7 @@ const shots = path.join(import.meta.dirname, '..', 'screenshots');
 fs.mkdirSync(shots, { recursive: true });
 
 // openEditor opens a date folder and waits until the waveform is ready. The
-// saved selection and cuts of an earlier test are forgotten, unless keep is set.
+// saved sections and cuts of an earlier test are forgotten, unless keep is set.
 async function openEditor(page, folder, { timeout = 60_000, keep = false } = {}) {
   if (!keep) fs.rmSync(path.join(DATA, 'root', folder, 'sermon.json'), { force: true });
   await page.goto('#/folder/' + folder);
@@ -18,10 +18,13 @@ async function openEditor(page, folder, { timeout = 60_000, keep = false } = {})
 
 const editor = (page, fn, arg) => page.evaluate(fn, arg);
 const currentTime = (page) => editor(page, () => window.__editor.ws.getCurrentTime());
-const selection = (page) => editor(page, () => {
-  const s = window.__editor.selection;
-  return s ? { start: s.start, end: s.end } : null;
-});
+const sections = (page) => editor(page, () => window.__editor.sections);
+// selection is the only section, or null.
+const selection = async (page) => {
+  const list = await sections(page);
+  expect(list.length).toBeLessThanOrEqual(1);
+  return list[0] || null;
+};
 
 test('folder list shows the date folders with their status', async ({ page }) => {
   await page.goto('');
@@ -52,20 +55,20 @@ test('cut on the waveform: drag, fields, keys, playback', async ({ page }) => {
   expect(sel.start).toBeLessThan(33);
   expect(sel.end).toBeGreaterThan(67);
   expect(sel.end).toBeLessThan(73);
-  await expect(page.getByLabel('Start')).toHaveValue(/^0:[23]\d\.\d\d$/);
+  await expect(page.getByLabel('Sermon from')).toHaveValue(/^0:[23]\d\.\d\d$/);
 
   // Typing in the fields moves the selection.
-  await page.getByLabel('Start').fill('0:21');
-  await page.getByLabel('Start').press('Enter');
-  await page.getByLabel('End').fill('79.5');
-  await page.getByLabel('End').press('Enter');
+  await page.getByLabel('Sermon from').fill('0:21');
+  await page.getByLabel('Sermon from').press('Enter');
+  await page.getByLabel('Sermon to').fill('79.5');
+  await page.getByLabel('Sermon to').press('Enter');
   sel = await selection(page);
   expect(sel.start).toBeCloseTo(21, 2);
   expect(sel.end).toBeCloseTo(79.5, 2);
-  await expect(page.getByText('Length 0:58.5')).toBeVisible();
-  await page.getByLabel('End').fill('nonsense');
-  await page.getByLabel('End').press('Enter');
-  await expect(page.getByLabel('End')).toHaveClass(/invalid/);
+  await expect(page.getByText('Length 0:58.5', { exact: true })).toBeVisible();
+  await page.getByLabel('Sermon to').fill('nonsense');
+  await page.getByLabel('Sermon to').press('Enter');
+  await expect(page.getByLabel('Sermon to')).toHaveClass(/invalid/);
   expect((await selection(page)).end).toBeCloseTo(79.5, 2);
 
   // Keys: ] jumps to silence edges, s/e mark at the playhead...
@@ -78,7 +81,7 @@ test('cut on the waveform: drag, fields, keys, playback', async ({ page }) => {
   await page.keyboard.press('s');
   expect((await selection(page)).start).toBeCloseTo(22, 0);
   // ...but not while typing in a field.
-  await page.getByLabel('Start').focus();
+  await page.getByLabel('Sermon from').focus();
   const before = await currentTime(page);
   await page.keyboard.press(']');
   expect(await currentTime(page)).toBe(before);
@@ -145,16 +148,16 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   const cutOut = page.locator('.group', { hasText: 'Cut out' });
   await expect(cutOut.getByRole('button', { name: 'Cut out here' })).toBeDisabled();
 
-  await editor(page, () => window.__editor.setSelection(10, 90));
+  await editor(page, () => window.__editor.addSection(10, 90));
   await expect(cutOut.getByRole('button', { name: 'Cut out here' })).toBeEnabled();
-  await expect(page.getByText('Length 1:20.0')).toBeVisible();
+  await expect(page.getByText('Length 1:20.0', { exact: true })).toBeVisible();
 
   // The button cuts out 10 s from the playhead; the fields adjust it.
   await editor(page, () => window.__editor.ws.setTime(30));
   await cutOut.getByRole('button', { name: 'Cut out here' }).click();
   expect((await cuts())[0].start).toBeCloseTo(30, 0);
   expect((await cuts())[0].end).toBeCloseTo(40, 0);
-  await expect(page.getByText('Length 1:10.0 after the cuts')).toBeVisible();
+  await expect(page.getByText('Length 1:10.0 (1 cut)')).toBeVisible();
   await page.getByLabel('Cut 1 to').fill('0:45');
   await page.getByLabel('Cut 1 to').press('Enter');
   expect((await cuts())[0].end).toBeCloseTo(45, 2);
@@ -174,7 +177,7 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   expect(both).toHaveLength(2);
   expect(both[1].start).toBeGreaterThan(57);
   expect(both[1].end).toBeLessThan(73);
-  // The selection is untouched.
+  // The section is untouched.
   expect(await selection(page)).toEqual({ start: 10, end: 90 });
 
   // Playback jumps over a cut.
@@ -187,7 +190,7 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   // A cut outside the sermon is flagged and the run refused with the reason.
   await editor(page, () => window.__editor.addCut(92, 95));
   await expect(page.locator('.cut.outside')).toHaveCount(1);
-  await expect(page.locator('.error')).toContainText('inside the selected sermon');
+  await expect(page.locator('.error')).toContainText('inside the sermon');
   await page.locator('.cut.outside').getByRole('button', { name: 'Remove' }).click();
   await expect(page.locator('.cut')).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
@@ -198,6 +201,68 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   expect(await cuts()).toHaveLength(1);
 });
 
+test('several sections: drag to add, gaps left out, overlaps merge, keys, removed', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  const box = await page.locator('#waveform').boundingBox();
+  const x = (t) => box.x + (t / 100) * box.width;
+  const drag = async (from, to) => {
+    await page.mouse.move(x(from), box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x((from + to) / 2), box.y + box.height / 2, { steps: 6 });
+    await page.mouse.move(x(to), box.y + box.height / 2, { steps: 6 });
+    await page.mouse.up();
+  };
+
+  // Each drag on an empty part adds a section; the list is in time order.
+  await drag(50, 70);
+  await drag(10, 30);
+  await expect(page.getByLabel('Section 2 from')).toBeVisible();
+  let list = await sections(page);
+  expect(list).toHaveLength(2);
+  expect(list[0].start).toBeCloseTo(10, 0);
+  expect(list[1].start).toBeCloseTo(50, 0);
+  await page.getByLabel('Section 1 from').fill('10');
+  await page.getByLabel('Section 1 from').press('Enter');
+  await page.getByLabel('Section 1 to').fill('30');
+  await page.getByLabel('Section 1 to').press('Enter');
+  await page.getByLabel('Section 2 from').fill('50');
+  await page.getByLabel('Section 2 from').press('Enter');
+  await page.getByLabel('Section 2 to').fill('70');
+  await page.getByLabel('Section 2 to').press('Enter');
+  await expect(page.getByText('Length 0:40.0 (2 sections)')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
+
+  // A cut in a section counts; the run check sees the gap as left out.
+  await editor(page, () => window.__editor.addCut(60, 65));
+  await expect(page.getByText('Length 0:35.0 (2 sections and 1 cut)')).toBeVisible();
+
+  // Playing the sermon jumps over the gap between the sections.
+  await editor(page, () => window.__editor.ws.setTime(29));
+  await page.locator('h1').click();
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => window.__editor.ws.getCurrentTime() > 50.2, null, { timeout: 15_000 });
+  await page.keyboard.press(' ');
+
+  // Between sections, s starts the next one at the playhead and e ends the one before.
+  await editor(page, () => window.__editor.ws.setTime(40));
+  await page.keyboard.press('s');
+  await editor(page, () => window.__editor.ws.setTime(35));
+  await page.keyboard.press('e');
+  expect(await sections(page)).toEqual([{ start: 10, end: 35 }, { start: 40, end: 70 }]);
+
+  // Sections that come to overlap become one.
+  await page.getByLabel('Section 1 to').fill('45');
+  await page.getByLabel('Section 1 to').press('Enter');
+  expect(await sections(page)).toEqual([{ start: 10, end: 70 }]);
+  await expect(page.getByLabel('Sermon from')).toHaveValue('0:10.00');
+
+  // Removing the last section leaves nothing selected, and nothing to run.
+  await page.locator('.section').getByRole('button', { name: 'Remove' }).click();
+  expect(await sections(page)).toEqual([]);
+  await expect(page.getByText('Drag on the waveform to select the sermon, or')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Run' })).toBeDisabled();
+});
+
 test('sermon.json keeps the adjustments; Save makes them the saved version, Revert goes back', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   const file = path.join(DATA, 'root/2026/2026-10-04/sermon.json');
@@ -206,23 +271,23 @@ test('sermon.json keeps the adjustments; Save makes them the saved version, Reve
   await expect(page.getByText('Nothing is saved yet.')).toBeVisible();
 
   // Adjusting is kept as you go, but nothing is saved yet.
-  await editor(page, () => { window.__editor.setSelection(12, 88); window.__editor.addCut(30, 40); window.__editor.addCut(60, 66); });
+  await editor(page, () => { window.__editor.addSection(12, 88); window.__editor.addCut(30, 40); window.__editor.addCut(60, 66); });
   await page.getByLabel('Fade in (s)').fill('2');
   await expect(page.getByText('Changes kept.')).toBeVisible();
   await expect.poll(() => read().adjusted?.fadeIn).toBe(2);
   expect(read()).toMatchObject({
     saved: null,
-    adjusted: { start: 12, end: 88, cuts: [{ start: 30, end: 40 }, { start: 60, end: 66 }], fadeIn: 2, fadeOut: 0 },
+    adjusted: { sections: [{ start: 12, end: 88 }], cuts: [{ start: 30, end: 40 }, { start: 60, end: 66 }], fadeIn: 2, fadeOut: 0 },
   });
 
-  // Another visit brings the adjustments back: selection, both cuts and the fade.
+  // Another visit brings the adjustments back: the section, both cuts and the fade.
   await openEditor(page, '2026/2026-10-04', { keep: true });
   await page.reload();
   await page.waitForFunction(() => window.__editor && window.__editor.cuts.length === 2, null, { timeout: 30_000 });
   expect(await selection(page)).toEqual({ start: 12, end: 88 });
   await expect(page.getByLabel('Cut 2 to')).toHaveValue('1:06.00');
   await expect(page.getByLabel('Fade in (s)')).toHaveValue('2');
-  await expect(page.getByText('Length 1:00.0 after the cuts')).toBeVisible();
+  await expect(page.getByText('Length 1:00.0 (2 cuts)')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled(); // nothing to go back to yet
 
   // Save asks first; Cancel changes nothing.
@@ -235,7 +300,7 @@ test('sermon.json keeps the adjustments; Save makes them the saved version, Reve
   await page.getByRole('button', { name: 'Save…' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
-  expect(read()).toMatchObject({ adjusted: null, saved: { start: 12, end: 88, fadeIn: 2 } });
+  expect(read()).toMatchObject({ adjusted: null, saved: { sections: [{ start: 12, end: 88 }], fadeIn: 2 } });
   expect(read().savedAt).toBeTruthy();
   await expect(page.getByRole('button', { name: 'Save…' })).toBeDisabled();
 
@@ -263,10 +328,10 @@ test('sermon.json keeps the adjustments; Save makes them the saved version, Reve
 
 test('run with chosen outputs and follow it live', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
-  await page.getByLabel('Start').fill('0:21');
-  await page.getByLabel('Start').press('Enter');
-  await page.getByLabel('End').fill('1:19');
-  await page.getByLabel('End').press('Enter');
+  await page.getByLabel('Sermon from').fill('0:21');
+  await page.getByLabel('Sermon from').press('Enter');
+  await page.getByLabel('Sermon to').fill('1:19');
+  await page.getByLabel('Sermon to').press('Enter');
   await page.getByLabel('FLAC master').uncheck();
   await page.getByLabel('Opus', { exact: true }).uncheck();
   await page.getByLabel('Fade in (s)').fill('1');
@@ -295,8 +360,8 @@ test('run with chosen outputs and follow it live', async ({ page }) => {
 
 test('a run can be cancelled', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
-  await page.getByLabel('Start').fill('0:01');
-  await page.getByLabel('Start').press('Enter');
+  await page.getByLabel('Sermon from').fill('0:01');
+  await page.getByLabel('Sermon from').press('Enter');
   await page.getByLabel('FLAC master').check();
   // Making everything again asks first; Cancel in the dialog changes nothing.
   await expect(page.getByLabel('Force')).toHaveCount(0);
@@ -381,10 +446,10 @@ test('a 90-minute recording stays responsive', async ({ page }) => {
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
   });
   await timed('select 1:00:00 to 1:25:00', async () => {
-    await page.getByLabel('Start').fill('1:00:00');
-    await page.getByLabel('Start').press('Enter');
-    await page.getByLabel('End').fill('1:25:00');
-    await page.getByLabel('End').press('Enter');
+    await page.getByLabel('Sermon from').fill('1:00:00');
+    await page.getByLabel('Sermon from').press('Enter');
+    await page.getByLabel('Sermon to').fill('1:25:00');
+    await page.getByLabel('Sermon to').press('Enter');
   });
   expect((await selection(page)).start).toBeCloseTo(3600, 1);
   await page.locator('h1').click();

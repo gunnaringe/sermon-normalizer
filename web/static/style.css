@@ -124,11 +124,11 @@ table.list tr.row:hover { background: var(--panel); cursor: pointer; }
 .controls { display: grid; gap: 0.6rem; margin: 0.6rem 0; }
 .group { border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem 0.8rem; }
 .group > strong { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
-.group .toolbar, .group .selection { margin: 0.4rem 0; }
-.cut { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; padding: 0.3rem 0; border-top: 1px solid var(--line); }
+.group .toolbar { margin: 0.4rem 0; }
+.cut, .section { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; padding: 0.3rem 0; border-top: 1px solid var(--line); }
 .cut.outside { color: var(--error); }
 .cut.outside .muted { color: var(--error); }
-.selection { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin: 0.6rem 0; }
+.group .length { margin: 0.4rem 0 0; }
 .keys { color: var(--muted); font-size: 0.85em; }
 .keys kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 0.3em; font-family: inherit; }
 

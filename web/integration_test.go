@@ -169,7 +169,10 @@ func TestIntegrationRun(t *testing.T) {
 	service(t, ff, raw)
 
 	q := defaultRequest()
-	q.Start, q.End, q.Flac, q.Opus, q.FadeIn = 21, 79, false, false, 1
+	// Two sections with a cut in the second: 19 s + 29 s - 5 s.
+	q.Sections = []span{{50, 79}, {21, 40}}
+	q.Cuts = []span{{60, 65}}
+	q.Flac, q.Opus, q.FadeIn = false, false, 1
 	rec := ts.do(t, "POST", "/api/run?path=2026-10-04", q)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("run: %d %s", rec.Code, rec.Body)
@@ -188,8 +191,8 @@ func TestIntegrationRun(t *testing.T) {
 		t.Error("no progress seen in the events")
 	}
 	mp3 := filepath.Join(ts.root, "2026-10-04", "2026-10-04.mp3")
-	if d := duration(t, mp3); d < 57.9 || d > 58.2 {
-		t.Errorf("mp3 is %.2f s, want 58", d)
+	if d := duration(t, mp3); d < 42.9 || d > 43.2 {
+		t.Errorf("mp3 is %.2f s, want 43", d)
 	}
 	entries, _ := os.ReadDir(filepath.Join(ts.root, "2026-10-04"))
 	var names []string
@@ -221,7 +224,7 @@ func TestIntegrationCancelAndClose(t *testing.T) {
 	ts.file(t, "2026-10-04/x", "")
 	service(t, ff, filepath.Join(ts.root, "2026-10-04", "2026-10-04_raw.wav"))
 	q := defaultRequest()
-	q.Start = 1
+	q.Sections = []span{{1, 3600}} // past the end: to the end
 	id := decode[jobSnapshot](t, ts.do(t, "POST", "/api/run?path=2026-10-04", q)).ID
 	for i := 0; i < 100; i++ {
 		if s := ts.jobs.get(id).snapshot(); s.State == "running" && len(s.Steps) >= 3 {
