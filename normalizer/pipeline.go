@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -24,6 +25,7 @@ type Options struct {
 	KeepWav        bool
 	Force          bool
 	Start, End     float64 // cut raw to edit (seconds); 0 = from the beginning / to the end
+	Cuts           []Span  // parts of Start..End to leave out (seconds in the recording), e.g. a song
 	FadeIn         float64 // seconds at the start of the sermon; 0 = off
 	FadeOut        float64 // seconds at the end of the sermon; 0 = off
 	Outputs        Outputs
@@ -52,6 +54,40 @@ func (t Tags) args() []string {
 
 // cutting reports whether the edit is cut from raw rather than supplied by hand.
 func (o Options) cutting() bool { return o.Start > 0 || o.End > 0 }
+
+// joinFade is the fade (seconds) on each side of a join where a part was cut
+// out, so the join does not click.
+const joinFade = 0.015
+
+// keep returns the parts of the recording the sermon is made of: Start..end
+// without the Cuts, in order. end is where the recording ends; an End past it,
+// or 0, runs to the end. Cuts may be given in any order and may overlap.
+func (o Options) keep(end float64) []Span {
+	if o.End > 0 && o.End < end {
+		end = o.End
+	}
+	cuts := append([]Span(nil), o.Cuts...)
+	sort.Slice(cuts, func(i, j int) bool { return cuts[i].Start < cuts[j].Start })
+	var kept []Span
+	at := o.Start
+	for _, c := range cuts {
+		if c.Start > at {
+			kept = append(kept, Span{at, math.Min(c.Start, end)})
+		}
+		at = math.Max(at, c.End)
+	}
+	if at < end {
+		kept = append(kept, Span{at, end})
+	}
+	// Leave out slivers that a cut right next to the edge or another cut leaves.
+	out := kept[:0]
+	for _, k := range kept {
+		if k.End-k.Start >= 0.05 {
+			out = append(out, k)
+		}
+	}
+	return out
+}
 
 // ChannelDefaults are the defaults that depend on mono or stereo: the usual
 // podcast loudness targets, and bitrates that sound the same per channel.
@@ -345,7 +381,7 @@ func (p *Pipeline) stepEdit(ctx context.Context) error {
 			return errors.New("no raw recording to cut")
 		}
 		if p.P.Archive == "" {
-			p.logf("Cutting %s from %s to %s while making the master.", filepath.Base(p.raw), p.cutFrom(), p.cutTo())
+			p.logf("Cutting %s from %s to %s%s while making the master.", filepath.Base(p.raw), p.cutFrom(), p.cutTo(), p.cutsNote())
 			return nil
 		}
 		return p.cutEdit(ctx)
@@ -370,9 +406,9 @@ func (p *Pipeline) stepEdit(ctx context.Context) error {
 	return nil
 }
 
-// cutEdit writes the edit to the archive from raw at the cut (one
-// continuous segment). If more than one segment is needed, cut by hand and
-// supply the _edit file as before.
+// cutEdit writes the edit to the archive from raw at the cut: the selection
+// without the parts cut out of it. A recording cut by hand in another editor
+// is supplied as the _edit file instead.
 func (p *Pipeline) cutEdit(ctx context.Context) error {
 	dst := p.P.EditArchive()
 	if exists(dst) && !p.Opt.Force {
@@ -384,13 +420,68 @@ func (p *Pipeline) cutEdit(ctx context.Context) error {
 	if p.OnProgress != nil {
 		total, _ = p.sermonLength(ctx) // before p.edit is set: the length of the cut
 	}
-	args := append(p.cutArgs(), "-i", p.raw, "-c:a", "flac")
+	args, graph, err := p.cutInput(ctx)
+	if err != nil {
+		return err
+	}
+	if graph != "" {
+		args = append(args, "-filter_complex", graph, "-map", "[cut]")
+	}
+	args = append(args, "-c:a", "flac")
 	if err := p.runTo(ctx, dst, total, args...); err != nil {
 		return err
 	}
 	p.edit = dst
-	p.logf("Cut %s from %s to %s.", filepath.Base(dst), p.cutFrom(), p.cutTo())
+	p.logf("Cut %s from %s to %s%s.", filepath.Base(dst), p.cutFrom(), p.cutTo(), p.cutsNote())
 	return nil
+}
+
+// cutInput is how ffmpeg reads the sermon from the raw recording: the input
+// options and, when parts are cut out, a filter graph that joins what is kept
+// and ends in the label [cut].
+// Each kept part is its own input, so ffmpeg never has to hold the audio
+// between two parts in memory.
+func (p *Pipeline) cutInput(ctx context.Context) (args []string, graph string, err error) {
+	if len(p.Opt.Cuts) == 0 {
+		return append(p.cutArgs(), "-i", p.raw), "", nil
+	}
+	end, err := p.FF.Duration(ctx, p.raw)
+	if err != nil {
+		return nil, "", err
+	}
+	kept := p.Opt.keep(end)
+	if len(kept) == 0 {
+		return nil, "", errors.New("the cuts leave nothing of the sermon")
+	}
+	var parts []string
+	for i, k := range kept {
+		args = append(args, "-ss", secs(k.Start), "-to", secs(k.End), "-i", p.raw)
+		f := []string{"asetpts=PTS-STARTPTS"}
+		if i > 0 {
+			f = append(f, fmt.Sprintf("afade=t=in:d=%g", joinFade))
+		}
+		if i < len(kept)-1 {
+			f = append(f, fmt.Sprintf("afade=t=out:st=%.3f:d=%g", math.Max(k.End-k.Start-joinFade, 0), joinFade))
+		}
+		parts = append(parts, fmt.Sprintf("[%d:a]%s[p%d]", i, strings.Join(f, ","), i))
+	}
+	var labels string
+	for i := range kept {
+		labels += fmt.Sprintf("[p%d]", i)
+	}
+	return args, strings.Join(parts, ";") + fmt.Sprintf(";%sconcat=n=%d:v=0:a=1[cut]", labels, len(kept)), nil
+}
+
+// cutsNote is " without 2 cuts" for the log, or nothing.
+func (p *Pipeline) cutsNote() string {
+	switch n := len(p.Opt.Cuts); n {
+	case 0:
+		return ""
+	case 1:
+		return ", leaving out 1 part"
+	default:
+		return fmt.Sprintf(", leaving out %d parts", n)
+	}
 }
 
 // cutArgs are the input options for the cut. Placed before -i, ffmpeg
@@ -501,11 +592,20 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 	}
 	var args []string
 	if p.edit != "" {
-		args = []string{"-i", p.edit}
+		args = []string{"-i", p.edit, "-af", p.masterFilter(length)}
 	} else {
-		args = append(p.cutArgs(), "-i", p.raw)
+		var graph string
+		var err error
+		if args, graph, err = p.cutInput(ctx); err != nil {
+			return err
+		}
+		if graph == "" {
+			args = append(args, "-af", p.masterFilter(length))
+		} else {
+			args = append(args, "-filter_complex", graph+";[cut]"+p.masterFilter(length)+"[out]", "-map", "[out]")
+		}
 	}
-	args = append(args, "-af", p.masterFilter(length), "-c:a", "flac", "-sample_fmt", "s32")
+	args = append(args, "-c:a", "flac", "-sample_fmt", "s32")
 	args = append(args, p.Opt.Tags.args()...)
 	if length == 0 && p.OnProgress != nil {
 		length, _ = p.sermonLength(ctx)
@@ -555,10 +655,11 @@ func (p *Pipeline) sermonLength(ctx context.Context) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if p.Opt.End > 0 && p.Opt.End < end {
-		end = p.Opt.End // an end past the end of the recording just runs to the end
+	var length float64
+	for _, k := range p.Opt.keep(end) { // an end past the end of the recording just runs to the end
+		length += k.End - k.Start
 	}
-	return end - p.Opt.Start, nil
+	return length, nil
 }
 
 // --- 4. mp3 + opus --------------------------------------------------------

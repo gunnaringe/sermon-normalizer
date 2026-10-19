@@ -195,6 +195,37 @@ func TestCheck(t *testing.T) {
 	}
 }
 
+func TestCheckCuts(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	ts.file(t, "d/2026-10-04/2026-10-04_raw.flac", "x")
+	url := "/api/check?path=d/2026-10-04"
+	folder := filepath.Join(ts.root, "d/2026-10-04")
+
+	q := defaultRequest()
+	q.Start, q.End = 20, 80
+	q.Cuts = []cutSpan{{60, 65}, {30, 40}}
+	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Error != "" {
+		t.Errorf("cuts inside the sermon: %+v", pl)
+	}
+	if opt := ts.check(folder, q).opt; len(opt.Cuts) != 2 || opt.Cuts[0] != (normalizer.Span{Start: 60, End: 65}) {
+		t.Errorf("parsed cuts %+v", opt.Cuts)
+	}
+	q.Cuts = []cutSpan{{70, 90}}
+	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "inside the selected sermon") {
+		t.Errorf("cut past the end: %+v", pl)
+	}
+	q.Cuts = []cutSpan{{40, 30}}
+	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "must end after it starts") {
+		t.Errorf("backwards cut: %+v", pl)
+	}
+	// Using a hand-cut edit file ignores the selection and its cuts.
+	ts.file(t, "d/2026-10-04/2026-10-04_edit.flac", "x")
+	q.UseEdit, q.Cuts = true, []cutSpan{{30, 40}}
+	if opt := ts.check(folder, q).opt; len(opt.Cuts) != 0 {
+		t.Errorf("use edit kept cuts: %+v", opt.Cuts)
+	}
+}
+
 // chunk sends one upload chunk straight to a date folder.
 func chunk(t *testing.T, ts *testServer, date, name string, size, offset int64, data string, modified time.Time) *httptest.ResponseRecorder {
 	t.Helper()

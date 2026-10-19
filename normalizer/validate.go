@@ -15,6 +15,8 @@ func (o Options) Validate() error {
 		return errors.New("start and end cannot be negative")
 	case o.End > 0 && o.End <= o.Start:
 		return errors.New("the end must be after the start")
+	case len(o.Cuts) > 0 && !o.cutting():
+		return errors.New("select the sermon before cutting parts out of it")
 	case o.FadeIn < 0 || o.FadeOut < 0:
 		return errors.New("fades cannot be negative")
 	case o.NoiseReduction < 0 || o.NoiseReduction > 97:
@@ -25,6 +27,14 @@ func (o Options) Validate() error {
 		return errors.New("max true peak must be from -20 to 0 dBTP")
 	case strings.TrimSpace(o.Mp3Bitrate) == "" || strings.TrimSpace(o.OpusBitrate) == "":
 		return errors.New("bitrates cannot be empty")
+	}
+	for _, c := range o.Cuts {
+		switch {
+		case c.Start < 0 || c.End <= c.Start:
+			return errors.New("a cut must end after it starts")
+		case c.Start < o.Start || (o.End > 0 && c.End > o.End):
+			return errors.New("a cut must be inside the selected sermon")
+		}
 	}
 	return nil
 }

@@ -14,6 +14,7 @@
   --wave-progress: #3d6aa8;
   --selection: rgba(46, 160, 67, 0.22);
   --silence: rgba(128, 128, 128, 0.18);
+  --cut: rgba(214, 51, 68, 0.3);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -31,6 +32,7 @@
     --wave-progress: #7fa7e0;
     --selection: rgba(86, 211, 100, 0.2);
     --silence: rgba(160, 160, 160, 0.14);
+    --cut: rgba(255, 107, 107, 0.32);
   }
 }
 
@@ -113,6 +115,13 @@ table.list tr.row:hover { background: var(--panel); cursor: pointer; }
 .toolbar .clock { margin-left: auto; font-family: ui-monospace, Menlo, Consolas, monospace; }
 #minimap { margin-bottom: 0.3rem; }
 #waveform { border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.controls { display: grid; gap: 0.6rem; margin: 0.6rem 0; }
+.group { border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem 0.8rem; }
+.group > strong { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.group .toolbar, .group .selection { margin: 0.4rem 0; }
+.cut { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; padding: 0.3rem 0; border-top: 1px solid var(--line); }
+.cut.outside { color: var(--error); }
+.cut.outside .muted { color: var(--error); }
 .selection { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin: 0.6rem 0; }
 .keys { color: var(--muted); font-size: 0.85em; }
 .keys kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 0.3em; font-family: inherit; }

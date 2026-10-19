@@ -155,25 +155,31 @@ func (s *Server) handleFolder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, info)
 }
 
+type cutSpan struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
 // runRequest is the cut and the options, as sent by the front end.
 type runRequest struct {
-	Start          float64 `json:"start"`
-	End            float64 `json:"end"`
-	UseEdit        bool    `json:"useEdit"` // use the <date>_edit file instead of cutting
-	Flac           bool    `json:"flac"`
-	Mp3            bool    `json:"mp3"`
-	Opus           bool    `json:"opus"`
-	Stereo         bool    `json:"stereo"`
-	FadeIn         float64 `json:"fadeIn"`
-	FadeOut        float64 `json:"fadeOut"`
-	NoiseReduction int     `json:"noiseReduction"`
-	TargetLUFS     float64 `json:"targetLufs"`
-	TruePeak       float64 `json:"truePeak"`
-	Mp3Bitrate     string  `json:"mp3Bitrate"`
-	OpusBitrate    string  `json:"opusBitrate"`
-	Archive        string  `json:"archive"`
-	KeepWav        bool    `json:"keepWav"`
-	Force          bool    `json:"force"`
+	Start          float64   `json:"start"`
+	End            float64   `json:"end"`
+	Cuts           []cutSpan `json:"cuts"`    // parts of start..end to leave out
+	UseEdit        bool      `json:"useEdit"` // use the <date>_edit file instead of cutting
+	Flac           bool      `json:"flac"`
+	Mp3            bool      `json:"mp3"`
+	Opus           bool      `json:"opus"`
+	Stereo         bool      `json:"stereo"`
+	FadeIn         float64   `json:"fadeIn"`
+	FadeOut        float64   `json:"fadeOut"`
+	NoiseReduction int       `json:"noiseReduction"`
+	TargetLUFS     float64   `json:"targetLufs"`
+	TruePeak       float64   `json:"truePeak"`
+	Mp3Bitrate     string    `json:"mp3Bitrate"`
+	OpusBitrate    string    `json:"opusBitrate"`
+	Archive        string    `json:"archive"`
+	KeepWav        bool      `json:"keepWav"`
+	Force          bool      `json:"force"`
 	// Tags for this run; nil = the church's defaults for the folder, "" = no tag.
 	Title  *string `json:"title"`
 	Artist *string `json:"artist"`
@@ -183,12 +189,21 @@ type runRequest struct {
 func requestFrom(o normalizer.Options, archive string) runRequest {
 	return runRequest{
 		Start: o.Start, End: o.End,
+		Cuts: cutSpans(o.Cuts),
 		Flac: o.Outputs.Flac, Mp3: o.Outputs.Mp3, Opus: o.Outputs.Opus,
 		Stereo: o.Stereo, FadeIn: o.FadeIn, FadeOut: o.FadeOut,
 		NoiseReduction: o.NoiseReduction, TargetLUFS: o.TargetLUFS, TruePeak: o.TruePeak,
 		Mp3Bitrate: o.Mp3Bitrate, OpusBitrate: o.OpusBitrate,
 		Archive: archive, KeepWav: o.KeepWav, Force: o.Force,
 	}
+}
+
+func cutSpans(cuts []normalizer.Span) []cutSpan {
+	var out []cutSpan
+	for _, c := range cuts {
+		out = append(out, cutSpan{c.Start, c.End})
+	}
+	return out
 }
 
 func (q runRequest) options() normalizer.Options {
@@ -200,8 +215,11 @@ func (q runRequest) options() normalizer.Options {
 		Mp3Bitrate: strings.TrimSpace(q.Mp3Bitrate), OpusBitrate: strings.TrimSpace(q.OpusBitrate),
 		KeepWav: q.KeepWav, Force: q.Force,
 	}
+	for _, c := range q.Cuts {
+		o.Cuts = append(o.Cuts, normalizer.Span{Start: c.Start, End: c.End})
+	}
 	if q.UseEdit {
-		o.Start, o.End = 0, 0
+		o.Start, o.End, o.Cuts = 0, 0, nil
 	}
 	return o
 }

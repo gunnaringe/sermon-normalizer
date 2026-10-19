@@ -90,6 +90,68 @@ test('cut on the waveform: drag, fields, keys, playback', async ({ page }) => {
   await page.screenshot({ path: path.join(shots, 'editor.png'), fullPage: true });
 });
 
+test('cut parts out of the sermon: button, fields, shift-drag, checked and removed', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  const cuts = () => editor(page, () => window.__editor.cuts);
+  // Navigation and cutting are separate groups; cutting needs the sermon first.
+  await expect(page.locator('.group', { hasText: 'Navigate' }).getByRole('button', { name: 'silence ▶' })).toBeVisible();
+  await expect(page.locator('.group', { hasText: 'Sermon' }).getByRole('button', { name: 'Set start' })).toBeVisible();
+  const cutOut = page.locator('.group', { hasText: 'Cut out' });
+  await expect(cutOut.getByRole('button', { name: 'Cut out here' })).toBeDisabled();
+
+  await editor(page, () => window.__editor.setSelection(10, 90));
+  await expect(cutOut.getByRole('button', { name: 'Cut out here' })).toBeEnabled();
+  await expect(page.getByText('Length 1:20.0')).toBeVisible();
+
+  // The button cuts out 10 s from the playhead; the fields adjust it.
+  await editor(page, () => window.__editor.ws.setTime(30));
+  await cutOut.getByRole('button', { name: 'Cut out here' }).click();
+  expect((await cuts())[0].start).toBeCloseTo(30, 0);
+  expect((await cuts())[0].end).toBeCloseTo(40, 0);
+  await expect(page.getByText('Length 1:10.0 after the cuts')).toBeVisible();
+  await page.getByLabel('Cut 1 to').fill('0:45');
+  await page.getByLabel('Cut 1 to').press('Enter');
+  expect((await cuts())[0].end).toBeCloseTo(45, 2);
+
+  // Shift-drag on the waveform draws another one; the list stays in time order.
+  const box = await page.locator('#waveform').boundingBox();
+  const x = (t) => box.x + (t / 100) * box.width;
+  await page.keyboard.down('Shift');
+  await page.mouse.move(x(60), box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x(65), box.y + box.height / 2, { steps: 6 });
+  await page.mouse.move(x(70), box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect(page.getByLabel('Cut 2 from')).toBeVisible();
+  const both = await cuts();
+  expect(both).toHaveLength(2);
+  expect(both[1].start).toBeGreaterThan(57);
+  expect(both[1].end).toBeLessThan(73);
+  // The selection is untouched.
+  expect(await selection(page)).toEqual({ start: 10, end: 90 });
+
+  // Playback jumps over a cut.
+  await editor(page, () => window.__editor.ws.setTime(28));
+  await page.locator('h1').click();
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => window.__editor.ws.getCurrentTime() > 45.2, null, { timeout: 15_000 });
+  await page.keyboard.press(' ');
+
+  // A cut outside the sermon is flagged and the run refused with the reason.
+  await editor(page, () => window.__editor.addCut(92, 95));
+  await expect(page.locator('.cut.outside')).toHaveCount(1);
+  await expect(page.locator('.error')).toContainText('inside the selected sermon');
+  await page.locator('.cut.outside').getByRole('button', { name: 'Remove' }).click();
+  await expect(page.locator('.cut')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
+  await page.screenshot({ path: path.join(shots, 'cuts.png'), fullPage: true });
+
+  await page.locator('.cut').first().getByRole('button', { name: 'Remove' }).click();
+  await expect(page.locator('.cut')).toHaveCount(1);
+  expect(await cuts()).toHaveLength(1);
+});
+
 test('run with chosen outputs and follow it live', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await page.getByLabel('Start').fill('0:21');

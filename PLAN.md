@@ -57,7 +57,7 @@ Module `github.com/gunnaringe/sermon-studio`, standard library only.
 - `web/upload.go`, `web/inboxwatch.go`: new recordings, uploaded in chunks or taken from the inbox folder
 - `*_test.go`: unit and integration tests; `web/e2e/`: browser tests
 
-Run options (from the web form): cut start/end, fades, outputs (FLAC, MP3, Opus), mono or
+Run options (from the web form): cut start/end and parts cut out of it, fades, outputs (FLAC, MP3, Opus), mono or
 stereo (stereo defaults: -16 LUFS, 128k MP3, 96k Opus), archive folder, keep WAV, force,
 noise reduction (12 dB), target loudness (-19 LUFS), max true peak (-1.5 dBTP),
 MP3 bitrate (96k), Opus bitrate (48k).

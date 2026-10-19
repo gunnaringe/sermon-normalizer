@@ -81,12 +81,21 @@ cancels running jobs and waits for them to clean up.
 
 - **Folders:** the date folders with what they contain (`raw`, `edit`, `✓ flac mp3 opus`).
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
-  ocenaudio. Drag to select the sermon and drag the edges to adjust; zoom with the slider,
-  `+`/`-` or ctrl+scroll; silences are marked grey. Listen from anywhere, to the selection,
-  or just around its start and end. The start/end fields follow the selection and can be typed
-  in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed). Keys: `space` play, `s`/`e`
-  start/end at the playhead, `[`/`]` previous/next silence, ←/→ 1 s (shift 0.1 s), `p` play
-  the selection.
+  ocenaudio. The controls are in three groups. **Navigate:** play, jump between silences
+  (grey on the waveform), zoom (slider, `+`/`-` or ctrl+scroll). **Sermon:** drag on the waveform
+  to select the sermon and drag the edges to adjust, or set the start and end at the playhead;
+  *Hear start*, *Hear end* and *Play sermon* check the cut. The start/end fields follow the
+  selection and can be typed in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed).
+  **Cut out:** parts of the sermon that should go, such as a song in the middle (below).
+  Keys: `space` play, `s`/`e` start/end at the playhead, `c` cut out here, `[`/`]` previous/next
+  silence, ←/→ 1 s (shift 0.1 s), `p` play the sermon.
+- **Cutting parts out:** with the sermon selected, *Cut out here* (or `c`) marks 10 s from the
+  playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
+  dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut must
+  be inside the sermon. *Hear join* plays 3 s either side of a cut as it will sound, and with
+  *Play without the cuts* (on by default) playback jumps over the cuts. The outputs are made from
+  what is left, joined with a 15 ms fade on each side so the join does not click; the length
+  shown is after the cuts.
 - **Options and run:** the options below, checked as you change them; your choices carry over
   to the next folder (except Force). The run is followed live and keeps going if the browser is
   closed. Cancelling leaves nothing half-written.
@@ -140,9 +149,8 @@ normalized (up to 40 dB of dynamic gain), so even a very quiet recording can be 
 cutting; the waveform keeps the original levels, where loud music and quieter speech stand
 apart. The browser only streams the preview; the cut is always made from the original.
 
-**More than one segment** (for example a song in the middle of the sermon that should go):
-cut it yourself in an audio editor and put the result in the date folder as `<date>_edit.flac`
-(or `.wav`). The editor then offers to use it instead of a cut.
+**A hand-cut recording:** to cut it in another audio editor, put the result in the date folder
+as `<date>_edit.flac` (or `.wav`). The editor then offers to use it instead of a selection.
 
 ## What a run makes
 

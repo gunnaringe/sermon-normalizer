@@ -371,7 +371,7 @@ func TestSetStereo(t *testing.T) {
 		t.Errorf("stereo defaults: %+v", o)
 	}
 	o.SetStereo(false)
-	if o != DefaultOptions() {
+	if !reflect.DeepEqual(o, DefaultOptions()) {
 		t.Errorf("back to mono: %+v", o)
 	}
 	// Values changed from the defaults stay.
@@ -493,5 +493,53 @@ func TestValidate(t *testing.T) {
 		if o.Validate() == nil {
 			t.Errorf("%s: expected an error", name)
 		}
+	}
+}
+
+func TestKeep(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		opt   Options
+		end   float64
+		wants []Span
+	}{
+		{"no cuts", Options{Start: 10, End: 50}, 100, []Span{{10, 50}}},
+		{"to the end of the recording", Options{Start: 10}, 100, []Span{{10, 100}}},
+		{"an end past the recording", Options{Start: 10, End: 500}, 100, []Span{{10, 100}}},
+		{"one cut", Options{Start: 10, End: 50, Cuts: []Span{{20, 30}}}, 100, []Span{{10, 20}, {30, 50}}},
+		{"unsorted and overlapping", Options{Start: 0, End: 100, Cuts: []Span{{60, 70}, {20, 40}, {30, 45}}}, 100, []Span{{0, 20}, {45, 60}, {70, 100}}},
+		{"a cut at the start and one at the end", Options{Start: 10, End: 50, Cuts: []Span{{10, 15}, {45, 50}}}, 100, []Span{{15, 45}}},
+		{"everything cut", Options{Start: 10, End: 50, Cuts: []Span{{10, 50}}}, 100, nil},
+		{"a sliver is dropped", Options{Start: 10, End: 50, Cuts: []Span{{10.01, 20}}}, 100, []Span{{20, 50}}},
+	} {
+		if got := c.opt.keep(c.end); !reflect.DeepEqual(got, c.wants) {
+			t.Errorf("%s: keep = %v, want %v", c.name, got, c.wants)
+		}
+	}
+}
+
+func TestValidateCuts(t *testing.T) {
+	ok := DefaultOptions()
+	ok.Start, ok.End = 10, 50
+	ok.Cuts = []Span{{20, 30}}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("valid cuts: %v", err)
+	}
+	for name, cuts := range map[string][]Span{
+		"backwards":        {{30, 20}},
+		"empty":            {{30, 30}},
+		"before the start": {{5, 20}},
+		"after the end":    {{40, 60}},
+	} {
+		o := ok
+		o.Cuts = cuts
+		if o.Validate() == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	none := DefaultOptions()
+	none.Cuts = []Span{{20, 30}}
+	if none.Validate() == nil {
+		t.Error("cuts without a selected sermon: want an error")
 	}
 }

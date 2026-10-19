@@ -47,7 +47,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `PUT api/inbox/files/<name>` for other services.
 - `web/static/`: plain JS, no build. `vendor/wavesurfer/` is wavesurfer.js
   7.12.12, unmodified.
-- `normalizer/`: the pipeline (`pipeline.go`), ffmpeg wrapper (`ffmpeg.go`:
+- `normalizer/`: the pipeline (`pipeline.go`; `Options.Cuts` = parts left out of
+  Start..End, each kept part is its own ffmpeg input joined by `cutInput`'s filter graph),
+  ffmpeg wrapper (`ffmpeg.go`:
   `Run`, `RunTo`), `ToFlac`/`SameAudio` (`flac.go`), `MoveFile` (`files.go`),
   `Validate` (`validate.go`), levels/silences, channel checks.
 

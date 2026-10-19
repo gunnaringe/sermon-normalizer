@@ -572,3 +572,36 @@ func TestIntegrationTags(t *testing.T) {
 		}
 	}
 }
+
+// Parts cut out of the selection are left out, with or without an archive.
+func TestIntegrationCuts(t *testing.T) {
+	ff := requireFFmpeg(t)
+	for _, archive := range []string{"", "arkiv"} {
+		dir := dateFolder(t)
+		service(t, ff, filepath.Join(dir, date+"_raw.wav"), 2)
+
+		opt := DefaultOptions()
+		opt.Start, opt.End = 10, 90
+		opt.Cuts = []Span{{60, 65}, {30, 40}} // 10-30, 40-60, 65-90 = 65 s
+		opt.FadeIn, opt.FadeOut = 1, 1
+		if err := run(t, context.Background(), ff, dir, archive, opt); err != nil {
+			t.Fatalf("archive %q: %v", archive, err)
+		}
+		checkOutputs(t, ff, dir, 65)
+		if archive != "" {
+			if d := probeFile(t, filepath.Join(dir, archive, date+"_edit.flac")).duration; !near(d, 65, 0.05) {
+				t.Errorf("edit: %.3f s, want 65", d)
+			}
+		}
+	}
+
+	// Cuts that leave nothing fail clearly.
+	dir := dateFolder(t)
+	service(t, ff, filepath.Join(dir, date+"_raw.flac"), 1)
+	opt := DefaultOptions()
+	opt.Start, opt.End = 10, 90
+	opt.Cuts = []Span{{10, 90}}
+	if err := run(t, context.Background(), ff, dir, "", opt); err == nil || !strings.Contains(err.Error(), "leave nothing") {
+		t.Errorf("all cut: err = %v", err)
+	}
+}
