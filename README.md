@@ -116,6 +116,9 @@ cancels running jobs and waits for them to clean up.
   go, such as a song in the middle (below).
   Keys: `space` play, `s`/`e` start/end at the playhead (of the section there, or the next/previous one), `c` cut out here, `[`/`]` previous/next
   silence, ←/→ 1 s (shift 0.1 s), `p` play the sermon.
+- **On a phone:** every page fits the screen. Drag a finger along the waveform to select (up and
+  down still scrolls the page); the section edges are wider to grab; cut with *Cut out here* and
+  zoom with the buttons.
 - **Saved version:** the sections, the cuts and the fades are kept in `sermon.json` in the date
   folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
   the next time the sermon is opened. **Save…** (after a confirmation) makes them the *saved
