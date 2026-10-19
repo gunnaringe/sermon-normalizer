@@ -1,5 +1,5 @@
 // The app: a hash router over three views (folders, a folder's editor, upload).
-import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant, debounce } from './util.js';
+import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames } from './util.js';
 import { editorView } from './editor.js';
 
 const view = document.getElementById('view');
@@ -150,6 +150,7 @@ function uploadView() {
       h('p', {}, h('label', {}, 'Date ', date), ' ', h('span', { class: 'muted' }, guess.source)),
       h('p', {}, h('label', {}, 'Name ', sermon), ' ', h('span', { class: 'muted' }, 'Only needed for a second sermon the same day.')),
       h('p', {}, button)));
+    suggestNames(sermon);
   }
 
   input.addEventListener('change', () => choose(input.files[0]));
@@ -204,12 +205,40 @@ async function settingsView() {
       status.textContent = 'Saved.';
     } catch (err) { status.textContent = err.message; }
   });
+  // Remembered sermon names: suggested when naming a sermon; delete one-offs here.
+  const names = await api('GET', 'api/names');
+  const namesBox = h('div', { class: 'panel' });
+  const saveNames = async () => {
+    try {
+      Object.assign(names, await api('PUT', 'api/names', names));
+    } catch (err) { alert(err.message); }
+    showNames();
+  };
+  function showNames() {
+    namesBox.replaceChildren(
+      h('label', { class: 'check' }, h('input', {
+        type: 'checkbox', name: 'autocomplete', checked: names.enabled,
+        onchange: (e) => { names.enabled = e.target.checked; saveNames(); },
+      }), 'Suggest names when naming a sermon'),
+      names.list.length
+        ? h('ul', { class: 'names' }, names.list.map((n) => h('li', {}, n, ' ',
+          h('button', { class: 'link', title: 'Remove ' + n, 'aria-label': 'Remove ' + n,
+            onclick: () => { names.list = names.list.filter((x) => x !== n); saveNames(); } }, '✕'))))
+        : h('p', { class: 'muted' }, names.enabled
+          ? 'No names yet: a name is remembered when you give a sermon one.' : 'Names are not being remembered.'));
+  }
+  showNames();
+
   const view_ = h('div', {},
     h('h1', {}, 'Settings'),
     h('h2', {}, 'Default tags'),
     h('p', { class: 'muted' }, 'Written into the FLAC, MP3 and Opus of every sermon of this church. You can change them for a single run on the sermon\'s page. Placeholders: ',
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + p.help + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
-    h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)));
+    h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
+    h('h2', {}, 'Sermon names'),
+    h('p', { class: 'muted' }, 'A second sermon on a day gets a name. The names used are remembered and suggested next time, ' +
+      'so the same one is not typed in different ways. Remove one-off names from the list to tidy it.'),
+    namesBox);
   view.replaceChildren(view_);
   preview();
   return () => {};

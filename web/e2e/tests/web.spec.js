@@ -268,3 +268,28 @@ test('a second sermon the same day: upload with a name, then rename', async ({ p
   await expect(page.getByRole('heading', { level: 1 })).toContainText('2026-11-01 Aften', { timeout: 10_000 });
   expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-11-01 Aften'))).toContain('2026-11-01 Aften_raw.flac');
 });
+
+test('names: remembered, suggested, and tidied in settings', async ({ page }) => {
+  // Naming a sermon on upload remembers the name (others may be there from earlier tests).
+
+  await page.goto('#/upload');
+  await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
+  await page.locator('input[type=date]').fill('2026-12-06');
+  await page.locator('input[aria-label=Name]').fill('Engangs');
+  await page.getByRole('button', { name: 'Upload' }).click();
+  await expect(page).toHaveURL(/#\/folder\/2026\/2026-12-06/);
+
+  await page.goto('#/upload');
+  await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
+  await expect(page.locator('datalist option[value=Engangs]')).toHaveCount(1);
+
+  await page.goto('#/settings');
+  await expect(page.locator('ul.names')).toContainText('Engangs');
+  await page.screenshot({ path: path.join(shots, 'settings-names.png') });
+  await page.getByRole('button', { name: 'Remove Engangs' }).click();
+  await expect(page.locator('ul.names')).not.toContainText('Engangs');
+  await page.getByLabel('Suggest names').uncheck();
+  await page.reload();
+  await expect(page.getByLabel('Suggest names')).not.toBeChecked();
+  await page.getByLabel('Suggest names').check();
+});

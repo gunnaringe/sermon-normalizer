@@ -5,7 +5,7 @@ import RegionsPlugin from './vendor/wavesurfer/plugins/regions.esm.js';
 import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
-import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant } from './util.js';
+import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames } from './util.js';
 
 const STORE = 'sermon-normalizer-options';
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
@@ -88,6 +88,7 @@ export async function editorView(view, path, config) {
       h('button', { onclick: () => { renamePanel.hidden = true; } }, 'Cancel'), ' ', msg,
       h('p', { class: 'muted' }, 'The folder and the files named after it are renamed. Files already made keep their tags.'));
     renamePanel.hidden = false;
+    suggestNames(name);
   } }, 'Rename…');
 
   view.replaceChildren(

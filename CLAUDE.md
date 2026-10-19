@@ -32,6 +32,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   Stored per church in `tenants.json`; `normalizer.Tags` carries them to ffmpeg.
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in the archive).
+- `web/namelist.go`: remembered sermon names per church (suggestions on/off + list, learned on
+  upload/rename; `GET/PUT api/names`), stored in `tenants.json` like the tags.
 - `web/folders.go`: folder list/info, run options, `check` (validates a run).
 - `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
 - `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3

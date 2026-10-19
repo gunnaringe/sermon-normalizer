@@ -41,9 +41,10 @@ type AppConfig struct {
 
 // TenantInfo is a church as listed in the UI and saved in the registry.
 type TenantInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Meta *Meta  `json:"meta,omitempty"` // default tags; nil = DefaultMeta
+	ID    string    `json:"id"`
+	Name  string    `json:"name"`
+	Meta  *Meta     `json:"meta,omitempty"`  // default tags; nil = DefaultMeta
+	Names *NameList `json:"names,omitempty"` // remembered sermon names; nil = defaultNames
 }
 
 type registry struct {
@@ -147,7 +148,9 @@ func (a *App) start(ti TenantInfo) (*tenant, error) {
 	cfg := a.cfg.Base
 	cfg.limits = a.limits
 	cfg.Meta = ti.Meta
-	cfg.SaveMeta = func(m Meta) error { return a.setMeta(ti.ID, m) }
+	cfg.SaveMeta = func(m Meta) error { return a.update(ti.ID, func(t *TenantInfo) { t.Meta = &m }) }
+	cfg.Names = ti.Names
+	cfg.SaveNames = func(n NameList) error { return a.update(ti.ID, func(t *TenantInfo) { t.Names = &n }) }
 	if ti.ID != LegacyTenant {
 		dir := filepath.Join(a.cfg.DataDir, ti.ID)
 		cfg.Root, cfg.Inbox = filepath.Join(dir, tenantRoot), filepath.Join(dir, tenantInbox)
@@ -166,16 +169,17 @@ func (a *App) start(ti TenantInfo) (*tenant, error) {
 	return t, nil
 }
 
-// setMeta stores a church's default tags in the registry.
-func (a *App) setMeta(id string, m Meta) error {
+// update changes a church's registry entry and saves the registry; if
+// saving fails the entry is left as it was.
+func (a *App) update(id string, change func(*TenantInfo)) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, t := range a.tenants {
 		if t.ID == id {
-			old := t.Meta
-			t.Meta = &m
+			old := t.TenantInfo
+			change(&t.TenantInfo)
 			if err := a.saveRegistry(); err != nil {
-				t.Meta = old
+				t.TenantInfo = old
 				return err
 			}
 			return nil

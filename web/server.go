@@ -42,6 +42,9 @@ type Config struct {
 
 	Meta     *Meta            // default tags; nil = DefaultMeta
 	SaveMeta func(Meta) error // stores changed default tags; nil = kept in memory only
+
+	Names     *NameList            // remembered sermon names; nil = defaultNames
+	SaveNames func(NameList) error // nil = kept in memory only
 }
 
 // limits keeps the heavy work to one at a time, across all churches.
@@ -67,6 +70,7 @@ type Server struct {
 	analyses *analyses
 	inbox    *inboxWatcher
 	meta     metaStore
+	names    nameStore
 	ingestMu sync.Mutex // one inbox file moves at a time
 
 	tagsMu   sync.Mutex
@@ -101,6 +105,10 @@ func New(cfg Config) (*Server, error) {
 	s.meta = metaStore{meta: DefaultMeta, save: cfg.SaveMeta}
 	if cfg.Meta != nil {
 		s.meta.meta = *cfg.Meta
+	}
+	s.names = nameStore{v: defaultNames, save: cfg.SaveNames}
+	if cfg.Names != nil {
+		s.names.v = *cfg.Names
 	}
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
@@ -153,6 +161,8 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/settings", s.handleSettings)
 	mux.HandleFunc("PUT /api/settings", s.handleSettingsPut)
+	mux.HandleFunc("GET /api/names", s.handleNames)
+	mux.HandleFunc("PUT /api/names", s.handleNamesPut)
 	mux.HandleFunc("POST /api/meta/preview", s.handleMetaPreview)
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("GET /api/folder", s.handleFolder)
