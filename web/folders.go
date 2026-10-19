@@ -99,6 +99,8 @@ type folderInfo struct {
 	EditInFolder bool             `json:"editInFolder"`
 	Outputs      []outputFileInfo `json:"outputs"`
 	Job          *jobSnapshot     `json:"job"`
+	Tags         *Meta            `json:"tags"` // the church's defaults filled in for this folder
+	TagsError    string           `json:"tagsError,omitempty"`
 }
 
 type outputFileInfo struct {
@@ -127,6 +129,11 @@ func (s *Server) folderInfo(abs string) (folderInfo, error) {
 	if j := s.jobs.latest(info.Path); j != nil {
 		snap := j.snapshot()
 		info.Job = &snap
+	}
+	if tags, _, err := s.defaultTags(abs); err != nil {
+		info.TagsError = err.Error()
+	} else {
+		info.Tags = &tags
 	}
 	return info, nil
 }
@@ -167,6 +174,10 @@ type runRequest struct {
 	Archive        string  `json:"archive"`
 	KeepWav        bool    `json:"keepWav"`
 	Force          bool    `json:"force"`
+	// Tags for this run; nil = the church's defaults for the folder, "" = no tag.
+	Title  *string `json:"title"`
+	Artist *string `json:"artist"`
+	Album  *string `json:"album"`
 }
 
 func requestFrom(o normalizer.Options, archive string) runRequest {
@@ -218,6 +229,10 @@ func (s *Server) check(abs string, q runRequest) plan {
 		return fail(err)
 	}
 	pl.paths = paths
+	var note string
+	if pl.opt.Tags, note = s.runTags(abs, q); note != "" {
+		pl.Notices = append(pl.Notices, note)
+	}
 	src := paths.Sources()
 	switch {
 	case q.UseEdit && src.Edit == "":

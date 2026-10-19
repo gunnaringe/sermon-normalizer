@@ -93,6 +93,16 @@ cancels running jobs and waits for them to clean up.
 has one), verified identical by MD5 of the audio, and then replaces the WAV. Right after, the
 server prepares the waveform and the listening preview, so cutting can start at once.
 
+### Tags
+
+Every output (FLAC, MP3, Opus) gets title, artist, album and date tags. The **Settings** page sets
+the defaults of the selected church, as templates: the title starts as `{yyyy}-{mm}-{dd}`. Placeholders:
+`{yyyy}` `{yy}` `{mm}` `{dd}` `{date}` (2026-10-04) `{weekday}` and `{name}` (the sermon's name, empty
+if it has none); an unknown one is refused. They are filled in from the date folder's name
+(`2026-10-04` or `2026-10-04 Name`). The sermon's page shows the result and lets you change it for
+one run; a field you empty is left out. Saved in `tenants.json` (needs `--data-dir`; without it
+the settings last until restart).
+
 ### Inbox
 
 - **The inbox is any folder**: a synced folder, a file share, or the API. A `.wav` or

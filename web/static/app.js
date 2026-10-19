@@ -1,5 +1,5 @@
 // The app: a hash router over three views (folders, a folder's editor, upload).
-import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant } from './util.js';
+import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant, debounce } from './util.js';
 import { editorView } from './editor.js';
 
 const view = document.getElementById('view');
@@ -12,11 +12,12 @@ async function route() {
   const hash = decodeURIComponent(location.hash.slice(1)) || '/';
   const [, section, ...rest] = hash.split('/');
   const path = rest.join('/');
-  const nav = section === 'upload' ? section : 'folders';
+  const nav = ['upload', 'settings'].includes(section) ? section : 'folders';
   for (const a of document.querySelectorAll('header nav a')) a.classList.toggle('active', a.dataset.nav === nav);
   try {
     if (section === 'folder') teardown = await editorView(view, path, config);
     else if (section === 'upload') uploadView();
+    else if (section === 'settings') teardown = await settingsView();
     else await foldersView(section === 'folders' ? path : '');
   } catch (err) {
     view.replaceChildren(h('p', { class: 'error' }, err.message));
@@ -162,6 +163,54 @@ function uploadView() {
     h('p', { class: 'muted' }, 'The whole service goes straight into its date folder. A WAV is converted to FLAC, ' +
       'and the waveform prepared, as soon as it is in; the page for the date opens when the upload is done.'),
     drop, input, chosen, status, progress);
+}
+
+// settingsView edits the church's default tags: templates with placeholders,
+// shown filled in for today, with and without a sermon name.
+async function settingsView() {
+  const data = await api('GET', 'api/settings');
+  const fields = [['title', 'Title'], ['artist', 'Artist'], ['album', 'Album']];
+  const inputs = {};
+  const previews = {};
+  const status = h('span', { class: 'muted' });
+  const save = h('button', { class: 'primary' }, 'Save');
+  const rows = fields.map(([key, label]) => {
+    inputs[key] = h('input', { type: 'text', name: key, value: data.meta[key], maxlength: 200, oninput: () => { status.textContent = ''; preview(); } });
+    previews[key] = h('span', { class: 'muted' });
+    return h('label', {}, h('span', { class: 'name' }, label), inputs[key], previews[key]);
+  });
+  const values = () => Object.fromEntries(fields.map(([key]) => [key, inputs[key].value]));
+  const preview = debounce(async () => {
+    try {
+      const plain = await api('POST', 'api/meta/preview', values());
+      const named = await api('POST', 'api/meta/preview', { ...values(), name: 'Evening' });
+      for (const [key] of fields) {
+        previews[key].classList.remove('error');
+        previews[key].textContent = plain[key] || named[key] ? '→ ' + plain[key] + (named[key] !== plain[key] ? '   (with a name: ' + named[key] + ')' : '') : 'empty: no tag';
+      }
+      save.disabled = false;
+    } catch (err) {
+      for (const [key] of fields) previews[key].textContent = '';
+      previews.title.textContent = err.message;
+      previews.title.classList.add('error');
+      save.disabled = true;
+    }
+  }, 250);
+  save.addEventListener('click', async () => {
+    try {
+      await api('PUT', 'api/settings', { meta: values() });
+      status.textContent = 'Saved.';
+    } catch (err) { status.textContent = err.message; }
+  });
+  const view_ = h('div', {},
+    h('h1', {}, 'Settings'),
+    h('h2', {}, 'Default tags'),
+    h('p', { class: 'muted' }, 'Written into the FLAC, MP3 and Opus of every sermon of this church. You can change them for a single run on the sermon\'s page. Placeholders: ',
+      data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + p.help + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
+    h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)));
+  view.replaceChildren(view_);
+  preview();
+  return () => {};
 }
 
 // churchPicker fills the dropdown in the header and switches church.

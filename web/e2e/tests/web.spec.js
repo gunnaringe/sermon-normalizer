@@ -225,3 +225,21 @@ test('churches: add one, folders are separate, the choice is remembered', async 
   await page.locator('#church').selectOption('default');
   await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
 });
+
+test('settings: default tags are saved and used on the sermon page', async ({ page }) => {
+  await page.goto('#/settings');
+  await expect(page.locator('input[name=title]')).toHaveValue('{yyyy}-{mm}-{dd}');
+  await page.locator('input[name=title]').fill('{nope}');
+  await expect(page.getByText('unknown placeholder {nope}')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await page.locator('input[name=title]').fill('{date} {name}');
+  await page.locator('input[name=artist]').fill('Norkirken Melhus');
+  await expect(page.locator('.tags')).toContainText('→ Norkirken Melhus');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  await page.screenshot({ path: path.join(shots, 'settings.png') });
+
+  await page.goto('#/folder/2026/2026-10-04');
+  await expect(page.locator('input[name=title]')).toHaveValue('2026-10-04');
+  await expect(page.locator('input[name=artist]')).toHaveValue('Norkirken Melhus');
+});

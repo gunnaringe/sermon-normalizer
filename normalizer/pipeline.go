@@ -27,6 +27,27 @@ type Options struct {
 	FadeIn         float64 // seconds at the start of the sermon; 0 = off
 	FadeOut        float64 // seconds at the end of the sermon; 0 = off
 	Outputs        Outputs
+	Tags           Tags // written into every output; empty fields are left out
+}
+
+// Tags are the metadata written into the outputs (FLAC, MP3, Opus).
+type Tags struct {
+	Title, Artist, Album string
+	Date                 string // recording date, 2006-01-02
+}
+
+// args are the ffmpeg options that set the tags, for the output that follows.
+// Zero Tags leave the source's tags alone; otherwise all four are set, and an
+// empty one removes the tag (so a recorder's own tags do not leak through).
+func (t Tags) args() []string {
+	if t == (Tags{}) {
+		return nil
+	}
+	var a []string
+	for _, kv := range [][2]string{{"title", t.Title}, {"artist", t.Artist}, {"album", t.Album}, {"date", t.Date}} {
+		a = append(a, "-metadata", kv[0]+"="+kv[1])
+	}
+	return a
 }
 
 // cutting reports whether the edit is cut from raw rather than supplied by hand.
@@ -485,6 +506,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		args = append(p.cutArgs(), "-i", p.raw)
 	}
 	args = append(args, "-af", p.masterFilter(length), "-c:a", "flac", "-sample_fmt", "s32")
+	args = append(args, p.Opt.Tags.args()...)
 	if length == 0 && p.OnProgress != nil {
 		length, _ = p.sermonLength(ctx)
 	}
@@ -562,7 +584,8 @@ func (p *Pipeline) encodeLossy(ctx context.Context, name, dst string, codec []st
 		if gain != nil {
 			args = append(args, "-af", fmt.Sprintf("volume=%.2fdB", *gain))
 		}
-		return p.runTo(ctx, dst, total, append(args, codec...)...)
+		args = append(args, codec...)
+		return p.runTo(ctx, dst, total, append(args, p.Opt.Tags.args()...)...)
 	}
 	if err := enc(nil); err != nil {
 		return err
@@ -597,7 +620,7 @@ func (p *Pipeline) stepLossy(ctx context.Context) error {
 	}
 	if o.Mp3 {
 		if err := p.encodeLossy(ctx, "mp3", p.P.Mp3,
-			[]string{"-ar", "44100", "-ac", ac, "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate}); err != nil {
+			[]string{"-ar", "44100", "-ac", ac, "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate, "-id3v2_version", "3"}); err != nil {
 			return err
 		}
 	}

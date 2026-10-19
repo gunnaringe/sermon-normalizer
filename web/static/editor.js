@@ -21,7 +21,7 @@ function savedOptions(config) {
 }
 
 function saveOptions(opts) {
-  const { start, end, useEdit, force, ...keep } = opts;
+  const { start, end, useEdit, force, title, artist, album, ...keep } = opts;
   localStorage.setItem(STORE, JSON.stringify(keep));
 }
 
@@ -35,6 +35,8 @@ export async function editorView(view, path, config) {
   };
 
   const opts = savedOptions(config);
+  // Tags are per sermon: the church's defaults for this folder, editable for this run.
+  const tags = { title: '', artist: '', album: '', ...(info.tags || {}) };
   let useEdit = Boolean(info.edit && info.editInFolder);
   let job = info.job;
   let sel = null; // the selection region
@@ -355,11 +357,17 @@ export async function editorView(view, path, config) {
       type: 'text', name: key, value: opts[key], placeholder,
       oninput: (e) => { opts[key] = e.target.value; changed(); },
     }));
+    const tag = (key, label) => h('label', { class: 'tag' }, h('span', { class: 'name' }, label), h('input', {
+      type: 'text', name: key, value: tags[key], maxlength: 200,
+      oninput: (e) => { tags[key] = e.target.value; changed(); },
+    }));
     const form = h('div', { class: 'panel' },
       h('div', { class: 'options' },
         h('div', {}, h('strong', {}, 'Outputs'), check('flac', 'FLAC master'), check('mp3', 'MP3'), check('opus', 'Opus')),
         h('div', {}, h('strong', {}, 'Sound'), check('stereo', 'Stereo (off = mono)'), num('fadeIn', 'Fade in (s)', 0.5), num('fadeOut', 'Fade out (s)', 0.5)),
-        h('div', {}, h('strong', {}, 'Files'), text('archive', 'Archive folder', 'none'), check('keepWav', 'Keep a hand-cut edit WAV'), check('force', 'Force (redo existing)'))),
+        h('div', {}, h('strong', {}, 'Files'), text('archive', 'Archive folder', 'none'), check('keepWav', 'Keep a hand-cut edit WAV'), check('force', 'Force (redo existing)')),
+        info.tags ? h('div', {}, h('strong', {}, 'Tags'), tag('title', 'Title'), tag('artist', 'Artist'), tag('album', 'Album'))
+          : h('div', {}, h('strong', {}, 'Tags'), h('span', { class: 'muted' }, info.tagsError || 'No tags'))),
       h('details', {}, h('summary', {}, 'More sound options'),
         h('div', { class: 'options' },
           num('noiseReduction', 'Noise reduction (dB)', 1), num('targetLufs', 'Target loudness (LUFS)', 0.5),
@@ -384,6 +392,7 @@ export async function editorView(view, path, config) {
   function request() {
     return {
       ...opts,
+      ...(info.tags ? tags : {}),
       noiseReduction: Math.round(opts.noiseReduction),
       start: !useEdit && sel ? sel.start : 0,
       end: !useEdit && sel ? sel.end : 0,

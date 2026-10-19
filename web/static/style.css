@@ -137,3 +137,8 @@ pre.log { max-height: 14rem; overflow: auto; background: var(--bg); border: 1px 
 
 .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 1.5rem; text-align: center; color: var(--muted); }
 .drop.over { border-color: var(--accent); color: var(--fg); }
+
+.tags label { display: grid; grid-template-columns: 6em minmax(12em, 28em); align-items: center; gap: 0.2rem 0.8rem; padding: 0.3rem 0; }
+.tags label .muted { grid-column: 2; font-size: 0.9em; }
+.tags input[type=text] { width: 100%; }
+.options .tag input[type=text] { width: 14em; }

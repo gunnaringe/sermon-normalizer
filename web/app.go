@@ -43,6 +43,7 @@ type AppConfig struct {
 type TenantInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	Meta *Meta  `json:"meta,omitempty"` // default tags; nil = DefaultMeta
 }
 
 type registry struct {
@@ -145,6 +146,8 @@ func (a *App) saveRegistry() error {
 func (a *App) start(ti TenantInfo) (*tenant, error) {
 	cfg := a.cfg.Base
 	cfg.limits = a.limits
+	cfg.Meta = ti.Meta
+	cfg.SaveMeta = func(m Meta) error { return a.setMeta(ti.ID, m) }
 	if ti.ID != LegacyTenant {
 		dir := filepath.Join(a.cfg.DataDir, ti.ID)
 		cfg.Root, cfg.Inbox = filepath.Join(dir, tenantRoot), filepath.Join(dir, tenantInbox)
@@ -161,6 +164,24 @@ func (a *App) start(ti TenantInfo) (*tenant, error) {
 	t := &tenant{TenantInfo: ti, srv: srv, api: srv.apiMux()}
 	a.tenants = append(a.tenants, t)
 	return t, nil
+}
+
+// setMeta stores a church's default tags in the registry.
+func (a *App) setMeta(id string, m Meta) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, t := range a.tenants {
+		if t.ID == id {
+			old := t.Meta
+			t.Meta = &m
+			if err := a.saveRegistry(); err != nil {
+				t.Meta = old
+				return err
+			}
+			return nil
+		}
+	}
+	return errors.New("no such church")
 }
 
 // Close stops every church's background work.

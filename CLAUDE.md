@@ -27,6 +27,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   = first), shared one-encode/one-decode limits. A `Server` is one church.
 - `web/server.go`: Config, routes, `resolve` (every path parameter: inside the
   root, no `..`, no hidden names, no symlinks out).
+- `web/meta.go`: a church's default tags (title/artist/album templates with
+  `{yyyy}` `{mm}` `{dd}` `{date}` `{weekday}` `{name}`...), settings API, the tags of a run.
+  Stored per church in `tenants.json`; `normalizer.Tags` carries them to ffmpeg.
 - `web/folders.go`: folder list/info, run options, `check` (validates a run).
 - `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
 - `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3

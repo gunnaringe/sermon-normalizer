@@ -543,3 +543,32 @@ func TestIntegrationStereoWarnings(t *testing.T) {
 		})
 	}
 }
+
+// The tags are written into all three outputs; with the sermon's own tags
+// cleared, an empty field removes the tag.
+func TestIntegrationTags(t *testing.T) {
+	ff := requireFFmpeg(t)
+	dir := dateFolder(t)
+	sermon(t, ff, filepath.Join(dir, date+"_edit.flac"))
+	opt := DefaultOptions()
+	opt.Tags = Tags{Title: "2026-10-04 Kveld", Artist: "Norkirken Melhus", Date: "2026-10-04"}
+	if err := run(t, context.Background(), ff, dir, "", opt); err != nil {
+		t.Fatal(err)
+	}
+	for _, ext := range []string{".flac", ".mp3", ".opus"} {
+		// ffmpeg lists the tags of the file and its stream (Opus keeps them there).
+		res, err := ff.Run(context.Background(), "-i", filepath.Join(dir, date+ext), "-t", "0", "-f", "null", "-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		tags := strings.Join(strings.Fields(strings.ToLower(res.Stderr)), " ")
+		for _, want := range []string{"title : 2026-10-04 kveld", "artist : norkirken melhus"} {
+			if !strings.Contains(tags, want) {
+				t.Errorf("%s: no %q in\n%s", ext, want, res.Stderr)
+			}
+		}
+		if strings.Contains(tags, "album :") {
+			t.Errorf("%s: an empty album should leave no tag:\n%s", ext, res.Stderr)
+		}
+	}
+}
