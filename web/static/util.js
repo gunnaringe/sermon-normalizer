@@ -1,5 +1,19 @@
 // Shared helpers: API calls, times, and building DOM without innerHTML.
 
+// The church the UI is working with; every request to the server names it.
+let tenant = localStorage.getItem('tenant') || '';
+export const currentTenant = () => tenant;
+export function setTenant(id) {
+  tenant = id;
+  localStorage.setItem('tenant', id);
+}
+
+// forTenant adds the church to a URL that is not fetched through api():
+// audio, downloads, event streams.
+export function forTenant(url) {
+  return tenant ? url + (url.includes('?') ? '&' : '?') + 'tenant=' + encodeURIComponent(tenant) : url;
+}
+
 // api calls the server. URLs are relative ("api/..."), so the UI also
 // works behind a proxy under a sub-path.
 export async function api(method, url, body) {
@@ -8,7 +22,7 @@ export async function api(method, url, body) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const resp = await fetch(url, opts);
+  const resp = await fetch(url.startsWith('api/tenants') ? url : forTenant(url), opts);
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(data.error || `${resp.status} ${resp.statusText}`);
   return data;

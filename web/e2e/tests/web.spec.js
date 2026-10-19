@@ -210,3 +210,17 @@ test('a 90-minute recording stays responsive', async ({ page }) => {
   await page.keyboard.press(' ');
   await page.screenshot({ path: path.join(shots, 'long.png') });
 });
+
+test('churches: add one, folders are separate, the choice is remembered', async ({ page }) => {
+  await page.goto('#/');
+  await expect(page.locator('#church')).toHaveValue('default');
+  await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
+  page.once('dialog', (d) => d.accept('Second church'));
+  await page.locator('#church').selectOption('+');
+  await expect(page.locator('#church')).toHaveValue('second-church');
+  await expect(page.getByText('No folders here yet.')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#church')).toHaveValue('second-church');
+  await page.locator('#church').selectOption('default');
+  await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
+});

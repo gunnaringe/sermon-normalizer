@@ -98,7 +98,7 @@ type jobs struct {
 }
 
 func newJobs(s *Server) *jobs {
-	return &jobs{s: s, byID: map[string]*job{}, sem: make(chan struct{}, 1)}
+	return &jobs{s: s, byID: map[string]*job{}, sem: s.limits.encode}
 }
 
 func (js *jobs) get(id string) *job {

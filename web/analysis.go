@@ -44,7 +44,7 @@ type analyses struct {
 }
 
 func newAnalyses(s *Server) *analyses {
-	return &analyses{s: s, current: map[string]*analysisState{}, pending: map[string]*analysisState{}, sem: make(chan struct{}, 1)}
+	return &analyses{s: s, current: map[string]*analysisState{}, pending: map[string]*analysisState{}, sem: s.limits.decode}
 }
 
 // cacheVersion changes when the analysis changes, so old caches are redone

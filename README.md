@@ -45,7 +45,9 @@ sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
 
 | Flag | Default | |
 |---|---|---|
-| `--root` | | the folder with the date folders (required) |
+| `--root` | | the folder with the date folders of the first church (needed unless `--data-dir` is set) |
+| `--name` | `Default` | display name of the `--root` church |
+| `--data-dir` | | holds `tenants.json` and a folder per added church (`<id>/Taler`, `<id>/Innboks`); enables "Add church" in the UI |
 | `--inbox` | | where new recordings arrive; enables the Inbox page |
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |
@@ -53,6 +55,11 @@ sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
 | `--archive` | | the default archive folder for runs (see below) |
 | `--layout` | `2006/2006-01-02` | where imports go under `--root`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
+
+Churches: the dropdown in the header switches church (it only selects, there is no access control yet;
+a request names its church with `?tenant=<id>` or `X-Tenant`, and the first church is the default, so
+existing scripts such as `PUT api/inbox/files/<name>` keep working). The `--root`/`--inbox` church has the
+id `default`.
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path

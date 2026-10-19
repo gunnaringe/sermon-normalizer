@@ -22,6 +22,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 ## Map
 
 - `cmd/sermon-normalizer/main.go`: flags, startup, shutdown. No logic.
+- `web/app.go`: `App` = the churches (tenants): registry `tenants.json` in
+  `--data-dir`, picks the `Server` per request (`?tenant=` / `X-Tenant`, default
+  = first), shared one-encode/one-decode limits. A `Server` is one church.
 - `web/server.go`: Config, routes, `resolve` (every path parameter: inside the
   root, no `..`, no hidden names, no symlinks out).
 - `web/folders.go`: folder list/info, run options, `check` (validates a run).

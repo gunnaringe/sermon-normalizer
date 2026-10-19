@@ -5,7 +5,7 @@ import RegionsPlugin from './vendor/wavesurfer/plugins/regions.esm.js';
 import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
-import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs } from './util.js';
+import { api, q, h, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant } from './util.js';
 
 const STORE = 'sermon-normalizer-options';
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
@@ -82,7 +82,7 @@ export async function editorView(view, path, config) {
   );
 
   // ---- files: the outputs to listen to and download, and the sources ----
-  const fileURL = (f, download) => 'api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path);
+  const fileURL = (f, download) => forTenant('api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path));
   function showFiles(inf) {
     const outputs = inf.outputs.map((o) => h('div', { class: 'out' },
       h('strong', {}, o.name), h('span', { class: 'muted' }, formatSize(o.size)),
@@ -124,7 +124,7 @@ export async function editorView(view, path, config) {
     }
     const peaks = await api('GET', 'api/peaks?path=' + q(path));
     if (!alive) return;
-    buildWaveform(peaks, 'api/preview?path=' + q(path) + '&v=' + st.key);
+    buildWaveform(peaks, forTenant('api/preview?path=' + q(path) + '&v=' + st.key));
   }
 
   function buildWaveform(data, previewURL) {
@@ -435,7 +435,7 @@ export async function editorView(view, path, config) {
 
   function follow(id) {
     if (events) events.close();
-    events = new EventSource('api/jobs/' + id + '/events');
+    events = new EventSource(forTenant('api/jobs/' + id + '/events'));
     events.onmessage = (e) => {
       job = JSON.parse(e.data);
       showJob(job);

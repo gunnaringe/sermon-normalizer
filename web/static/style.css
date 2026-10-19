@@ -51,6 +51,7 @@ header {
 }
 header .brand { font-weight: 650; color: var(--fg); text-decoration: none; }
 header nav { display: flex; gap: 1.2rem; }
+header select { font: inherit; padding: 0.2rem 0.4rem; max-width: 14rem; }
 header nav a { color: var(--muted); text-decoration: none; }
 header nav a.active { color: var(--fg); font-weight: 600; }
 main { max-width: 1200px; margin: 0 auto; padding: 1.2rem 1.5rem 4rem; }

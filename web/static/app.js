@@ -1,5 +1,5 @@
 // The app: a hash router over four views (folders, a folder's editor, upload, the inbox).
-import { api, q, h, formatSize, crumbs } from './util.js';
+import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant } from './util.js';
 import { editorView } from './editor.js';
 
 const view = document.getElementById('view');
@@ -75,7 +75,7 @@ async function sendFile(file, date, onProgress) {
   let failures = 0;
   let sent = false; // a chunk may have arrived even if its answer did not
   for (;;) {
-    const url = `api/upload?date=${q(date)}&name=${q(file.name)}&size=${file.size}&offset=${offset}&modified=${file.lastModified}`;
+    const url = forTenant(`api/upload?date=${q(date)}&name=${q(file.name)}&size=${file.size}&offset=${offset}&modified=${file.lastModified}`);
     let resp;
     let data = {};
     try {
@@ -213,7 +213,40 @@ async function inboxView() {
   return () => { alive = false; clearInterval(timer); };
 }
 
+// churchPicker fills the dropdown in the header and switches church.
+async function churchPicker() {
+  const select = document.getElementById('church');
+  const data = await api('GET', 'api/tenants');
+  if (!data.tenants.some((t) => t.id === currentTenant())) setTenant(data.default);
+  const fill = () => {
+    select.replaceChildren(...data.tenants.map((t) => h('option', { value: t.id, selected: t.id === currentTenant() }, t.name)),
+      data.canAdd ? h('option', { value: '+' }, '+ Add church…') : '');
+    select.value = currentTenant();
+  };
+  fill();
+  select.addEventListener('change', async () => {
+    if (select.value === '+') {
+      const name = prompt('Name of the new church');
+      if (name && name.trim()) {
+        try {
+          const t = await api('POST', 'api/tenants', { name });
+          data.tenants.push(t);
+          setTenant(t.id);
+        } catch (err) { alert(err.message); }
+      }
+    } else {
+      setTenant(select.value);
+    }
+    fill();
+    config = await api('GET', 'api/config');
+    document.querySelector('[data-nav=inbox]').hidden = !config.inbox;
+    if (location.hash && location.hash !== '#/') location.hash = '#/';
+    else route();
+  });
+}
+
 async function start() {
+  await churchPicker();
   config = await api('GET', 'api/config');
   document.querySelector('[data-nav=inbox]').hidden = !config.inbox;
   window.addEventListener('hashchange', route);

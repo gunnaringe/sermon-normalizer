@@ -37,6 +37,15 @@ type Config struct {
 	InboxEvery, InboxSettle time.Duration
 	FFmpeg                  normalizer.FFmpeg
 	Logger                  *log.Logger
+
+	limits *limits // set by App so churches share them
+}
+
+// limits keeps the heavy work to one at a time, across all churches.
+type limits struct{ encode, decode chan struct{} }
+
+func newLimits() *limits {
+	return &limits{encode: make(chan struct{}, 1), decode: make(chan struct{}, 1)}
 }
 
 // DefaultLayout puts imported recordings in <year>/<date>/.
@@ -50,6 +59,7 @@ type Server struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup // background work: analyses and jobs
 
+	limits   *limits // shared by all churches: one encode, one decode at a time
 	jobs     *jobs
 	analyses *analyses
 	inbox    *inboxWatcher
@@ -79,7 +89,10 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("cache: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Server{cfg: cfg, root: root, ctx: ctx, cancel: cancel, tagDates: map[string]string{}}
+	if cfg.limits == nil {
+		cfg.limits = newLimits()
+	}
+	s := &Server{cfg: cfg, root: root, ctx: ctx, cancel: cancel, limits: cfg.limits, tagDates: map[string]string{}}
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
 	if cfg.Inbox != "" {
@@ -111,12 +124,23 @@ func (s *Server) Close() {
 	s.wg.Wait()
 }
 
-// Handler is the whole site: the front end and the API.
+// Handler is the whole site for one church: the front end and the API.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(static, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
+	api := s.apiMux()
+	for _, method := range []string{"GET", "POST", "PUT"} {
+		mux.Handle(method+" /api/", api)
+	}
+	// Once a login proxy sets a cookie, other sites must not be able to
+	// start runs, uploads or imports on the user's behalf.
+	return http.NewCrossOriginProtection().Handler(mux)
+}
 
+// apiMux is the API of one church.
+func (s *Server) apiMux() *http.ServeMux {
+	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("GET /api/folder", s.handleFolder)
@@ -137,10 +161,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/inbox", s.handleInbox)
 	mux.HandleFunc("PUT /api/inbox/files/{name}", s.handleInboxPut)
 	mux.HandleFunc("POST /api/inbox/import", s.handleInboxImport)
-
-	// Once a login proxy sets a cookie, other sites must not be able to
-	// start runs, uploads or imports on the user's behalf.
-	return http.NewCrossOriginProtection().Handler(mux)
+	return mux
 }
 
 // errBadPath is returned for paths outside the root or naming hidden files.

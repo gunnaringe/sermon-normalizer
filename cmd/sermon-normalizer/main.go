@@ -31,8 +31,10 @@ func main() {
 
 func run() error {
 	listen := flag.String("listen", ":8080", "address to listen on")
-	root := flag.String("root", "", "folder with the date folders (required)")
+	root := flag.String("root", "", "folder with the date folders of the first church (required without --data-dir)")
 	inbox := flag.String("inbox", "", "folder new recordings arrive in (optional)")
+	dataDir := flag.String("data-dir", "", "folder with the church list (tenants.json) and a folder per added church; enables adding churches")
+	name := flag.String("name", "", "display name of the church set up with --root")
 	cacheDir := flag.String("cache-dir", defaultCacheDir(), "where waveform data and previews are kept")
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
 	archive := flag.String("archive", "", "default archive folder for runs (relative to the date folder)")
@@ -44,8 +46,8 @@ func run() error {
 		fmt.Println("sermon-normalizer", version)
 		return nil
 	}
-	if *root == "" {
-		return errors.New("--root is required")
+	if *root == "" && *dataDir == "" {
+		return errors.New("--root or --data-dir is required")
 	}
 	bin, err := exec.LookPath(*ffBin)
 	if err != nil {
@@ -53,8 +55,11 @@ func run() error {
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	web.CleanCache(*cacheDir, time.Duration(*cacheDays)*24*time.Hour)
-	srv, err := web.New(web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir, Archive: *archive,
-		Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger})
+	srv, err := web.NewApp(web.AppConfig{
+		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir, Archive: *archive,
+			Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
+		DataDir: *dataDir, LegacyName: *name,
+	})
 	if err != nil {
 		return err
 	}
