@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -15,7 +16,7 @@ func newTestApp(t *testing.T) (*App, http.Handler, string, string) {
 	root, data := t.TempDir(), t.TempDir()
 	a, err := NewApp(AppConfig{
 		Base:    Config{Root: root, CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)},
-		DataDir: data, LegacyName: "Norkirken Melhus",
+		DataDir: data,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +42,7 @@ func TestTenantsAddAndIsolate(t *testing.T) {
 		Default string
 		CanAdd  bool
 	}](t, do(h, "GET", "/api/tenants", ""))
-	if len(list.Tenants) != 1 || list.Default != LegacyTenant || list.Tenants[0].Name != "Norkirken Melhus" || !list.CanAdd {
+	if len(list.Tenants) != 1 || list.Default != LegacyTenant || list.Tenants[0].Name != "Default" || !list.CanAdd {
 		t.Fatalf("tenants %+v", list)
 	}
 
@@ -54,7 +55,7 @@ func TestTenantsAddAndIsolate(t *testing.T) {
 	if w := do(h, "POST", "/api/tenants", `{"name":"  "}`); w.Code != http.StatusBadRequest {
 		t.Errorf("empty name: %d", w.Code)
 	}
-	for _, d := range []string{"frelsesarmeen-al/Taler", "frelsesarmeen-al/Innboks"} {
+	for _, d := range []string{"frelsesarmeen-al/Taler", "frelsesarmeen-al/Innboks", "frelsesarmeen-al/church.json"} {
 		if _, err := os.Stat(filepath.Join(data, d)); err != nil {
 			t.Errorf("missing %s", d)
 		}
@@ -96,7 +97,7 @@ func TestTenantsSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	if len(a.tenants) != 2 || a.tenants[1].ID != "kirke-b" {
+	if len(a.tenants) != 2 || a.tenants[1].id != "kirke-b" {
 		t.Errorf("after restart: %+v", a.tenants)
 	}
 }
@@ -106,5 +107,117 @@ func TestTenantID(t *testing.T) {
 		if got := tenantID(in); got != want {
 			t.Errorf("tenantID(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Churches are the folders of the data dir with a Taler folder or a
+// church.json; the name is in church.json, else the folder's.
+func TestChurchFolders(t *testing.T) {
+	data := t.TempDir()
+	mk := func(rel, content string) {
+		p := filepath.Join(data, filepath.FromSlash(rel))
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(content), 0o644)
+	}
+	mk("norkirken-melhus/Taler/.keep", "")
+	mk("norkirken-melhus/church.json", `{"name":"Norkirken Melhus"}`)
+	mk("kirke-b/Taler/.keep", "") // no church.json: named after its folder
+	mk("cache/x", "")             // not a church
+	mk(".hidden/Taler/.keep", "") // not a church
+	a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	list := decode[struct{ Tenants []TenantInfo }](t, do(a.Handler(), "GET", "/api/tenants", "")).Tenants
+	want := []TenantInfo{{"kirke-b", "kirke-b"}, {"norkirken-melhus", "Norkirken Melhus"}}
+	if !reflect.DeepEqual(list, want) {
+		t.Errorf("churches %+v, want %+v", list, want)
+	}
+	if _, err := os.Stat(filepath.Join(data, "kirke-b", "Innboks")); err != nil {
+		t.Error("the missing Innboks should be made")
+	}
+
+	// A new name is saved in the church's own folder and survives a restart.
+	h := a.Handler()
+	if w := do(h, "PUT", "/api/church?tenant=kirke-b", `{"name":"Kirke B"}`); w.Code != http.StatusOK {
+		t.Fatalf("rename: %d %s", w.Code, w.Body)
+	}
+	if w := do(h, "PUT", "/api/church?tenant=kirke-b", `{"name":"norkirken melhus"}`); w.Code != http.StatusConflict {
+		t.Errorf("a name in use: %d", w.Code)
+	}
+	if w := do(h, "PUT", "/api/church?tenant=kirke-b", `{"name":" "}`); w.Code != http.StatusBadRequest {
+		t.Errorf("empty name: %d", w.Code)
+	}
+	if b, _ := os.ReadFile(filepath.Join(data, "kirke-b", "church.json")); !strings.Contains(string(b), `"Kirke B"`) {
+		t.Errorf("church.json: %s", b)
+	}
+	if cc, err := readChurch(filepath.Join(data, "norkirken-melhus")); err != nil || cc.Name != "Norkirken Melhus" {
+		t.Errorf("the other church was touched: %+v %v", cc, err)
+	}
+}
+
+func TestBrokenChurchFileStopsStartup(t *testing.T) {
+	data := t.TempDir()
+	os.MkdirAll(filepath.Join(data, "a", "Taler"), 0o755)
+	os.WriteFile(filepath.Join(data, "a", "church.json"), []byte("{oops"), 0o644)
+	if a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data}); err == nil {
+		a.Close()
+		t.Error("a church.json that cannot be read must not be ignored (it would be overwritten)")
+	}
+}
+
+// The tenants.json of earlier versions is moved into the church folders.
+func TestImportOldRegistry(t *testing.T) {
+	data := t.TempDir()
+	os.MkdirAll(filepath.Join(data, "norkirken-melhus", "Taler"), 0o755)
+	os.MkdirAll(filepath.Join(data, "kirke-b", "Taler"), 0o755)
+	old := `{"tenants":[
+	  {"id":"default","name":"Norkirken Melhus","meta":{"title":"{date}","artist":"Nor","album":""},"names":{"enabled":true,"list":["Kveld"]}},
+	  {"id":"kirke-b","name":"Kirke B"}]}`
+	os.WriteFile(filepath.Join(data, "tenants.json"), []byte(old), 0o644)
+	a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	cc, err := readChurch(filepath.Join(data, "norkirken-melhus"))
+	if err != nil || cc.Name != "Norkirken Melhus" || cc.Meta == nil || cc.Meta.Artist != "Nor" || cc.Names == nil || cc.Names.List[0] != "Kveld" {
+		t.Errorf("imported %+v, %v", cc, err)
+	}
+	if got := decode[struct{ Meta Meta }](t, do(a.Handler(), "GET", "/api/settings?tenant=norkirken-melhus", "")); got.Meta.Title != "{date}" {
+		t.Errorf("settings in use: %+v", got)
+	}
+	if cc, _ := readChurch(filepath.Join(data, "kirke-b")); cc.Name != "Kirke B" {
+		t.Errorf("kirke-b: %+v", cc)
+	}
+	if _, err := os.Stat(filepath.Join(data, "tenants.json.migrated")); err != nil {
+		t.Error("the old file should be renamed")
+	}
+}
+
+// Until every church has its folder (the move happens at deploy time), the
+// old file is kept so nothing is lost.
+func TestImportOldRegistryWaitsForFolders(t *testing.T) {
+	data := t.TempDir()
+	os.MkdirAll(filepath.Join(data, "Taler"), 0o755) // the old layout
+	os.MkdirAll(filepath.Join(data, "other", "Taler"), 0o755)
+	os.WriteFile(filepath.Join(data, "tenants.json"), []byte(`{"tenants":[{"id":"default","name":"Norkirken Melhus"}]}`), 0o644)
+	a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+	if _, err := os.Stat(filepath.Join(data, "tenants.json")); err != nil {
+		t.Error("the file must stay until its churches have folders")
+	}
+	os.MkdirAll(filepath.Join(data, "norkirken-melhus", "Taler"), 0o755)
+	a, err = NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+	if cc, _ := readChurch(filepath.Join(data, "norkirken-melhus")); cc.Name != "Norkirken Melhus" {
+		t.Errorf("imported later: %+v", cc)
 	}
 }

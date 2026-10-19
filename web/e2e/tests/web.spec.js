@@ -214,7 +214,7 @@ test('a 90-minute recording stays responsive', async ({ page }) => {
 
 test('churches: add one, folders are separate, the choice is remembered', async ({ page }) => {
   await page.goto('#/');
-  await expect(page.locator('#church')).toHaveValue('default');
+  await expect(page.locator('#church')).toHaveValue('first-church');
   await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
   page.once('dialog', (d) => d.accept('Second church'));
   await page.locator('#church').selectOption('+');
@@ -222,7 +222,7 @@ test('churches: add one, folders are separate, the choice is remembered', async 
   await expect(page.getByText('No folders here yet.')).toBeVisible();
   await page.reload();
   await expect(page.locator('#church')).toHaveValue('second-church');
-  await page.locator('#church').selectOption('default');
+  await page.locator('#church').selectOption('first-church');
   await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
 });
 
@@ -231,12 +231,12 @@ test('settings: default tags are saved and used on the sermon page', async ({ pa
   await expect(page.locator('input[name=title]')).toHaveValue('{yyyy}-{mm}-{dd}');
   await page.locator('input[name=title]').fill('{nope}');
   await expect(page.getByText('unknown placeholder {nope}')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await expect(page.locator('button[name=save-tags]')).toBeDisabled();
   await page.locator('input[name=title]').fill('{date} {name}');
   await page.locator('input[name=artist]').fill('Norkirken Melhus');
-  await expect(page.locator('.tags')).toContainText('→ Norkirken Melhus');
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await expect(page.locator('.tags').last()).toContainText('→ Norkirken Melhus');
+  await page.locator('button[name=save-tags]').click();
+  await expect(page.locator('.tags').last().getByText('Saved.')).toBeVisible();
   await page.screenshot({ path: path.join(shots, 'settings.png') });
 
   await page.goto('#/folder/2026/2026-10-04');
@@ -292,4 +292,14 @@ test('names: remembered, suggested, and tidied in settings', async ({ page }) =>
   await page.reload();
   await expect(page.getByLabel('Suggest names')).not.toBeChecked();
   await page.getByLabel('Suggest names').check();
+});
+
+test('settings: rename the church; the dropdown follows', async ({ page }) => {
+  await page.goto('#/settings');
+  await page.locator('input[name=church]').fill('Norkirken Melhus');
+  await page.locator('button[name=save-church]').click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  await expect(page.locator('#church option:checked')).toHaveText('Norkirken Melhus');
+  await page.reload();
+  await expect(page.locator('input[name=church]')).toHaveValue('Norkirken Melhus');
 });

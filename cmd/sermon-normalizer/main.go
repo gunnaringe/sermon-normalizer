@@ -31,10 +31,10 @@ func main() {
 
 func run() error {
 	listen := flag.String("listen", ":8080", "address to listen on")
-	root := flag.String("root", "", "folder with the date folders of the first church (required without --data-dir)")
-	inbox := flag.String("inbox", "", "folder new recordings arrive in (optional)")
-	dataDir := flag.String("data-dir", "", "folder with the church list (tenants.json) and a folder per added church; enables adding churches")
-	name := flag.String("name", "", "display name of the church set up with --root")
+	dataDir := flag.String("data-dir", "", "folder with a folder per church: <id>/Taler (sermons), <id>/Innboks (inbox), <id>/church.json (name and settings); churches can be added in the app")
+	root := flag.String("root", "", "a single church without a church folder: the folder with its date folders (instead of --data-dir; settings are not saved)")
+	name := flag.String("name", "", "ignored: a church's name is in its church.json (kept so older deployments still start)")
+	inbox := flag.String("inbox", "", "with --root: the folder new recordings arrive in (optional)")
 	cacheDir := flag.String("cache-dir", defaultCacheDir(), "where waveform data and previews are kept")
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
 	archive := flag.String("archive", "", "default archive folder for runs (relative to the date folder)")
@@ -45,6 +45,9 @@ func run() error {
 	if *showVersion {
 		fmt.Println("sermon-normalizer", version)
 		return nil
+	}
+	if *name != "" {
+		fmt.Fprintln(os.Stderr, "note: --name is ignored; the name is set on the Settings page")
 	}
 	if *root == "" && *dataDir == "" {
 		return errors.New("--root or --data-dir is required")
@@ -58,7 +61,7 @@ func run() error {
 	srv, err := web.NewApp(web.AppConfig{
 		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir, Archive: *archive,
 			Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
-		DataDir: *dataDir, LegacyName: *name,
+		DataDir: *dataDir,
 	})
 	if err != nil {
 		return err
@@ -71,7 +74,7 @@ func run() error {
 	defer stop()
 	errc := make(chan error, 1)
 	go func() { errc <- hs.ListenAndServe() }()
-	logger.Printf("sermon-normalizer %s listening on %s (root %s)", version, *listen, *root)
+	logger.Printf("sermon-normalizer %s listening on %s (data dir %q, root %q)", version, *listen, *dataDir, *root)
 
 	select {
 	case err := <-errc:

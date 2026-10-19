@@ -3,6 +3,8 @@ package web
 import (
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -45,8 +47,9 @@ func TestParseFolder(t *testing.T) {
 // A church's defaults are saved, survive a restart, and are per church; a
 // run's own values win over them.
 func TestSettingsPerChurch(t *testing.T) {
-	root, data := t.TempDir(), t.TempDir()
-	cfg := AppConfig{Base: Config{Root: root, CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data}
+	data := t.TempDir()
+	os.MkdirAll(filepath.Join(data, "main", "Taler"), 0o755)
+	cfg := AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data}
 	a, err := NewApp(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +83,12 @@ func TestSettingsPerChurch(t *testing.T) {
 	}
 
 	// Tags of a run: defaults for the folder's date and name, else what was sent.
-	srv := a.tenants[1].srv
+	var srv *Server
+	for _, c := range a.tenants {
+		if c.id == "kirke-b" {
+			srv = c.srv
+		}
+	}
 	folder := srv.root + "/2026/2026-10-04 Kveld"
 	def, _, err := srv.defaultTags(folder)
 	if err != nil || def != (Meta{Title: "2026-10-04 Kveld", Artist: "Kirke B", Album: "2026"}) {

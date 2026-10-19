@@ -5,7 +5,11 @@ set -eu
 
 apt-get update -qq >/dev/null && apt-get install -y -qq ffmpeg >/dev/null
 data=$(mktemp -d)
-mkdir -p "$data/root/2026/2026-10-04" "$data/root/2026/2026-08-30" "$data/inbox" "$data/cache" "$data/churches"
+# One church folder, as in production; root/ and inbox/ point into it for the tests.
+church="$data/churches/first-church"
+mkdir -p "$church/Taler/2026/2026-10-04" "$church/Taler/2026/2026-08-30" "$church/Innboks" "$data/cache"
+ln -s "$church/Taler" "$data/root"
+ln -s "$church/Innboks" "$data/inbox"
 
 # A 100 s service: music, silence at 19-21 s, speech, silence at 79-81 s, music.
 expr="if(between(t,19,21)+between(t,79,81), 0, if(between(t,21,79), 0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t)), 0.5*sin(2*PI*440*t)))"
@@ -16,7 +20,7 @@ ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$long':s=8000:d=5400" -c:a flac "$d
 # A recording waiting to be uploaded.
 ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$expr':s=48000:d=30" -c:a flac "$data/upload.flac"
 
-./bin/sermon-normalizer --listen 127.0.0.1:8080 --root "$data/root" --inbox "$data/inbox" --cache-dir "$data/cache" --data-dir "$data/churches" --name "First church" >"$data/server.log" 2>&1 &
+./bin/sermon-normalizer --listen 127.0.0.1:8080 --data-dir "$data/churches" --cache-dir "$data/cache" >"$data/server.log" 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null; wait $server 2>/dev/null || true' EXIT
 for i in $(seq 50); do

@@ -10,51 +10,71 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 )
 
-// Names of a church's folders under its own folder in the data dir.
+// A church is a folder in the data dir:
+//
+//	<data-dir>/<id>/church.json   name, default tags, remembered names
+//	<data-dir>/<id>/Taler/        the sermons
+//	<data-dir>/<id>/Innboks/      the inbox
 const (
 	tenantRoot  = "Taler"
 	tenantInbox = "Innboks"
+	churchFile  = "church.json"
 )
 
 // LegacyTenant is the id of the church set up with Config.Root and Inbox
-// (the --root and --inbox flags), so existing setups keep working.
+// (the --root and --inbox flags): a single church without a church folder,
+// so its settings are not saved.
 const LegacyTenant = "default"
 
-const registryFile = "tenants.json"
+// oldRegistry is the file earlier versions kept all churches in; it is
+// imported into the church folders once and renamed.
+const oldRegistry = "tenants.json"
 
 // AppConfig sets up all churches.
 type AppConfig struct {
-	// Base is the setup shared by every church (cache, layout, ffmpeg...).
-	// Its Root and Inbox, if set, make the legacy church.
+	// Base is the setup shared by every church (cache, layout, archive,
+	// ffmpeg...). Its Root and Inbox, if set, make the legacy church.
 	Base Config
-	// DataDir holds the church registry (tenants.json) and a folder per added
-	// church: <id>/Taler and <id>/Innboks. "" = no churches can be added and
-	// nothing is saved.
+	// DataDir holds a folder per church. "" = no churches can be added.
 	DataDir string
-	// LegacyName is the display name of the legacy church.
-	LegacyName string
 }
 
-// TenantInfo is a church as listed in the UI and saved in the registry.
-type TenantInfo struct {
-	ID    string    `json:"id"`
-	Name  string    `json:"name"`
+// churchConfig is church.json. Everything is optional: a church is a folder
+// with a Taler folder in it, named after the folder until it is renamed.
+type churchConfig struct {
+	Name  string    `json:"name,omitempty"`
 	Meta  *Meta     `json:"meta,omitempty"`  // default tags; nil = DefaultMeta
 	Names *NameList `json:"names,omitempty"` // remembered sermon names; nil = defaultNames
 }
 
-type registry struct {
-	Tenants []TenantInfo `json:"tenants"`
+// TenantInfo is a church as listed in the UI.
+type TenantInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type tenant struct {
-	TenantInfo
+	id  string
+	dir string // the church folder; "" for the legacy church
+	cfg churchConfig
 	srv *Server
 	api http.Handler
+}
+
+func (t *tenant) info() TenantInfo {
+	name := t.cfg.Name
+	if name == "" {
+		name = t.id
+		if t.id == LegacyTenant {
+			name = "Default"
+		}
+	}
+	return TenantInfo{ID: t.id, Name: name}
 }
 
 // App serves several churches (tenants), each with its own date folders,
@@ -66,76 +86,92 @@ type App struct {
 	cfg    AppConfig
 	limits *limits
 
-	mu      sync.Mutex
-	tenants []*tenant
+	createMu sync.Mutex // one church is added at a time
+	mu       sync.Mutex
+	tenants  []*tenant
 }
 
-// NewApp starts every church in the registry (and the legacy one).
+// NewApp starts the legacy church (if any) and every church folder in the
+// data dir.
 func NewApp(cfg AppConfig) (*App, error) {
-	if cfg.LegacyName == "" {
-		cfg.LegacyName = "Default"
-	}
 	if cfg.Base.Logger == nil {
 		cfg.Base.Logger = log.New(os.Stderr, "", log.LstdFlags)
 	}
 	a := &App{cfg: cfg, limits: newLimits()}
-	reg, err := a.loadRegistry()
-	if err != nil {
-		return nil, err
-	}
+	fail := func(err error) (*App, error) { a.Close(); return nil, err }
 	if cfg.Base.Root != "" {
-		found := false
-		for _, ti := range reg.Tenants {
-			found = found || ti.ID == LegacyTenant
-		}
-		if !found {
-			reg.Tenants = append([]TenantInfo{{ID: LegacyTenant, Name: cfg.LegacyName}}, reg.Tenants...)
+		if _, err := a.start(LegacyTenant, "", churchConfig{}); err != nil {
+			return fail(fmt.Errorf("--root: %w", err))
 		}
 	}
-	for _, ti := range reg.Tenants {
-		if _, err := a.start(ti); err != nil {
-			a.Close()
-			return nil, fmt.Errorf("church %s: %w", ti.ID, err)
+	if cfg.DataDir != "" {
+		a.importOldRegistry()
+		ids, err := churchFolders(cfg.DataDir)
+		if err != nil {
+			return fail(err)
+		}
+		for _, id := range ids {
+			dir := filepath.Join(cfg.DataDir, id)
+			cc, err := readChurch(dir)
+			if err == nil {
+				_, err = a.start(id, dir, cc)
+			}
+			if err != nil {
+				return fail(fmt.Errorf("church %s: %w", id, err))
+			}
 		}
 	}
 	if len(a.tenants) == 0 {
-		return nil, errors.New("no churches: set --root, or --data-dir with a tenants.json")
+		return nil, errors.New("no churches: set --root, or --data-dir with a folder per church (<id>/Taler)")
 	}
 	return a, nil
 }
 
-func (a *App) loadRegistry() (registry, error) {
-	var reg registry
-	if a.cfg.DataDir == "" {
-		return reg, nil
-	}
-	b, err := os.ReadFile(filepath.Join(a.cfg.DataDir, registryFile))
-	if errors.Is(err, fs.ErrNotExist) {
-		return reg, nil
-	}
-	if err == nil {
-		err = json.Unmarshal(b, &reg)
-	}
+// churchFolders lists the folders of dir that are churches: they have a
+// church.json or a Taler folder. Sorted, so the first one is always the same.
+func churchFolders(dir string) ([]string, error) {
+	des, err := os.ReadDir(dir)
 	if err != nil {
-		return reg, fmt.Errorf("%s: %w", registryFile, err)
+		return nil, fmt.Errorf("data dir: %w", err)
 	}
-	return reg, nil
+	var ids []string
+	for _, de := range des {
+		if !de.IsDir() || strings.HasPrefix(de.Name(), ".") {
+			continue
+		}
+		for _, marker := range []string{churchFile, tenantRoot} {
+			if _, err := os.Stat(filepath.Join(dir, de.Name(), marker)); err == nil {
+				ids = append(ids, de.Name())
+				break
+			}
+		}
+	}
+	sort.Strings(ids)
+	return ids, nil
 }
 
-// saveRegistry writes the registry atomically. The caller holds a.mu.
-func (a *App) saveRegistry() error {
-	if a.cfg.DataDir == "" {
-		return nil
+func readChurch(dir string) (churchConfig, error) {
+	var cc churchConfig
+	b, err := os.ReadFile(filepath.Join(dir, churchFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return cc, nil
 	}
-	reg := registry{Tenants: []TenantInfo{}}
-	for _, t := range a.tenants {
-		reg.Tenants = append(reg.Tenants, t.TenantInfo)
+	if err == nil {
+		err = json.Unmarshal(b, &cc)
 	}
-	b, err := json.MarshalIndent(reg, "", "  ")
+	if err != nil {
+		return cc, fmt.Errorf("%s: %w", churchFile, err)
+	}
+	return cc, nil
+}
+
+// writeChurch saves church.json atomically.
+func writeChurch(dir string, cc churchConfig) error {
+	b, err := json.MarshalIndent(cc, "", "  ")
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(a.cfg.DataDir, registryFile)
+	path := filepath.Join(dir, churchFile)
 	tmp := path + ".partial"
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
 		return err
@@ -143,55 +179,107 @@ func (a *App) saveRegistry() error {
 	return os.Rename(tmp, path)
 }
 
+// importOldRegistry moves what earlier versions kept in <data-dir>/tenants.json
+// into the church folders (a church whose folder is named after its id, or,
+// for the first church, after its name), then renames the file.
+func (a *App) importOldRegistry() {
+	path := filepath.Join(a.cfg.DataDir, oldRegistry)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var reg struct {
+		Tenants []struct {
+			ID    string    `json:"id"`
+			Name  string    `json:"name"`
+			Meta  *Meta     `json:"meta"`
+			Names *NameList `json:"names"`
+		} `json:"tenants"`
+	}
+	logger := a.cfg.Base.Logger
+	if err := json.Unmarshal(b, &reg); err != nil {
+		logger.Printf("%s: %v (not imported)", oldRegistry, err)
+		return
+	}
+	imported := true
+	for _, t := range reg.Tenants {
+		id := t.ID
+		if id == LegacyTenant {
+			id = tenantID(t.Name)
+		}
+		dir := filepath.Join(a.cfg.DataDir, id)
+		if st, err := os.Stat(dir); id == "" || err != nil || !st.IsDir() {
+			logger.Printf("%s: no folder for church %q (%s) yet; its settings are not imported (the file is kept)", oldRegistry, t.Name, id)
+			imported = false
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, churchFile)); err == nil {
+			continue
+		}
+		if err := writeChurch(dir, churchConfig{Name: t.Name, Meta: t.Meta, Names: t.Names}); err != nil {
+			logger.Printf("%s: church %s: %v", oldRegistry, id, err)
+			return // keep the file, try again next start
+		}
+		logger.Printf("imported the settings of %s from %s into %s/%s", t.Name, oldRegistry, id, churchFile)
+	}
+	if !imported {
+		return
+	}
+	if err := os.Rename(path, path+".migrated"); err != nil {
+		logger.Printf("%s: %v", oldRegistry, err)
+	}
+}
+
 // start brings up the Server of one church and adds it to the list.
-func (a *App) start(ti TenantInfo) (*tenant, error) {
+func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
 	cfg := a.cfg.Base
 	cfg.limits = a.limits
-	cfg.Meta = ti.Meta
-	cfg.SaveMeta = func(m Meta) error { return a.update(ti.ID, func(t *TenantInfo) { t.Meta = &m }) }
-	cfg.Names = ti.Names
-	cfg.SaveNames = func(n NameList) error { return a.update(ti.ID, func(t *TenantInfo) { t.Names = &n }) }
-	if ti.ID != LegacyTenant {
-		dir := filepath.Join(a.cfg.DataDir, ti.ID)
+	t := &tenant{id: id, dir: dir, cfg: cc}
+	if dir != "" {
 		cfg.Root, cfg.Inbox = filepath.Join(dir, tenantRoot), filepath.Join(dir, tenantInbox)
 		for _, d := range []string{cfg.Root, cfg.Inbox} {
 			if err := os.MkdirAll(d, 0o755); err != nil {
 				return nil, err
 			}
 		}
+		cfg.Meta, cfg.Names = cc.Meta, cc.Names
+		cfg.SaveMeta = func(m Meta) error { return a.update(t, func(c *churchConfig) { c.Meta = &m }) }
+		cfg.SaveNames = func(n NameList) error { return a.update(t, func(c *churchConfig) { c.Names = &n }) }
 	}
 	srv, err := New(cfg)
 	if err != nil {
 		return nil, err
 	}
-	t := &tenant{TenantInfo: ti, srv: srv, api: srv.apiMux()}
+	t.srv, t.api = srv, srv.apiMux()
+	a.mu.Lock()
 	a.tenants = append(a.tenants, t)
+	a.mu.Unlock()
 	return t, nil
 }
 
-// update changes a church's registry entry and saves the registry; if
-// saving fails the entry is left as it was.
-func (a *App) update(id string, change func(*TenantInfo)) error {
+// update changes a church's settings and saves its church.json; if saving
+// fails they are left as they were. The legacy church has no folder: its
+// settings stay in memory.
+func (a *App) update(t *tenant, change func(*churchConfig)) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, t := range a.tenants {
-		if t.ID == id {
-			old := t.TenantInfo
-			change(&t.TenantInfo)
-			if err := a.saveRegistry(); err != nil {
-				t.TenantInfo = old
-				return err
-			}
-			return nil
+	next := t.cfg
+	change(&next)
+	if t.dir != "" {
+		if err := writeChurch(t.dir, next); err != nil {
+			return err
 		}
 	}
-	return errors.New("no such church")
+	t.cfg = next
+	return nil
 }
 
 // Close stops every church's background work.
 func (a *App) Close() {
 	for _, t := range a.tenants {
-		t.srv.Close()
+		if t.srv != nil {
+			t.srv.Close()
+		}
 	}
 }
 
@@ -204,7 +292,7 @@ func (a *App) tenantFor(r *http.Request) (*tenant, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, t := range a.tenants {
-		if id == "" || t.ID == id {
+		if id == "" || t.id == id {
 			return t, true
 		}
 	}
@@ -218,6 +306,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /", http.FileServerFS(sub))
 	mux.HandleFunc("GET /api/tenants", a.handleTenants)
 	mux.HandleFunc("POST /api/tenants", a.handleTenantCreate)
+	mux.HandleFunc("PUT /api/church", a.handleChurchRename)
 	toChurch := func(w http.ResponseWriter, r *http.Request) {
 		t, ok := a.tenantFor(r)
 		if !ok {
@@ -238,7 +327,7 @@ func (a *App) handleTenants(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	list := []TenantInfo{}
 	for _, t := range a.tenants {
-		list = append(list, t.TenantInfo)
+		list = append(list, t.info())
 	}
 	a.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.cfg.DataDir != ""})
@@ -256,6 +345,27 @@ func tenantID(name string) string {
 	return id
 }
 
+// churchName checks a church's display name.
+func churchName(name string) (string, error) {
+	name = strings.Join(strings.Fields(name), " ")
+	if name == "" || len(name) > 80 || strings.ContainsFunc(name, func(r rune) bool { return r < ' ' }) {
+		return "", errors.New("give the church a name (up to 80 characters)")
+	}
+	return name, nil
+}
+
+// nameTaken reports the church (other than t) that already has this name.
+func (a *App) nameTaken(t *tenant, name string) (string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, o := range a.tenants {
+		if o != t && strings.EqualFold(o.info().Name, name) {
+			return o.info().Name, true
+		}
+	}
+	return "", false
+}
+
 func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 	if a.cfg.DataDir == "" {
 		writeError(w, http.StatusNotFound, errors.New("adding churches needs --data-dir"))
@@ -268,31 +378,65 @@ func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	name := strings.TrimSpace(q.Name)
+	a.createMu.Lock()
+	defer a.createMu.Unlock()
+	name, err := churchName(q.Name)
 	id := tenantID(name)
-	if name == "" || id == "" || len(name) > 80 {
-		writeError(w, http.StatusBadRequest, errors.New("give the church a name (letters and digits, up to 80 characters)"))
+	if err == nil && id == "" {
+		err = errors.New("the name needs letters or digits")
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, t := range a.tenants {
-		if t.ID == id || strings.EqualFold(t.Name, name) {
-			writeError(w, http.StatusConflict, fmt.Errorf("there is already a church called %q", t.Name))
-			return
-		}
+	dir := filepath.Join(a.cfg.DataDir, id)
+	if taken, ok := a.nameTaken(nil, name); ok {
+		writeError(w, http.StatusConflict, fmt.Errorf("there is already a church called %q", taken))
+		return
 	}
-	t, err := a.start(TenantInfo{ID: id, Name: name})
+	if _, err := os.Stat(dir); err == nil {
+		writeError(w, http.StatusConflict, fmt.Errorf("the folder %s already exists", id))
+		return
+	}
+	cc := churchConfig{Name: name}
+	t, err := a.start(id, dir, cc) // makes the folders
 	if err == nil {
-		if err = a.saveRegistry(); err != nil {
-			a.tenants = a.tenants[:len(a.tenants)-1]
-			t.srv.Close()
-		}
+		err = writeChurch(dir, cc)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	a.cfg.Base.Logger.Printf("added church %s (%s)", t.Name, t.ID)
-	writeJSON(w, http.StatusCreated, t.TenantInfo)
+	a.cfg.Base.Logger.Printf("added church %s (%s)", name, id)
+	writeJSON(w, http.StatusCreated, t.info())
+}
+
+// handleChurchRename changes the display name of the selected church.
+func (a *App) handleChurchRename(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.tenantFor(r)
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("no such church"))
+		return
+	}
+	var q struct {
+		Name string `json:"name"`
+	}
+	if err := decodeRequest(r, &q); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	name, err := churchName(q.Name)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if taken, ok := a.nameTaken(t, name); ok {
+		writeError(w, http.StatusConflict, fmt.Errorf("there is already a church called %q", taken))
+		return
+	}
+	if err := a.update(t, func(c *churchConfig) { c.Name = name }); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, t.info())
 }

@@ -30,8 +30,8 @@ ffmpeg is a separate C program and cannot be built into the Go binary, so the im
 ```bash
 docker build -t sermon-normalizer .
 docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
-  -v /path/to/Taler:/data/Taler -v /path/to/Inbox:/data/Inbox -v /path/to/cache:/cache \
-  sermon-normalizer --root /data/Taler --inbox /data/Inbox --cache-dir /cache
+  -v /path/to/data:/data -v /path/to/cache:/cache \
+  sermon-normalizer --data-dir /data --cache-dir /cache
 ```
 
 `-u` makes the created files owned by your user, not root.
@@ -40,26 +40,37 @@ The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and li
 ## Running
 
 ```bash
-sermon-normalizer --root /path/to/Taler --inbox /path/to/Inbox --listen :8080
+sermon-normalizer --data-dir /path/to/data --listen :8080
 ```
+
+The data dir has a folder per church (a church is a folder with a `Taler` folder in it):
+
+```
+data/norkirken-melhus/
+  Taler/<year>/<date>[ <name>]/   the sermons
+  Innboks/                        the inbox
+  church.json                     optional: name, default tags, remembered names (written by the app)
+```
+
+The folder name is the church's id and, until it is renamed on the Settings page, its name. Add a
+church in the app ("+ Add church…") or just make the folder. A `church.json` that cannot be read stops
+the server from starting rather than being overwritten.
 
 | Flag | Default | |
 |---|---|---|
-| `--root` | | the folder with the date folders of the first church (needed unless `--data-dir` is set) |
-| `--name` | `Default` | display name of the `--root` church |
-| `--data-dir` | | holds `tenants.json` and a folder per added church (`<id>/Taler`, `<id>/Innboks`); enables "Add church" in the UI |
-| `--inbox` | | where new recordings arrive; they are moved into their date folder |
+| `--data-dir` | | the folder with a folder per church (see above) |
+| `--root`, `--inbox` | | one church without a church folder, instead of `--data-dir`: its date folders and the inbox where new recordings arrive. Settings are not saved. |
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |
 | `--cache-days` | 30 | remove cached analyses not used for this long |
 | `--archive` | | the default archive folder for runs (see below) |
-| `--layout` | `2006/2006-01-02` | where imports go under `--root`, as a Go time layout |
+| `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
 
 Churches: the dropdown in the header switches church (it only selects, there is no access control yet;
 a request names its church with `?tenant=<id>` or `X-Tenant`, and the first church is the default, so
-existing scripts such as `PUT api/inbox/files/<name>` keep working). The `--root`/`--inbox` church has the
-id `default`.
+existing scripts such as `PUT api/inbox/files/<name>` keep working). Earlier versions kept the churches in
+`<data-dir>/tenants.json`; it is imported into the church folders once and renamed `tenants.json.migrated`.
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
@@ -107,8 +118,8 @@ the defaults of the selected church, as templates: the title starts as `{yyyy}-{
 `{yyyy}` `{yy}` `{mm}` `{dd}` `{date}` (2026-10-04) `{weekday}` and `{name}` (the sermon's name, empty
 if it has none); an unknown one is refused. They are filled in from the date folder's name
 (`2026-10-04` or `2026-10-04 Name`). The sermon's page shows the result and lets you change it for
-one run; a field you empty is left out. Saved in `tenants.json` (needs `--data-dir`; without it
-the settings last until restart).
+one run; a field you empty is left out. Saved in the church's `church.json` (with
+`--root` alone the settings last until restart).
 
 ### Inbox
 

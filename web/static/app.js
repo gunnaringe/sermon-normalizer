@@ -176,7 +176,7 @@ async function settingsView() {
   const inputs = {};
   const previews = {};
   const status = h('span', { class: 'muted' });
-  const save = h('button', { class: 'primary' }, 'Save');
+  const save = h('button', { class: 'primary', name: 'save-tags' }, 'Save');
   const rows = fields.map(([key, label]) => {
     inputs[key] = h('input', { type: 'text', name: key, value: data.meta[key], maxlength: 200, oninput: () => { status.textContent = ''; preview(); } });
     previews[key] = h('span', { class: 'muted' });
@@ -229,8 +229,22 @@ async function settingsView() {
   }
   showNames();
 
+  // The church's name (kept in church.json in its folder).
+  const tenants = await api('GET', 'api/tenants');
+  const nameInput = h('input', { type: 'text', name: 'church', maxlength: 80, value: tenants.tenants.find((t) => t.id === currentTenant())?.name || '' });
+  const nameStatus = h('span', { class: 'muted' });
+  const saveName = h('button', { class: 'primary', name: 'save-church', onclick: async () => {
+    try {
+      await api('PUT', 'api/church', { name: nameInput.value });
+      nameStatus.textContent = 'Saved.';
+      window.dispatchEvent(new Event('churches-changed'));
+    } catch (err) { nameStatus.textContent = err.message; }
+  } }, 'Save');
+
   const view_ = h('div', {},
     h('h1', {}, 'Settings'),
+    h('h2', {}, 'Church'),
+    h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, 'Name'), nameInput), h('div', {}, saveName, ' ', nameStatus)),
     h('h2', {}, 'Default tags'),
     h('p', { class: 'muted' }, 'Written into the FLAC, MP3 and Opus of every sermon of this church. You can change them for a single run on the sermon\'s page. Placeholders: ',
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + p.help + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
@@ -247,7 +261,7 @@ async function settingsView() {
 // churchPicker fills the dropdown in the header and switches church.
 async function churchPicker() {
   const select = document.getElementById('church');
-  const data = await api('GET', 'api/tenants');
+  let data = await api('GET', 'api/tenants');
   if (!data.tenants.some((t) => t.id === currentTenant())) setTenant(data.default);
   const fill = () => {
     select.replaceChildren(...data.tenants.map((t) => h('option', { value: t.id, selected: t.id === currentTenant() }, t.name)),
@@ -255,6 +269,7 @@ async function churchPicker() {
     select.value = currentTenant();
   };
   fill();
+  window.addEventListener('churches-changed', async () => { data = await api('GET', 'api/tenants'); fill(); });
   select.addEventListener('change', async () => {
     if (select.value === '+') {
       const name = prompt('Name of the new church');
