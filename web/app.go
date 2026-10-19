@@ -38,6 +38,9 @@ type AppConfig struct {
 	Base Config
 	// DataDir holds a folder per church. "" = no churches can be added.
 	DataDir string
+	// GroupsHeader is the request header in which the login proxy sends the
+	// user's groups. "" = no access control (see access.go).
+	GroupsHeader string
 }
 
 // churchConfig is church.json. Everything is optional: a church is a folder
@@ -50,8 +53,9 @@ type churchConfig struct {
 
 // TenantInfo is a church as listed in the UI.
 type TenantInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Group string `json:"group,omitempty"` // who may use it; only with access control
 }
 
 type tenant struct {
@@ -73,11 +77,20 @@ func (t *tenant) info() TenantInfo {
 	return TenantInfo{ID: t.id, Name: name}
 }
 
+// infoFor is info() as shown to a user: administrators also see the group.
+func (a *App) infoFor(t *tenant, u user) TenantInfo {
+	i := t.info()
+	if u.admin && !u.open {
+		i.Group = groupOf(t.id)
+	}
+	return i
+}
+
 // App serves several churches (tenants), each with its own date folders,
 // inbox and settings. Which one a request is for is the "tenant" query
-// parameter or the X-Tenant header; without either it is the first church.
-// For now this is only a switch in the UI; access control can be added later
-// where the tenant is chosen (App.tenantFor).
+// parameter or the X-Tenant header; without either it is the first church the
+// user sees. Who sees which church is in access.go; every request to a church
+// goes through App.tenantFor.
 type App struct {
 	cfg    AppConfig
 	limits *limits
@@ -106,6 +119,9 @@ func NewApp(cfg AppConfig) (*App, error) {
 			return fail(err)
 		}
 		for _, id := range ids {
+			if reservedID(id) {
+				return fail(fmt.Errorf("church folder %q: the name is reserved", id))
+			}
 			dir := filepath.Join(cfg.DataDir, id)
 			cc, err := readChurch(dir)
 			if err == nil {
@@ -227,15 +243,14 @@ func (a *App) Close() {
 	}
 }
 
-// tenantFor picks the church a request is for.
+// tenantFor picks the church a request is for: the one it names, else the
+// first the user sees. A church the user does not see is "no such church".
 func (a *App) tenantFor(r *http.Request) (*tenant, bool) {
 	id := r.URL.Query().Get("tenant")
 	if id == "" {
 		id = r.Header.Get("X-Tenant")
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, t := range a.tenants {
+	for _, t := range a.visible(a.userOf(r)) {
 		if id == "" || t.id == id {
 			return t, true
 		}
@@ -268,24 +283,25 @@ func (a *App) Handler() http.Handler {
 }
 
 func (a *App) handleTenants(w http.ResponseWriter, r *http.Request) {
-	a.mu.Lock()
+	u := a.userOf(r)
 	list := []TenantInfo{}
-	for _, t := range a.tenants {
-		list = append(list, t.info())
+	for _, t := range a.visible(u) {
+		list = append(list, a.infoFor(t, u))
 	}
-	a.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.cfg.DataDir != ""})
+	if len(list) == 0 {
+		writeError(w, http.StatusForbidden, errNoChurch())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.cfg.DataDir != "" && u.admin})
 }
 
 var reNotID = regexp.MustCompile(`[^a-z0-9]+`)
 
-// tenantID makes a folder-safe id from a church name.
+// tenantID makes a folder-safe id from a church name ("" if it has no letters
+// or digits). It may be reserved.
 func tenantID(name string) string {
 	r := strings.NewReplacer("æ", "ae", "ø", "o", "å", "a", "ä", "a", "ö", "o", "é", "e")
 	id := strings.Trim(reNotID.ReplaceAllString(r.Replace(strings.ToLower(name)), "-"), "-")
-	if id == RootTenant {
-		id = ""
-	}
 	return id
 }
 
@@ -311,6 +327,11 @@ func (a *App) nameTaken(t *tenant, name string) (string, bool) {
 }
 
 func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
+	u := a.userOf(r)
+	if !u.admin {
+		writeError(w, http.StatusForbidden, errors.New("only administrators can add churches"))
+		return
+	}
 	if a.cfg.DataDir == "" {
 		writeError(w, http.StatusNotFound, errors.New("adding churches needs --data-dir"))
 		return
@@ -328,6 +349,9 @@ func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 	id := tenantID(name)
 	if err == nil && id == "" {
 		err = errors.New("the name needs letters or digits")
+	}
+	if err == nil && reservedID(id) {
+		err = fmt.Errorf("the name %q is reserved: pick another", id)
 	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -352,7 +376,7 @@ func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.cfg.Base.Logger.Printf("added church %s (%s)", name, id)
-	writeJSON(w, http.StatusCreated, t.info())
+	writeJSON(w, http.StatusCreated, a.infoFor(t, u))
 }
 
 // handleChurchRename changes the display name of the selected church.
@@ -382,5 +406,5 @@ func (a *App) handleChurchRename(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, t.info())
+	writeJSON(w, http.StatusOK, a.infoFor(t, a.userOf(r)))
 }

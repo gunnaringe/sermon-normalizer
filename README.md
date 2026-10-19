@@ -60,15 +60,34 @@ the server from starting rather than being overwritten.
 |---|---|---|
 | `--data-dir` | | the folder with a folder per church (see above) |
 | `--root`, `--inbox` | | one church without a church folder, instead of `--data-dir`: its date folders and the inbox where new recordings arrive. Settings are not saved. |
+| `--groups-header` | | request header in which the login proxy sends the user's groups; turns on access control (below) |
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |
 | `--cache-days` | 30 | remove cached analyses not used for this long |
 | `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
 
-Churches: the dropdown in the header switches church (it only selects, there is no access control yet;
-a request names its church with `?tenant=<id>` or `X-Tenant`, and the first church is the default, so
-existing scripts such as `PUT api/inbox/files/<name>` keep working).
+Churches: the dropdown in the header switches church. A request names its church with
+`?tenant=<id>` or `X-Tenant`; without one it is the first church the user sees.
+
+### Access (which churches a user sees)
+
+Without `--groups-header` there is no access control: everyone sees every church and can add
+churches. With `--groups-header X-Forwarded-Groups` the app reads the user's groups (space-separated)
+from that header, which the login proxy must set, and nothing else:
+
+- a church `<id>` is for the members of the group **`sermon-studio-<id>`**
+- members of **`sermon-studio-admin`** see every church and are the only ones who can add churches
+  (the app tells them the group to create)
+- users in no matching group get a 403 page; a church they do not see answers as if it did not exist
+- **`admin`** (and `default`) cannot be a church id, so no church's group can ever be the
+  administrators' group: the name is refused when adding, and a church folder with that name stops
+  the server from starting
+
+The header is only trustworthy when every request comes through the proxy and the proxy replaces it
+(Traefik removes the headers named in `authResponseHeaders` before copying the auth response's).
+Clients that reach the app directly, such as `PUT api/inbox/files/<name>` from inside the cluster,
+have no groups and get nothing.
 
 The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path

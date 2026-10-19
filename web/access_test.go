@@ -1,0 +1,123 @@
+package web
+
+import (
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const groupsHeader = "X-Forwarded-Groups"
+
+func newAccessApp(t *testing.T) http.Handler {
+	t.Helper()
+	data := t.TempDir()
+	for _, id := range []string{"kirke-a", "kirke-b"} {
+		os.MkdirAll(filepath.Join(data, id, "Taler"), 0o755)
+	}
+	a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data, GroupsHeader: groupsHeader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a.Close)
+	return a.Handler()
+}
+
+func as(h http.Handler, groups, method, url, body string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, url, strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	if groups != "" {
+		r.Header.Set(groupsHeader, groups)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+func TestAccessChurchesFollowGroups(t *testing.T) {
+	h := newAccessApp(t)
+	type list struct {
+		Tenants []TenantInfo
+		Default string
+		CanAdd  bool
+	}
+	ids := func(l list) (s []string) {
+		for _, c := range l.Tenants {
+			s = append(s, c.ID)
+		}
+		return
+	}
+
+	// A member sees only their church, and it is their default.
+	l := decode[list](t, as(h, "other sermon-studio-kirke-b", "GET", "/api/tenants", ""))
+	if got := ids(l); len(got) != 1 || got[0] != "kirke-b" || l.Default != "kirke-b" || l.CanAdd || l.Tenants[0].Group != "" {
+		t.Errorf("member: %+v", l)
+	}
+	// An administrator sees all, learns the groups and can add churches.
+	l = decode[list](t, as(h, "sermon-studio-admin", "GET", "/api/tenants", ""))
+	if got := ids(l); len(got) != 2 || !l.CanAdd || l.Tenants[1].Group != "sermon-studio-kirke-b" {
+		t.Errorf("admin: %+v", l)
+	}
+	// Other groups give nothing, and neither does a missing header.
+	for _, g := range []string{"", "kirke-a", "sermon-studio-kirke", "sermon-studio-default"} {
+		if w := as(h, g, "GET", "/api/tenants", ""); w.Code != http.StatusForbidden {
+			t.Errorf("groups %q: status %d", g, w.Code)
+		}
+	}
+}
+
+func TestAccessEveryRouteChecksChurch(t *testing.T) {
+	h := newAccessApp(t)
+	member := "sermon-studio-kirke-a"
+	for _, url := range []string{"/api/folders?tenant=kirke-b", "/api/config?tenant=kirke-b", "/api/names?tenant=kirke-b"} {
+		if w := as(h, member, "GET", url, ""); w.Code != http.StatusNotFound {
+			t.Errorf("GET %s: status %d, want 404", url, w.Code)
+		}
+		if w := as(h, member, "GET", strings.Replace(url, "kirke-b", "kirke-a", 1), ""); w.Code != http.StatusOK {
+			t.Errorf("own church %s: status %d", url, w.Code)
+		}
+	}
+	if w := as(h, member, "PUT", "/api/church?tenant=kirke-b", `{"name":"Mine now"}`); w.Code != http.StatusNotFound {
+		t.Errorf("rename of another church: status %d", w.Code)
+	}
+	if w := as(h, "", "GET", "/api/folders", ""); w.Code != http.StatusNotFound {
+		t.Errorf("no groups: status %d, want 404", w.Code)
+	}
+}
+
+func TestAccessOnlyAdminsAddChurches(t *testing.T) {
+	h := newAccessApp(t)
+	if w := as(h, "sermon-studio-kirke-a", "POST", "/api/tenants", `{"name":"Kirke C"}`); w.Code != http.StatusForbidden {
+		t.Errorf("member adding: status %d", w.Code)
+	}
+	w := as(h, "sermon-studio-admin", "POST", "/api/tenants", `{"name":"Kirke C"}`)
+	if got := decode[TenantInfo](t, w); w.Code != http.StatusCreated || got.Group != "sermon-studio-kirke-c" {
+		t.Errorf("admin adding: %d %+v", w.Code, got)
+	}
+	// The new church is not visible to the other churches' members.
+	if w := as(h, "sermon-studio-kirke-a", "GET", "/api/folders?tenant=kirke-c", ""); w.Code != http.StatusNotFound {
+		t.Errorf("new church for another member: status %d", w.Code)
+	}
+}
+
+// "admin" is the administrators' group, so no church can have that id; the
+// same goes for "default".
+func TestAdminIsReserved(t *testing.T) {
+	h := newAccessApp(t)
+	for _, name := range []string{"admin", "Admin", " ADMIN ", "default"} {
+		w := as(h, "sermon-studio-admin", "POST", "/api/tenants", `{"name":"`+name+`"}`)
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "reserved") {
+			t.Errorf("%q: %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	// ... also when someone puts the folder there by hand.
+	data := t.TempDir()
+	os.MkdirAll(filepath.Join(data, "admin", "Taler"), 0o755)
+	if a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data}); err == nil {
+		a.Close()
+		t.Error("a church folder named admin started")
+	}
+}

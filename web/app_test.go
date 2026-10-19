@@ -103,7 +103,7 @@ func TestTenantsSurviveRestart(t *testing.T) {
 }
 
 func TestTenantID(t *testing.T) {
-	for in, want := range map[string]string{"Norkirken Melhus": "norkirken-melhus", " Å/ø – Test ": "a-o-test", "default": "", "!!": ""} {
+	for in, want := range map[string]string{"Norkirken Melhus": "norkirken-melhus", " Å/ø – Test ": "a-o-test", "default": "default", "Admin": "admin", "!!": ""} {
 		if got := tenantID(in); got != want {
 			t.Errorf("tenantID(%q) = %q, want %q", in, got, want)
 		}
@@ -130,7 +130,7 @@ func TestChurchFolders(t *testing.T) {
 	}
 	defer a.Close()
 	list := decode[struct{ Tenants []TenantInfo }](t, do(a.Handler(), "GET", "/api/tenants", "")).Tenants
-	want := []TenantInfo{{"kirke-b", "kirke-b"}, {"norkirken-melhus", "Norkirken Melhus"}}
+	want := []TenantInfo{{ID: "kirke-b", Name: "kirke-b"}, {ID: "norkirken-melhus", Name: "Norkirken Melhus"}}
 	if !reflect.DeepEqual(list, want) {
 		t.Errorf("churches %+v, want %+v", list, want)
 	}

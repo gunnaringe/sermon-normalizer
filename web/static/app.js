@@ -278,6 +278,7 @@ async function churchPicker() {
           const t = await api('POST', 'api/tenants', { name });
           data.tenants.push(t);
           setTenant(t.id);
+          if (t.group) alertDialog({ title: 'Church added', body: `Give people access by adding them to the group ${t.group} in Pocket ID.` });
         } catch (err) { alertDialog({ body: err.message }); }
       }
     } else {
