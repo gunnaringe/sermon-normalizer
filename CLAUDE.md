@@ -51,6 +51,10 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/inbox.go`: inbox file names, date suggestion, `newRawFolder`.
 - `web/inboxwatch.go`: `ingest` moves settled inbox files straight to their date
   folder (convert + prepare happen there).
+- `web/share.go`: shares (codes for the public upload page), `<church>/shares.json`, the studio's
+  `api/shares` (only with `--share-listen`). `web/sharesite.go`: the public listener
+  (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
+  `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
 - `web/static/`: plain JS, no build. `dialog.js` = confirm/alert/prompt in the app's look
   (never use the browser's `confirm`/`alert`/`prompt`). `vendor/wavesurfer/` is wavesurfer.js
   7.12.12, unmodified.
@@ -73,6 +77,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.
 - Messages from `normalizer` show in the web UI: use the form's names
   (Start, Save and generate, mono), not flags. English everywhere.
+- The public upload page is on the internet without a login: add nothing to `ShareHandler`
+  that reads files or reaches the studio; `TestSharePublicIsSeparate` checks this.
 - Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`
   in `web/e2e/package.json`.
 

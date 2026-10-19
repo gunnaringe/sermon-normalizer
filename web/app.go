@@ -41,6 +41,8 @@ type AppConfig struct {
 	// GroupsHeader is the request header in which the login proxy sends the
 	// user's groups. "" = no access control (see access.go).
 	GroupsHeader string
+	// Share turns on shares (codes for the public upload page); nil = off.
+	Share *ShareOptions
 }
 
 // churchConfig is church.json. Everything is optional: a church is a folder
@@ -64,6 +66,8 @@ type tenant struct {
 	cfg churchConfig
 	srv *Server
 	api http.Handler
+
+	shares []*Share // guarded by App.shareMu
 }
 
 func (t *tenant) info() TenantInfo {
@@ -98,6 +102,17 @@ type App struct {
 	createMu sync.Mutex // one church is added at a time
 	mu       sync.Mutex
 	tenants  []*tenant
+
+	share   *shareState // nil = shares are off
+	shareMu sync.Mutex  // every church's shares and uploads in progress
+}
+
+// shareState is what the public upload page keeps in memory.
+type shareState struct {
+	limits *limiter
+	busy   map[string]bool // uploads receiving a chunk now
+	done   chan struct{}
+	wg     sync.WaitGroup
 }
 
 // NewApp starts the root church (if any) and every church folder in the
@@ -107,6 +122,9 @@ func NewApp(cfg AppConfig) (*App, error) {
 		cfg.Base.Logger = log.New(os.Stderr, "", log.LstdFlags)
 	}
 	a := &App{cfg: cfg, limits: newLimits()}
+	if cfg.Share != nil {
+		a.share = &shareState{limits: newLimiter(cfg.Share.Limits), busy: map[string]bool{}, done: make(chan struct{})}
+	}
 	fail := func(err error) (*App, error) { a.Close(); return nil, err }
 	if cfg.Base.Root != "" {
 		if _, err := a.start(RootTenant, "", churchConfig{}); err != nil {
@@ -134,6 +152,10 @@ func NewApp(cfg AppConfig) (*App, error) {
 	}
 	if len(a.tenants) == 0 {
 		return nil, errors.New("no churches: set --root, or --data-dir with a folder per church (<id>/Taler)")
+	}
+	if a.share != nil {
+		a.share.wg.Add(1)
+		go a.keepSweeping()
 	}
 	return a, nil
 }
@@ -206,6 +228,12 @@ func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
 		cfg.SaveMeta = func(m Meta) error { return a.update(t, func(c *churchConfig) { c.Meta = &m }) }
 		cfg.SaveNames = func(n NameList) error { return a.update(t, func(c *churchConfig) { c.Names = &n }) }
 	}
+	if dir != "" {
+		var err error
+		if t.shares, err = readShares(dir); err != nil {
+			return nil, err
+		}
+	}
 	srv, err := New(cfg)
 	if err != nil {
 		return nil, err
@@ -236,6 +264,10 @@ func (a *App) update(t *tenant, change func(*churchConfig)) error {
 
 // Close stops every church's background work.
 func (a *App) Close() {
+	if a.share != nil {
+		close(a.share.done)
+		a.share.wg.Wait()
+	}
 	for _, t := range a.tenants {
 		if t.srv != nil {
 			t.srv.Close()
@@ -266,6 +298,11 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tenants", a.handleTenants)
 	mux.HandleFunc("POST /api/tenants", a.handleTenantCreate)
 	mux.HandleFunc("PUT /api/church", a.handleChurchRename)
+	if a.share != nil {
+		mux.HandleFunc("GET /api/shares", a.handleShares)
+		mux.HandleFunc("POST /api/shares", a.handleShareCreate)
+		mux.HandleFunc("POST /api/shares/{id}/{action}", a.handleShareChange)
+	}
 	toChurch := func(w http.ResponseWriter, r *http.Request) {
 		t, ok := a.tenantFor(r)
 		if !ok {
@@ -292,7 +329,7 @@ func (a *App) handleTenants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, errNoChurch())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.cfg.DataDir != "" && u.admin})
+	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.cfg.DataDir != "" && u.admin, "shares": a.share != nil})
 }
 
 var reNotID = regexp.MustCompile(`[^a-z0-9]+`)

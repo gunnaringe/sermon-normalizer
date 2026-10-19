@@ -1,0 +1,393 @@
+package web
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+)
+
+// Shares let people without a login send recordings to a church's inbox:
+// an admin makes a share in the studio and hands out its code (or a link
+// with the code in the fragment); the public upload page (ShareHandler, on
+// its own listener) takes the code and nothing else. The code is only shown
+// when it is made; a church keeps the SHA-256 of it in <church>/shares.json.
+
+const sharesFile = "shares.json"
+
+// ShareOptions turn on the public upload page.
+type ShareOptions struct {
+	URL      string // public address of the upload page, for links; "" = only the code is shown
+	IPHeader string // header the proxy puts the client's address in; "" = the connection's address
+	Limits   RateLimits
+}
+
+// shareTypes are what a share can accept: what the inbox takes in.
+var shareTypes = []string{".wav", ".flac"}
+
+const (
+	defaultShareFileSize = 4 << 30
+	maxShareFileSize     = 64 << 30
+	shareLogMax          = 200            // uploads listed per share; the counts cover all
+	pendingStale         = 24 * time.Hour // an upload that stopped this long ago is dropped
+	diskMargin           = 1 << 30        // free space left after an upload
+)
+
+// Share is one code and what it allows.
+type Share struct {
+	ID          string     `json:"id"`
+	Hash        string     `json:"hash"` // SHA-256 of the code, hex
+	Hint        string     `json:"hint"` // the code's last four characters, to tell shares apart
+	Label       string     `json:"label"`
+	Created     time.Time  `json:"created"`
+	Expires     *time.Time `json:"expires,omitempty"`
+	MaxUploads  int        `json:"maxUploads,omitempty"` // 0 = no limit
+	MaxFileSize int64      `json:"maxFileSize"`
+	MaxTotal    int64      `json:"maxTotal,omitempty"` // bytes over all uploads; 0 = no limit
+	Types       []string   `json:"types"`
+	Revoked     bool       `json:"revoked,omitempty"`
+
+	Count   int                       `json:"count"` // finished uploads
+	Bytes   int64                     `json:"bytes"`
+	Log     []ShareUpload             `json:"log,omitempty"`
+	Pending map[string]*pendingUpload `json:"pending,omitempty"` // by upload id
+}
+
+// ShareUpload is a finished upload, as listed to the admin.
+type ShareUpload struct {
+	Name string    `json:"name"` // as it arrived in the inbox
+	Size int64     `json:"size"`
+	IP   string    `json:"ip"`
+	Time time.Time `json:"time"`
+}
+
+// pendingUpload is an upload that has been started; it counts against the
+// share's limits until it finishes or goes stale. Kept in shares.json so an
+// upload continues after a restart.
+type pendingUpload struct {
+	Name     string    `json:"name"` // the cleaned name it will get
+	Size     int64     `json:"size"`
+	Modified int64     `json:"modified,omitempty"` // ms since 1970, from the browser
+	IP       string    `json:"ip"`
+	Started  time.Time `json:"started"`
+}
+
+// state says whether a share takes uploads: "" if it does, else why not.
+func (sh *Share) state(now time.Time) string {
+	switch {
+	case sh.Revoked:
+		return "revoked"
+	case sh.Expires != nil && now.After(*sh.Expires):
+		return "expired"
+	case sh.MaxUploads > 0 && sh.Count >= sh.MaxUploads:
+		return "used up"
+	case sh.MaxTotal > 0 && sh.Bytes >= sh.MaxTotal:
+		return "full"
+	}
+	return ""
+}
+
+// reserved is what started uploads hold of the share's limits.
+func (sh *Share) reserved() (n int, bytes int64) {
+	for _, p := range sh.Pending {
+		n++
+		bytes += p.Size
+	}
+	return n, bytes
+}
+
+// room says whether one more upload of size bytes fits.
+func (sh *Share) room(size int64) error {
+	n, bytes := sh.reserved()
+	if sh.MaxUploads > 0 && sh.Count+n >= sh.MaxUploads {
+		return errors.New("this code takes no more uploads (others are still uploading)")
+	}
+	if size > sh.MaxFileSize {
+		return fmt.Errorf("the file is larger than the %s this code allows", sizeText(sh.MaxFileSize))
+	}
+	if sh.MaxTotal > 0 && sh.Bytes+bytes+size > sh.MaxTotal {
+		return errors.New("the file does not fit in what is left for this code")
+	}
+	return nil
+}
+
+func sizeText(n int64) string {
+	if n >= 1<<30 {
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	}
+	return fmt.Sprintf("%d MB", n>>20)
+}
+
+// Codes are 16 characters from an alphabet without look-alikes (no 0/O,
+// 1/I), 80 bits, shown in groups of four.
+const codeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+func newCode() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	var sb strings.Builder
+	for i, c := range b {
+		if i > 0 && i%4 == 0 {
+			sb.WriteByte('-')
+		}
+		sb.WriteByte(codeAlphabet[c%32]) // 256 is a multiple of 32: no bias
+	}
+	return sb.String()
+}
+
+// normCode takes a code as typed: any case, with or without dashes and spaces.
+func normCode(s string) string {
+	s = strings.ToUpper(s)
+	return strings.Map(func(r rune) rune {
+		if r == '-' || r == ' ' {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func hashCode(code string) string {
+	sum := sha256.Sum256([]byte(normCode(code)))
+	return hex.EncodeToString(sum[:])
+}
+
+func randomID(n int) string {
+	b := make([]byte, n)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func readShares(dir string) ([]*Share, error) {
+	b, err := os.ReadFile(filepath.Join(dir, sharesFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	var list []*Share
+	if err == nil {
+		err = json.Unmarshal(b, &list)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", sharesFile, err)
+	}
+	return list, nil
+}
+
+// saveShares writes a church's shares atomically; call with a.shareMu held.
+// The root church has no folder: its shares stay in memory.
+func (a *App) saveShares(t *tenant) error {
+	if t.dir == "" {
+		return nil
+	}
+	b, err := json.MarshalIndent(t.shares, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(t.dir, sharesFile)
+	tmp := path + ".partial"
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// findShare is the church and share of a code, or nil.
+func (a *App) findShare(code string) (*tenant, *Share) {
+	want := []byte(hashCode(code))
+	a.mu.Lock()
+	tenants := slices.Clone(a.tenants)
+	a.mu.Unlock()
+	a.shareMu.Lock()
+	defer a.shareMu.Unlock()
+	for _, t := range tenants {
+		for _, sh := range t.shares {
+			if subtle.ConstantTimeCompare([]byte(sh.Hash), want) == 1 {
+				return t, sh
+			}
+		}
+	}
+	return nil, nil
+}
+
+// shareView is a share as the admin sees it.
+type shareView struct {
+	ID          string        `json:"id"`
+	Hint        string        `json:"hint"`
+	Label       string        `json:"label"`
+	Created     time.Time     `json:"created"`
+	Expires     *time.Time    `json:"expires,omitempty"`
+	MaxUploads  int           `json:"maxUploads"`
+	MaxFileSize int64         `json:"maxFileSize"`
+	MaxTotal    int64         `json:"maxTotal"`
+	Types       []string      `json:"types"`
+	State       string        `json:"state"` // "" = open
+	Count       int           `json:"count"`
+	Bytes       int64         `json:"bytes"`
+	Uploading   int           `json:"uploading"`
+	Log         []ShareUpload `json:"log"`
+}
+
+func (sh *Share) view(now time.Time) shareView {
+	n, _ := sh.reserved()
+	log := slices.Clone(sh.Log)
+	slices.Reverse(log) // newest first
+	if log == nil {
+		log = []ShareUpload{}
+	}
+	return shareView{sh.ID, sh.Hint, sh.Label, sh.Created, sh.Expires, sh.MaxUploads, sh.MaxFileSize,
+		sh.MaxTotal, sh.Types, sh.state(now), sh.Count, sh.Bytes, n, log}
+}
+
+// adminTenant is the church of a request to the studio's share API.
+func (a *App) adminTenant(w http.ResponseWriter, r *http.Request) (*tenant, bool) {
+	t, ok := a.tenantFor(r)
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("no such church"))
+	}
+	return t, ok
+}
+
+// handleShares lists the church's shares: GET api/shares.
+func (a *App) handleShares(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	a.shareMu.Lock()
+	now := time.Now()
+	list := []shareView{}
+	for _, sh := range t.shares {
+		list = append(list, sh.view(now))
+	}
+	a.shareMu.Unlock()
+	slices.Reverse(list) // newest first
+	writeJSON(w, http.StatusOK, map[string]any{
+		"shares": list, "url": a.cfg.Share.URL, "types": shareTypes,
+		"inbox": t.srv.cfg.Inbox != "", "defaultFileSize": defaultShareFileSize,
+	})
+}
+
+// handleShareCreate makes a share and returns its code, the only time it is
+// shown: POST api/shares.
+func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	if t.srv.cfg.Inbox == "" {
+		writeError(w, http.StatusBadRequest, errNoInbox)
+		return
+	}
+	var q struct {
+		Label       string     `json:"label"`
+		Expires     *time.Time `json:"expires"` // nil = never
+		MaxUploads  int        `json:"maxUploads"`
+		MaxFileSize int64      `json:"maxFileSize"`
+		MaxTotal    int64      `json:"maxTotal"`
+		Types       []string   `json:"types"`
+	}
+	if err := decodeRequest(r, &q); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	label := strings.Join(strings.Fields(q.Label), " ")
+	var types []string
+	for _, ext := range shareTypes {
+		if slices.Contains(q.Types, ext) {
+			types = append(types, ext)
+		}
+	}
+	if q.MaxFileSize == 0 {
+		q.MaxFileSize = defaultShareFileSize
+	}
+	now := time.Now()
+	var err error
+	switch {
+	case label == "" || len(label) > 80 || strings.ContainsFunc(label, func(r rune) bool { return r < ' ' }):
+		err = errors.New("give the share a name (up to 80 characters)")
+	case len(types) == 0 || len(types) != len(q.Types):
+		err = fmt.Errorf("choose file types from %s", strings.Join(shareTypes, ", "))
+	case q.MaxFileSize < 1<<20 || q.MaxFileSize > maxShareFileSize:
+		err = fmt.Errorf("the largest file must be between 1 MB and %s", sizeText(maxShareFileSize))
+	case q.MaxUploads < 0 || q.MaxTotal < 0:
+		err = errors.New("limits cannot be negative")
+	case q.Expires != nil && !q.Expires.After(now):
+		err = errors.New("the expiry is in the past")
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	code := newCode()
+	sh := &Share{ID: randomID(6), Hash: hashCode(code), Hint: code[len(code)-4:], Label: label, Created: now.UTC(),
+		MaxUploads: q.MaxUploads, MaxFileSize: q.MaxFileSize, MaxTotal: q.MaxTotal, Types: types}
+	if q.Expires != nil {
+		e := q.Expires.UTC()
+		sh.Expires = &e
+	}
+	a.shareMu.Lock()
+	t.shares = append(t.shares, sh)
+	err = a.saveShares(t)
+	if err != nil {
+		t.shares = t.shares[:len(t.shares)-1]
+	}
+	view := sh.view(now)
+	a.shareMu.Unlock()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	a.cfg.Base.Logger.Printf("share: %s made share %s (%q)", t.id, sh.ID, label)
+	writeJSON(w, http.StatusCreated, map[string]any{"share": view, "code": code})
+}
+
+// handleShareChange revokes or deletes a share:
+// POST api/shares/{id}/revoke, POST api/shares/{id}/delete. Deleting also
+// drops the uploads in progress.
+func (a *App) handleShareChange(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	id, action := r.PathValue("id"), r.PathValue("action")
+	if action != "revoke" && action != "delete" {
+		writeError(w, http.StatusNotFound, errors.New("no such action"))
+		return
+	}
+	a.shareMu.Lock()
+	defer a.shareMu.Unlock()
+	i := slices.IndexFunc(t.shares, func(sh *Share) bool { return sh.ID == id })
+	if i < 0 {
+		writeError(w, http.StatusNotFound, errors.New("no such share"))
+		return
+	}
+	sh := t.shares[i]
+	before, wasRevoked := slices.Clone(t.shares), sh.Revoked
+	if action == "revoke" {
+		sh.Revoked = true
+	} else {
+		t.shares = slices.Delete(t.shares, i, i+1)
+	}
+	if err := a.saveShares(t); err != nil {
+		sh.Revoked = wasRevoked
+		t.shares = before
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if action == "delete" {
+		for uid := range sh.Pending {
+			os.Remove(partialPath(t, uid))
+		}
+	}
+	a.cfg.Base.Logger.Printf("share: %s %sd share %s (%q)", t.id, action, sh.ID, sh.Label)
+	writeJSON(w, http.StatusOK, map[string]string{"id": id})
+}

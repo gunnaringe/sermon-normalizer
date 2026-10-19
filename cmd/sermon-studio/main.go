@@ -39,6 +39,25 @@ func run() error {
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
 	ffBin := flag.String("ffmpeg", "ffmpeg", "path to ffmpeg")
+	shareListen := flag.String("share-listen", "", "address for the public upload page, where recordings are sent with a code made in the studio (Settings → Shares); \"\" = off")
+	shareURL := flag.String("share-url", "", "the upload page's public address (e.g. https://upload-sermons.example.org/), for share links")
+	shareIPHeader := flag.String("share-ip-header", "", "header the proxy puts the client's address in (Cloudflare: CF-Connecting-IP); used for rate limits")
+	var limits web.RateLimits
+	for _, l := range []struct {
+		v    *int
+		name string
+		d    int
+		help string
+	}{
+		{&limits.FailsPerIP, "share-fails-per-ip", web.DefaultRateLimits.FailsPerIP, "wrong codes from one address in 10 minutes before it is blocked for an hour"},
+		{&limits.FailsTotal, "share-fails-total", web.DefaultRateLimits.FailsTotal, "wrong codes from everyone in 10 minutes before codes are refused for 10 minutes"},
+		{&limits.RequestsPerIP, "share-requests-per-ip", web.DefaultRateLimits.RequestsPerIP, "requests per minute to the upload page from one address"},
+		{&limits.RequestsTotal, "share-requests-total", web.DefaultRateLimits.RequestsTotal, "requests per minute to the upload page from everyone"},
+		{&limits.UploadsPerIP, "share-uploads-per-ip", web.DefaultRateLimits.UploadsPerIP, "chunks received at once from one address"},
+		{&limits.UploadsTotal, "share-uploads-total", web.DefaultRateLimits.UploadsTotal, "chunks received at once from everyone"},
+	} {
+		flag.IntVar(l.v, l.name, l.d, l.help)
+	}
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -54,10 +73,15 @@ func run() error {
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	web.CleanCache(*cacheDir, time.Duration(*cacheDays)*24*time.Hour)
+	var share *web.ShareOptions
+	if *shareListen != "" {
+		share = &web.ShareOptions{URL: *shareURL, IPHeader: *shareIPHeader, Limits: limits}
+	}
 	srv, err := web.NewApp(web.AppConfig{
 		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir,
 			Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
 		DataDir: *dataDir, GroupsHeader: *groupsHeader,
+		Share: share,
 	})
 	if err != nil {
 		return err
@@ -68,9 +92,17 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	errc := make(chan error, 1)
+	errc := make(chan error, 2)
 	go func() { errc <- hs.ListenAndServe() }()
 	logger.Printf("sermon-studio %s listening on %s (data dir %q, root %q)", version, *listen, *dataDir, *root)
+	// The public upload page: chunks are small, so it can have timeouts.
+	var ss *http.Server
+	if share != nil {
+		ss = &http.Server{Addr: *shareListen, Handler: srv.ShareHandler(), ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout: 5 * time.Minute, WriteTimeout: 6 * time.Minute, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 16 << 10}
+		go func() { errc <- ss.ListenAndServe() }()
+		logger.Printf("upload page listening on %s", *shareListen)
+	}
 
 	select {
 	case err := <-errc:
@@ -79,6 +111,11 @@ func run() error {
 	case <-ctx.Done():
 	}
 	logger.Print("shutting down: cancelling jobs and waiting for them to clean up")
+	if ss != nil { // first, so no upload finishes into a closed app
+		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ss.Shutdown(sctx)
+		cancel()
+	}
 	srv.Close() // ends event streams too, so Shutdown does not wait on them
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -84,7 +84,7 @@ button:hover:not(:disabled), .button:hover { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.danger { background: var(--error); border-color: var(--error); color: #fff; font-weight: 600; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
-input[type=text], input[type=number], input[type=date] {
+input[type=text], input[type=number], input[type=date], input[type=datetime-local] {
   font: inherit;
   padding: 0.3rem 0.5rem;
   border: 1px solid var(--line);
@@ -164,3 +164,14 @@ ul.names li { border: 1px solid var(--line); border-radius: 1rem; padding: 0.1re
 .dialog-body ul { margin: 0.4rem 0 0.6rem; padding-left: 1.3rem; }
 .dialog-body input[type=text] { width: 100%; box-sizing: border-box; margin-top: 0.3rem; }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.1rem; }
+
+main.narrow { max-width: 44rem; }
+.code-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.code-form input { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.1rem; letter-spacing: 0.06em; width: 16em; text-transform: uppercase; }
+.files { list-style: none; padding: 0; margin: 0.8rem 0; display: grid; gap: 0.6rem; }
+.files li { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0.6rem 0.8rem; }
+.files li p { margin: 0.2rem 0; }
+.share-code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.3rem; letter-spacing: 0.06em; user-select: all; }
+.share-link { word-break: break-all; user-select: all; }
+.share-form { display: grid; grid-template-columns: 11em minmax(10em, 22em); align-items: center; gap: 0.5rem 0.8rem; }
+.share-form .wide { grid-column: 1 / -1; }

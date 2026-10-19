@@ -66,6 +66,12 @@ the server from starting rather than being overwritten.
 | `--cache-days` | 30 | remove cached analyses not used for this long |
 | `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
+| `--share-listen` | | address of the public upload page (see [Shares](#shares)); unset = no shares |
+| `--share-url` | | the upload page's public address, so the studio can show share links |
+| `--share-ip-header` | | header with the client's address, for the rate limits (Cloudflare: `CF-Connecting-IP`) |
+| `--share-fails-per-ip`, `--share-fails-total` | 5, 30 | wrong codes in 10 minutes before an address is blocked for an hour / codes are refused for everyone for 10 minutes |
+| `--share-requests-per-ip`, `--share-requests-total` | 120, 1200 | requests per minute to the upload page |
+| `--share-uploads-per-ip`, `--share-uploads-total` | 3, 10 | chunks received at the same time |
 
 Churches: the dropdown in the header switches church. A request names its church with
 `?tenant=<id>` or `X-Tenant`; without one it is the first church the user sees.
@@ -142,6 +148,26 @@ cancels running jobs and waits for them to clean up.
 **A WAV is converted to FLAC as soon as it arrives** (upload, inbox, or opening a folder that
 has one), verified identical by MD5 of the audio, and then replaces the WAV. Right after, the
 server prepares the waveform and the listening preview, so cutting can start at once.
+
+### Shares
+
+With `--share-listen`, people without a login can send recordings to a church's inbox on a
+separate, public upload page, with a code. **Shares** in the studio makes one: a name, the file
+types (`.wav`, `.flac`), the largest file, and optionally how many files, how much in all and an
+expiry. The code (`XXXX-XXXX-XXXX-XXXX`, 80 bits) and a link with it (`<share-url>#code=...`) are
+shown once; the church keeps only a hash, in `<church>/shares.json`, with the uploads made (name,
+size, address, time). A share can be revoked (refused at once, also mid-upload) or deleted.
+
+The upload page asks for the code, or takes it from the link and removes it from the address bar
+(it is in the fragment, so it never reaches the server's or a proxy's logs). Files go in 16 MB
+chunks, so they pass Cloudflare, and continue after a dropped connection, a reload or a restart.
+They are written as `Innboks/.share-<id>.partial`, checked to be the type they claim, and renamed
+when complete (never over a file: `name (2).wav`); then they are ingested like any inbox file.
+
+Run the upload page on its own host, **not** behind the login proxy, and keep the studio behind
+it. The page serves only itself and `api/share/*`: nothing of the studio, nothing to list or
+download. Every request carries the code; wrong codes and requests are limited per address and in
+all (flags above), and an upload is refused when the disk would get within 1 GB of full.
 
 ### Tags
 

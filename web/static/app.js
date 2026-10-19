@@ -2,6 +2,7 @@
 import { api, q, h, formatSize, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
+import { sharesView } from './shares.js';
 
 const view = document.getElementById('view');
 let config = { inbox: false, defaults: {} };
@@ -13,12 +14,13 @@ async function route() {
   const hash = decodeURIComponent(location.hash.slice(1)) || '/';
   const [, section, ...rest] = hash.split('/');
   const path = rest.join('/');
-  const nav = ['upload', 'settings'].includes(section) ? section : 'folders';
+  const nav = ['upload', 'shares', 'settings'].includes(section) ? section : 'folders';
   for (const a of document.querySelectorAll('header nav a')) a.classList.toggle('active', a.dataset.nav === nav);
   try {
     if (section === 'folder') teardown = await editorView(view, path, config);
     else if (section === 'upload') uploadView();
     else if (section === 'settings') teardown = await settingsView();
+    else if (section === 'shares') await sharesView(view);
     else await foldersView(section === 'folders' ? path : '');
   } catch (err) {
     view.replaceChildren(h('p', { class: 'error' }, err.message));
@@ -262,6 +264,7 @@ async function settingsView() {
 async function churchPicker() {
   const select = document.getElementById('church');
   let data = await api('GET', 'api/tenants');
+  document.querySelector('[data-nav=shares]').hidden = !data.shares;
   if (!data.tenants.some((t) => t.id === currentTenant())) setTenant(data.default);
   const fill = () => {
     select.replaceChildren(...data.tenants.map((t) => h('option', { value: t.id, selected: t.id === currentTenant() }, t.name)),

@@ -442,3 +442,52 @@ test('settings: rename the church; the dropdown follows', async ({ page }) => {
   await page.reload();
   await expect(page.locator('input[name=church]')).toHaveValue('Norkirken Melhus');
 });
+
+test('shares: make a code in the studio, send a recording with the link', async ({ page, context }) => {
+  await page.goto('#/shares');
+  await page.locator('input[name=label]').fill('Sound desk');
+  await page.locator('input[name=maxUploads]').fill('3');
+  await page.getByRole('button', { name: 'Make share' }).click();
+  const dialog = page.getByRole('dialog');
+  const link = await dialog.locator('.share-link').textContent();
+  expect(link).toMatch(/^http:\/\/localhost:8081\/#code=[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
+  await page.screenshot({ path: path.join(shots, 'share-made.png') });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('open');
+
+  // The link fills in the code, which then leaves the address bar.
+  const up = await context.newPage();
+  await up.goto(link);
+  await expect(up.getByRole('heading', { name: 'Sound desk' })).toBeVisible();
+  expect(up.url()).not.toContain('code');
+  await expect(up.getByText('3 more files')).toBeVisible();
+  await up.locator('input[type=file]').setInputFiles({
+    name: 'Gudstjeneste 2026-09-13.flac', mimeType: 'audio/flac',
+    buffer: fs.readFileSync(path.join(DATA, 'upload.flac')),
+  });
+  await expect(up.getByText('Received. Thank you!')).toBeVisible({ timeout: 30_000 });
+  await expect(up.getByText('2 more files')).toBeVisible();
+  await up.screenshot({ path: path.join(shots, 'share-upload.png') });
+  const raw = path.join(DATA, 'root', '2026', '2026-09-13', '2026-09-13_raw.flac');
+  await expect.poll(() => fs.existsSync(raw), { timeout: 30_000 }).toBe(true);
+  expect(fs.readFileSync(raw).equals(fs.readFileSync(path.join(DATA, 'upload.flac')))).toBe(true);
+
+  // The studio lists the upload.
+  await page.reload();
+  await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('1 file received');
+
+  // A wrong code is refused.
+  const other = await context.newPage();
+  await other.goto('http://localhost:8081/');
+  await other.getByLabel('Code').fill('AAAA-BBBB-CCCC-DDDD');
+  await other.getByRole('button', { name: 'Continue' }).click();
+  await expect(other.getByRole('alert')).toContainText('unknown code');
+
+  // Revoked: the code no longer works.
+  page.once('dialog', () => {});
+  await page.locator('.share', { hasText: 'Sound desk' }).getByRole('button', { name: 'Revoke' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click();
+  await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('revoked');
+  await up.reload();
+  await expect(up.getByRole('alert')).toContainText('withdrawn');
+});
