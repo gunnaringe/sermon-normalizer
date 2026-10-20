@@ -477,7 +477,6 @@ test('a format that is not chosen any more is deleted by Regenerate', async ({ p
 test('upload straight into a new date folder, in chunks', async ({ page }) => {
   await page.goto('');
   await page.evaluate(() => localStorage.setItem('uploadChunk', String(64 * 1024))); // several chunks
-  await page.getByRole('link', { name: 'Upload' }).click();
   await page.locator('input[type=file]').setInputFiles({
     name: 'Gudstjeneste 2026-09-27.flac',
     mimeType: 'audio/flac',
@@ -492,7 +491,7 @@ test('upload straight into a new date folder, in chunks', async ({ page }) => {
   expect(fs.readdirSync(dir).filter((f) => f !== 'recording.json')).toEqual(['2026-09-27_raw.flac']);
   expect(fs.readFileSync(path.join(dir, '2026-09-27_raw.flac')).equals(fs.readFileSync(path.join(DATA, 'upload.flac')))).toBe(true);
   // The date now has a recording: a second upload to it is refused.
-  await page.getByRole('link', { name: 'Upload' }).click();
+  await page.getByRole('link', { name: 'Folders' }).click();
   await page.locator('input[type=file]').setInputFiles({ name: 'again 2026-09-27.flac', mimeType: 'audio/flac', buffer: Buffer.from('x') });
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page.getByText('already has a raw recording')).toBeVisible();
@@ -587,13 +586,15 @@ test('settings: default tags are saved and used on the sermon page', async ({ pa
 });
 
 test('a second sermon the same day: upload with a name, then rename', async ({ page }) => {
-  await page.goto('#/upload');
+  await page.goto('');
+  await page.screenshot({ path: path.join(shots, 'folders-upload.png') });
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
   await page.locator('input[name=date]').fill('2026-11-01');
+  await page.screenshot({ path: path.join(shots, 'folders-upload-chosen.png') });
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page).toHaveURL(/#\/folder\/2026\/2026-11-01$/);
 
-  await page.goto('#/upload');
+  await page.goto('');
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
   await page.locator('input[name=date]').fill('2026-11-01');
   await page.getByRole('button', { name: 'Upload' }).click();
@@ -614,14 +615,14 @@ test('a second sermon the same day: upload with a name, then rename', async ({ p
 test('names: remembered, suggested, and tidied in settings', async ({ page }) => {
   // Naming a sermon on upload remembers the name (others may be there from earlier tests).
 
-  await page.goto('#/upload');
+  await page.goto('');
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
   await page.locator('input[name=date]').fill('2026-12-06');
   await page.locator('input[aria-label=Name]').fill('Engangs');
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page).toHaveURL(/#\/folder\/2026\/2026-12-06/);
 
-  await page.goto('#/upload');
+  await page.goto('');
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
   await expect(page.locator('datalist option[value=Engangs]')).toHaveCount(1);
 
@@ -647,7 +648,9 @@ test('settings: rename the church; the dropdown follows', async ({ page }) => {
 });
 
 test('shares: make a code in the studio, send a recording with the link', async ({ page, context }) => {
-  await page.goto('#/shares');
+  await page.goto('#/shares'); // the old address leads to the shares in the settings
+  await expect(page).toHaveURL(/#\/settings\/shares$/);
+  await expect(page.getByRole('heading', { name: 'Shares' })).toBeInViewport();
   await page.locator('input[name=label]').fill('Sound desk');
   await page.locator('input[name=maxUploads]').fill('3');
   await page.locator('input[name=expires]').fill('2099-02-30');
@@ -661,6 +664,7 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await page.screenshot({ path: path.join(shots, 'share-made.png') });
   await dialog.getByRole('button', { name: 'OK' }).click();
   await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('open');
+  await page.locator('#shares').screenshot({ path: path.join(shots, 'settings-shares.png') });
 
   // The link fills in the code, which then leaves the address bar.
   const up = await context.newPage();

@@ -152,7 +152,7 @@ cancels running jobs and waits for them to clean up.
   deletes the files of those not chosen (never the recording), asking first when that replaces or
   deletes a file. The run is followed live and keeps going if the browser is closed. Cancelling leaves
   nothing half-written.
-- **Upload:** pick the recording and its date (suggested from the file name or the file's
+- **Upload** (at the top of the folder list): drop or pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
   and continue after a dropped connection. No inbox needed.
@@ -174,7 +174,7 @@ server prepares the waveform and the listening preview, so cutting can start at 
 ### Shares
 
 With `--share-listen`, people without a login can send recordings to a church's inbox on a
-separate, public upload page, with a code. **Shares** in the studio makes one: a name, the file
+separate, public upload page, with a code. **Settings → Shares** in the studio makes one: a name, the file
 types (`.wav`, `.flac`), the largest file, and optionally how many files, how much in all and an
 expiry. The code (`XXXX-XXXX-XXXX-XXXX`, 80 bits) and a link with it (`<share-url>#code=...`) are
 shown once; the church keeps only a hash, in `<church>/shares.json`, with the uploads made (name,
