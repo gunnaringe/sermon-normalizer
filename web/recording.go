@@ -25,6 +25,9 @@ type folderState struct {
 	// Imported is when the recording arrived (upload, inbox, share); the
 	// folder list shows it among the new ones for a while (newFor).
 	Imported *time.Time `json:"imported,omitempty"`
+	// Labels are the user's own tags on the recording ("Easter"), searched
+	// on the recordings page; not the title/artist/album written into files.
+	Labels []string `json:"labels,omitempty"`
 	sermonFile
 	// Outputs is how each output (flac, mp3, opus) was made, by the format.
 	Outputs map[string]outputMade `json:"outputs"`

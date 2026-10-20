@@ -6,7 +6,7 @@ import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
 import { confirmDialog } from './dialog.js';
-import { api, q, h, href, parseTime, formatTime, formatSize, typing, debounce, crumbs, forTenant, suggestNames, dateInput, formatDateTime, wheelZoomNeedsKey } from './util.js';
+import { api, q, h, href, parseTime, formatTime, formatSize, typing, debounce, forTenant, suggestNames, dateInput, formatDateTime, wheelZoomNeedsKey } from './util.js';
 
 const STORE = 'sermon-studio-options';
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
@@ -129,7 +129,7 @@ export async function editorView(view, path, config) {
   } }, 'Rename…');
 
   view.replaceChildren(
-    crumbs(path.split('/').slice(0, -1).join('/'), info.date),
+    h('div', { class: 'crumbs' }, h('a', { href: href('recording', path) }, '← Recordings')),
     h('h1', {}, info.date, ' ', renameButton),
     renamePanel,
     h('section', { class: 'step', 'aria-labelledby': 'step-input' }, h('h2', { id: 'step-input' }, 'Input file'), inputPanel),

@@ -319,11 +319,6 @@ func TestUploadInChunks(t *testing.T) {
 	if len(entries) != 2 || entries[1].Name() != stateName {
 		t.Errorf("only the recording and its state should be left: %v", entries)
 	}
-	// It is among the new ones on top of the folder list, with when it came.
-	recent := decode[struct{ Recent []folderEntry }](t, ts.do(t, "GET", "/api/folders?path=", nil)).Recent
-	if len(recent) != 1 || recent[0].Path != "2026/2026-10-04" || recent[0].Imported == nil || time.Since(*recent[0].Imported) > time.Minute {
-		t.Errorf("recent: %+v", recent)
-	}
 	if rec := chunk(t, ts, "2026-10-04", "again.flac", 3, 0, "abc", time.Time{}); rec.Code != http.StatusConflict ||
 		!strings.Contains(rec.Body.String(), "already has a raw recording") {
 		t.Errorf("second raw: %d %s", rec.Code, rec.Body)
@@ -382,16 +377,6 @@ func TestInboxIngest(t *testing.T) {
 	entry := ts.entry(filepath.Join(ts.root, "2026", "2026-09-27 2"))
 	if !entry.Date || !entry.Raw || entry.Imported == nil {
 		t.Errorf("entry %+v", entry)
-	}
-	// New ones, newest first; one that came long ago is not new any more.
-	old := time.Now().Add(-newFor - time.Hour)
-	ts.updateState(filepath.Join(ts.root, "2026", "2026-10-04"), func(st *folderState) error { st.Imported = &old; return nil })
-	var paths []string
-	for _, e := range ts.recentImports() {
-		paths = append(paths, e.Path)
-	}
-	if got := strings.Join(paths, ", "); got != "2026/2026-09-27 2, 2026/2026-09-27" {
-		t.Errorf("recent: %s", got)
 	}
 	if err := ts.ingest("gone.flac"); err != nil {
 		t.Errorf("a file taken meanwhile is not an error: %v", err)
@@ -567,4 +552,78 @@ func TestRemoveOutputs(t *testing.T) {
 		t.Errorf("while busy: %d", rec.Code)
 	}
 	ts.do(t, "POST", "/api/jobs/"+snap.ID+"/cancel", nil)
+}
+
+func TestRecordingsAndLabels(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	ts.file(t, "2026/2026-10-04/2026-10-04_raw.flac", "x")
+	ts.file(t, "2026/2026-09-27 Kveld/original/2026-09-27 Kveld_raw.flac", "x")
+	ts.file(t, "2026/2026-09-27 Kveld/2026-09-27 Kveld.mp3", "x")
+	ts.file(t, "2025/2025-12-24/2025-12-24_raw.flac", "x")
+	os.MkdirAll(filepath.Join(ts.root, "2026", "notes"), 0o755)
+	os.MkdirAll(filepath.Join(ts.root, "2026", ".hidden", "2026-01-01"), 0o755)
+
+	type list struct {
+		Recordings []folderEntry
+		NewFor     int
+	}
+	paths := func() string {
+		var p []string
+		for _, e := range decode[list](t, ts.do(t, "GET", "/api/recordings", nil)).Recordings {
+			p = append(p, e.Path)
+		}
+		return strings.Join(p, ", ")
+	}
+	// Every date folder of every year, newest first; nothing else.
+	if got := paths(); got != "2026/2026-10-04, 2026/2026-09-27 Kveld, 2025/2025-12-24" {
+		t.Fatalf("recordings: %s", got)
+	}
+	if n := decode[list](t, ts.do(t, "GET", "/api/recordings", nil)).NewFor; n != int(newFor.Seconds()) {
+		t.Errorf("newFor %d", n)
+	}
+
+	put := func(folder, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		ts.h.ServeHTTP(rec, httptest.NewRequest("PUT", "/api/labels?path="+url.QueryEscape(folder), strings.NewReader(body)))
+		return rec
+	}
+	rec := put("2026/2026-10-04", `{"labels":["  Easter ","guest   speaker","EASTER","", "Youth"]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put: %d %s", rec.Code, rec.Body)
+	}
+	if got := strings.Join(decode[folderEntry](t, rec).Labels, "|"); got != "Easter|guest speaker|Youth" {
+		t.Errorf("labels %q", got)
+	}
+	var found []string
+	for _, e := range decode[list](t, ts.do(t, "GET", "/api/recordings", nil)).Recordings {
+		if len(e.Labels) > 0 {
+			found = append(found, e.Path)
+		}
+		if e.Labels == nil {
+			t.Errorf("%s: labels must be a list, not null", e.Path)
+		}
+	}
+	if len(found) != 1 || found[0] != "2026/2026-10-04" {
+		t.Errorf("found %v", found)
+	}
+	// They live in recording.json next to what else is kept there.
+	if st := readState(filepath.Join(ts.root, "2026", "2026-10-04")); len(st.Labels) != 3 {
+		t.Errorf("state %+v", st.Labels)
+	}
+	for name, body := range map[string]string{
+		"too long": `{"labels":["` + strings.Repeat("x", maxLabelLength+1) + `"]}`,
+		"too many": `{"labels":["a","b","c","d","e","f","g","h","i","j","k"]}`,
+		"control":  `{"labels":["a\u0001b"]}`,
+		"not json": `labels`,
+	} {
+		if rec := put("2026/2026-10-04", body); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", name, rec.Code)
+		}
+	}
+	if rec := put("2026/notes", `{"labels":["a"]}`); rec.Code != http.StatusNotFound {
+		t.Errorf("not a recording: %d", rec.Code)
+	}
+	if rec := put("2026/2026-10-04", `{"labels":[]}`); rec.Code != http.StatusOK || len(decode[folderEntry](t, rec).Labels) != 0 {
+		t.Errorf("clear: %d", rec.Code)
+	}
 }

@@ -1,28 +1,30 @@
 // The app: a hash router. Every address starts with the church: #/<church> (the
-// recordings), #/<church>/folder/<path> (the editor), #/<church>/settings (the
-// settings over the recordings). Settings also opens as an overlay from the gear.
-import { api, q, h, href, formatSize, formatDate, formatDateTime, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
+// recordings), #/<church>/recording/<path> (the recordings, that one opened),
+// #/<church>/folder/<path> (the editor), #/<church>/settings (the settings over the recordings). Settings also opens as an overlay from the gear.
+import { api, q, h, href, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
-import { sermonDetail } from './sermons.js';
+import { recordingsView } from './recordings.js';
 
 const view = document.getElementById('view');
 let config = { inbox: false, defaults: {} };
 let churches = { tenants: [], default: '', canAdd: false, shares: false };
 let teardown = null; // cleanup of the current view (player, event stream, keys)
 let shown = '';      // the page in the view, so the settings overlay can open over it without redoing it
+let page = null;     // the recordings page when it is shown: { open(path) }
 let settingsDialog = null;
 
 // Addresses from before the church was in them: the first part names a page.
-const OLD = { folder: 'folder', folders: 'folders', settings: 'settings', shares: 'settings/shares', upload: '' };
+const OLD = { folder: 'folder', folders: '', settings: 'settings', shares: 'settings/shares', upload: '' };
 
 async function route() {
   if (teardown) teardown();
   teardown = null;
   const segs = decodeURIComponent(location.hash.slice(1)).split('/').filter(Boolean);
   if (!segs.length || segs[0] in OLD) {
-    const old = segs.length ? OLD[segs[0]] + (segs.length > 1 ? '/' + segs.slice(1).join('/') : '') : '';
+    const keepRest = segs.length > 1 && !['folders', 'upload'].includes(segs[0]); // those pages are the recordings page now
+    const old = segs.length ? OLD[segs[0]] + (keepRest ? '/' + segs.slice(1).join('/') : '') : '';
     return location.replace('#/' + currentTenant() + (old ? '/' + old.replace(/^\//, '') : ''));
   }
   const [church, section = '', ...rest] = segs;
@@ -42,13 +44,13 @@ async function route() {
     if (section === 'folder') {
       shown = '';
       teardown = await editorView(view, path, config);
-    } else if (section === '' || section === 'folders' || section === 'settings') {
-      const key = church + '/' + (section === 'folders' ? path : '');
-      if (shown !== key) {
+    } else if (section === '' || section === 'recording' || section === 'settings') {
+      if (shown !== church) {
         shown = '';
-        await foldersView(section === 'folders' ? path : '');
-        shown = key;
+        page = await foldersView();
+        shown = church;
       }
+      if (section === 'recording') page.open(path);
       if (section === 'settings') await openSettings(path);
     } else {
       shown = '';
@@ -60,74 +62,14 @@ async function route() {
   }
 }
 
-function badges(e) {
-  const out = [];
-  if (e.job) out.push(h('span', { class: 'badge busy' }, 'processing'));
-  if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
-  if (e.preparing) out.push(h('span', { class: 'badge busy' }, 'preparing'));
-  if (e.raw && e.outputs.length === 0) out.push(h('span', { class: 'badge warn', title: 'Only the full, unedited recording of the service exists' }, 'not processed'));
-  if (e.outputs.length) out.push(h('span', { class: 'badge on', title: 'Ready to play and download' }, 'ready'));
-  return out;
-}
-
-// arrived says when a recording came: today/yesterday with the time, else the date.
-function arrived(t) {
-  const d = new Date(t);
-  const day = (x) => formatDate(x);
-  const time = formatDateTime(d).slice(11);
-  if (day(d) === day(Date.now())) return 'arrived today ' + time;
-  if (day(d) === day(Date.now() - 864e5)) return 'arrived yesterday ' + time;
-  return 'arrived ' + day(d);
-}
-
-// folderTable lists folders. A date folder opens its details in the list,
-// anywhere on its row; a recording that is not processed only offers the
-// editor there. With when, a row also says when its recording arrived.
-function folderTable(entries, when = false) {
-  const body = h('tbody');
-  for (const e of entries) {
-    const link = href(e.date ? 'folder' : 'folders', e.path);
-    let detail = null;
-    const toggle = h('button', { class: 'twisty', 'aria-expanded': 'false', title: 'Show details', 'aria-label': 'Show details of ' + e.name }, '▸');
-    const flip = () => {
-      if (detail) {
-        detail.remove();
-        detail = null;
-      } else {
-        detail = h('tr', { class: 'detail-row' }, h('td', { colspan: 2 }, sermonDetail(e)));
-        row.after(detail);
-      }
-      toggle.setAttribute('aria-expanded', String(!!detail));
-      toggle.textContent = detail ? '▾' : '▸';
-    };
-    toggle.addEventListener('click', (ev) => { ev.stopPropagation(); flip(); });
-    const name = e.date
-      ? h('button', { class: 'sermon-name' }, e.name) // its click reaches the row
-      : h('a', { href: link }, e.name + '/');
-    const row = h('tr', { class: 'row', onclick: e.date ? flip : () => { location.hash = link; } },
-      h('td', {}, e.date ? toggle : '', name),
-      h('td', {}, badges(e), when && e.imported ? h('span', { class: 'muted arrived' }, arrived(e.imported)) : ''));
-    body.append(row);
-  }
-  return h('table', { class: 'list' }, body);
-}
-
-// foldersView: the upload on top of every list (a recording goes into its
-// date folder anyway); on the first page, then the recordings that arrived
-// in the last days, before the years.
-async function foldersView(path) {
-  const data = await api('GET', 'api/folders?path=' + q(path));
-  const recent = data.recent || [];
-  view.replaceChildren(
-    data.path ? crumbs(data.path) : '',
-    h('h1', {}, data.path ? data.path.split('/').pop() : 'Recordings'),
-    uploadBox(),
-    recent.length ? h('section', { class: 'recent' }, h('h2', {}, 'Newly imported'), folderTable(recent, true)) : '',
-    recent.length && data.entries.length ? h('h2', {}, 'All') : '',
-    data.entries.length
-      ? folderTable(data.entries)
-      : h('p', { class: 'muted' }, 'No recordings here yet. Upload one above',
-        config.inbox ? ', or put one in the inbox folder.' : '.'));
+// The recordings page: the upload on top (a recording goes into its date
+// folder anyway), then recordings.js.
+async function foldersView() {
+  return recordingsView(view, {
+    top: uploadBox(),
+    church: currentTenant(),
+    emptyNote: 'No recordings here yet. Upload one above' + (config.inbox ? ', or put one in the inbox folder.' : '.'),
+  });
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

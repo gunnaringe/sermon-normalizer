@@ -20,11 +20,8 @@ async function fits(page, name) {
 
 test('phone: every page fits the screen', async ({ page }) => {
   await page.goto('');
-  await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
-  await fits(page, 'folders');
-  await page.goto('#/folders/2026');
-  await expect(page.getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
-  await fits(page, 'folder-list');
+  await expect(page.getByRole('button', { name: '2026-10-04', exact: true }).first()).toBeVisible();
+  await fits(page, 'recordings');
   await expect(page.locator('.upload .drop')).toBeVisible();
   await page.locator('.upload input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
   await expect(page.getByRole('button', { name: 'Upload' })).toBeVisible();

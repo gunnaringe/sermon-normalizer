@@ -139,16 +139,3 @@ export function debounce(fn, ms) {
     timer = setTimeout(() => fn(...args), ms);
   };
 }
-
-// crumbs links each level of a slash path to its folder list.
-export function crumbs(path, last) {
-  const parts = path ? path.split('/') : [];
-  const items = [h('a', { href: href() }, 'All')];
-  parts.forEach((p, i) => {
-    items.push(' / ');
-    const sub = parts.slice(0, i + 1).join('/');
-    items.push(i === parts.length - 1 && !last ? p : h('a', { href: href('folders', sub) }, p));
-  });
-  if (last) items.push(' / ', last);
-  return h('div', { class: 'crumbs' }, items);
-}

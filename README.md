@@ -113,7 +113,12 @@ cancels running jobs and waits for them to clean up.
 
 ## Using it
 
-- **Recordings:** the date folders with what they contain (`raw`, `✓ flac mp3 opus`).
+- **Recordings** (the one page, `#/<church>`): the upload, a search field, **Newly imported** (arrived in the last 7 days, newest
+  first, with when), then the years, each folded open on its own (the newest at first; the browser remembers). A row opens the
+  recording's details in place. **Labels** are your own tags on a recording ("Easter", "guest speaker": up to 10, 30 characters; added
+  and removed in its details, kept as `labels` in `recording.json`, not written into the files). The search matches name, date and labels
+  in every year at once (all words must match); a label on a row searches for it. **Copy link** gives the address of one recording,
+  `#/<church>/recording/<path>`, which opens the page with its year and row open and scrolled to.
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
   ocenaudio. The controls are in three groups. **Navigate:** play, jump between silences
   (grey on the waveform), zoom (slider, `+`/`-`, or scroll over the waveform: zooms at the
@@ -161,7 +166,7 @@ cancels running jobs and waits for them to clean up.
   nothing half-written.
 - **Newly imported:** a recording that arrived (upload, inbox, share) in the last 7 days is also listed
   on top of the first page, with when it came; the import time is kept in its `recording.json`.
-- **Upload** (at the top of the recordings list): drop or pick the recording and its date (suggested from the file name or the file's
+- **Upload** (at the top of the recordings page): drop or pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
   and continue after a dropped connection. No inbox needed.

@@ -8,6 +8,7 @@ data=$(mktemp -d)
 # One church folder, as in production; root/ and inbox/ point into it for the tests.
 church="$data/churches/first-church"
 mkdir -p "$church/Taler/2026/2026-10-04" "$church/Taler/2026/2026-08-30" "$church/Innboks" "$data/cache"
+mkdir -p "$church/Taler/2025/2025-12-21"
 ln -s "$church/Taler" "$data/root"
 ln -s "$church/Innboks" "$data/inbox"
 
@@ -17,6 +18,8 @@ ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$expr|$expr':s=48000:d=100" -c:a pc
 # A 90-minute service, to check the waveform stays responsive at real length.
 long="0.3*sin(2*PI*220*t)*(0.5+0.5*sin(2*PI*t/600))"
 ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$long':s=8000:d=5400" -c:a flac "$data/root/2026/2026-08-30/2026-08-30_raw.flac"
+# An older year, with one unprocessed recording: a year that starts folded.
+ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$expr':s=8000:d=5" -c:a flac "$data/root/2025/2025-12-21/2025-12-21_raw.flac"
 # A recording waiting to be uploaded.
 ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$expr':s=48000:d=30" -c:a flac "$data/upload.flac"
 
