@@ -95,7 +95,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   outputs are skipped by a run; the editor's Save (Force in the API) redoes the stale ones it turns on. Save keeps the edit first, then runs.
 - Delete a source only after its copy is verified identical (`FFmpeg.Convert`: `SameAudio` for
   WAV/AIFF→FLAC, the same packets for a video's sound; byte MD5 for copies). A run moves the whole
-  recording into `<date>/original/` as it is (any of `normalizer.InputTypes`); the outputs are cut
+  recording into `<date>/original/` as it is (any of `normalizer.InputTypes`), named as it arrived (`sourceName` in `recording.json`; else `<date>_raw.<ext>`; `Paths.RawOriginal` finds either); the outputs are cut
   straight from it using the sections + cuts, there is no edit file. Every encode maps only `0:a:0`
   (an MP3's cover picture or a video must not end up in the outputs).
 - The input types are one table, `normalizer/types.go`; `INPUT_TYPES` in `util.js` and the

@@ -485,6 +485,27 @@ func TestSource(t *testing.T) {
 	}
 }
 
+// A recording keeps the name it arrived with in original/: it is moved there under it, and found there.
+func TestIngestKeepsName(t *testing.T) {
+	p := newTestPipeline(t)
+	p.Opt.OriginalName = "R_20261018-104506"
+	os.WriteFile(p.inFolder("_raw.m4a"), []byte("audio"), 0o644)
+	want := filepath.Join(p.P.Original, "R_20261018-104506.m4a")
+	if raw, err := p.ingest(context.Background()); raw != want || err != nil {
+		t.Fatalf("raw=%q err=%v", raw, err)
+	}
+	if got := p.P.Source(); got != want || p.P.RawOriginal() != want {
+		t.Errorf("found %q", got)
+	}
+	// Of two in original/ (a conversion's FLAC and a leftover), the FLAC; hidden files are not recordings.
+	os.WriteFile(filepath.Join(p.P.Original, "R_20261018-104506.flac"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(p.P.Original, ".hidden.flac"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(p.P.Original, "notes.txt"), []byte("x"), 0o644)
+	if got := p.P.RawOriginal(); got != filepath.Join(p.P.Original, "R_20261018-104506.flac") {
+		t.Errorf("preferred %q", got)
+	}
+}
+
 func TestKinds(t *testing.T) {
 	for name, want := range map[string]string{"a.WAV": "a.flac", "a.aif": "a.flac", "a.MOV": "a.mka", "a.flac": "", "a.mp3": "", "a.mka": ""} {
 		if got := ConvertsTo(name); got != want {

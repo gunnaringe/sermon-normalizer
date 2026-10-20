@@ -8,7 +8,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gunnaringe/sermon-studio/normalizer"
 )
@@ -22,6 +24,9 @@ type folderState struct {
 	Recording *recordingFacts `json:"recording"`
 	// ConvertedFrom is the file (WAV, AIFF, video) the recording was made from, if it was.
 	ConvertedFrom *sourceFile `json:"convertedFrom,omitempty"`
+	// SourceName is the file name the recording arrived with ("R_20261018-104506.wav"); it is kept as the
+	// name of the original (with .flac for a WAV) and shown where the conversion is told.
+	SourceName string `json:"sourceName,omitempty"`
 	// Imported is when the recording arrived (upload, inbox, share); the
 	// folder list shows it among the new ones for a while (newFor).
 	Imported *time.Time `json:"imported,omitempty"`
@@ -126,12 +131,47 @@ func (s *Server) updateState(folder string, fn func(*folderState) error) (*folde
 }
 
 // markImported notes in the folder that its recording has just arrived.
-func (s *Server) markImported(folder string) {
+func (s *Server) markImported(folder, sourceName string) {
 	now := time.Now().UTC()
-	if _, err := s.updateState(folder, func(st *folderState) error { st.Imported = &now; return nil }); err != nil {
+	if _, err := s.updateState(folder, func(st *folderState) error {
+		st.Imported = &now
+		st.SourceName = cleanSourceName(sourceName)
+		return nil
+	}); err != nil {
 		s.cfg.Logger.Printf("%s: %v", s.relPath(folder), err)
 	}
 }
+
+// maxSourceName is the longest name kept for a recording, in characters.
+const maxSourceName = 100
+
+// cleanSourceName makes the name a recording arrived with fit to be a file name: no folders, letters, digits and
+// a few signs only, never hidden or empty ("" says there is nothing to keep).
+func cleanSourceName(name string) string {
+	name = name[strings.LastIndexAny(name, `/\`)+1:]
+	name = strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune(" -_.,()", r) {
+			return r
+		}
+		return '_'
+	}, name)
+	name = strings.ReplaceAll(name, ".partial", "_partial")
+	if r := []rune(name); len(r) > maxSourceName {
+		ext := []rune(filepath.Ext(name))
+		if len(ext) > 10 {
+			ext = nil
+		}
+		name = string(r[:maxSourceName-len(ext)]) + string(ext)
+	}
+	name = strings.Trim(name, " ._")
+	if filepath.Ext(name) == "" || strings.TrimSuffix(name, filepath.Ext(name)) == "" {
+		return ""
+	}
+	return name
+}
+
+// stemOf is a file name without its extension.
+func stemOf(name string) string { return strings.TrimSuffix(name, filepath.Ext(name)) }
 
 // folderOfRecording is the date folder of a recording: its folder, or the
 // one above for a recording in original/.

@@ -23,12 +23,15 @@ type Options struct {
 	TruePeak       float64
 	NoiseReduction int // afftdn nr in dB; 0 = off
 	Force          bool
-	Start, End     float64 // cut raw to edit (seconds); 0 = from the beginning / to the end
-	Cuts           []Span  // parts of Start..End to leave out (seconds in the recording), e.g. a song
-	FadeIn         float64 // seconds at the start of the sermon; 0 = off
-	FadeOut        float64 // seconds at the end of the sermon; 0 = off
-	Outputs        Outputs
-	Tags           Tags // written into every output; empty fields are left out
+	// OriginalName is the name (no extension) the recording is kept under in original/: the name it
+	// arrived with. "" = <date>_raw.
+	OriginalName string
+	Start, End   float64 // cut raw to edit (seconds); 0 = from the beginning / to the end
+	Cuts         []Span  // parts of Start..End to leave out (seconds in the recording), e.g. a song
+	FadeIn       float64 // seconds at the start of the sermon; 0 = off
+	FadeOut      float64 // seconds at the end of the sermon; 0 = off
+	Outputs      Outputs
+	Tags         Tags // written into every output; empty fields are left out
 }
 
 // Tags are the metadata written into the outputs (FLAC, MP3, Opus).
@@ -174,8 +177,35 @@ func NewPaths(folder string) (Paths, error) {
 }
 
 // RawOriginal is the whole recording kept in original/ after a run, of any
-// input type, or "" if there is none.
-func (p Paths) RawOriginal() string { return p.findRaw(p.Original) }
+// input type, or "" if there is none: <date>_raw.<ext>, else the one file of an
+// input type there is (a recording keeps the name it arrived with).
+func (p Paths) RawOriginal() string {
+	if f := p.findRaw(p.Original); f != "" {
+		return f
+	}
+	des, _ := os.ReadDir(p.Original)
+	best, rank := "", len(inputTypes)
+	for _, de := range des {
+		if !de.Type().IsRegular() || strings.HasPrefix(de.Name(), ".") {
+			continue
+		}
+		for i, t := range inputTypes {
+			if i < rank && strings.EqualFold(filepath.Ext(de.Name()), t.ext) {
+				best, rank = filepath.Join(p.Original, de.Name()), i
+			}
+		}
+	}
+	return best
+}
+
+// originalFile is the name a recording being moved into original/ gets: the one it arrived
+// with (ext is the extension of what is kept), else <date>_raw.<ext>.
+func (p *Pipeline) originalFile(ext string) string {
+	if p.Opt.OriginalName == "" {
+		return p.P.Date + rawName + ext
+	}
+	return p.Opt.OriginalName + ext
+}
 
 // rawName is the name of the whole recording: <date>_raw.<ext>, ext one of
 // InputTypes.
@@ -314,14 +344,14 @@ func (p *Pipeline) ingest(ctx context.Context) (string, error) {
 		p.warnf("%s is already in original/; leaving %s in the folder.", filepath.Base(have), filepath.Base(src))
 		return have, nil
 	}
-	dst := filepath.Join(p.P.Original, filepath.Base(src))
+	dst := filepath.Join(p.P.Original, p.originalFile(filepath.Ext(src)))
 	if to := ConvertsTo(src); to == "" {
 		if err := MoveFile(src, dst); err != nil {
 			return "", err
 		}
 		p.logf("Moved %s to %s.", filepath.Base(src), dst)
 	} else {
-		dst = filepath.Join(p.P.Original, filepath.Base(to))
+		dst = filepath.Join(p.P.Original, p.originalFile(filepath.Ext(to)))
 		var progress func(float64)
 		if total := p.lengthFor(ctx, src); total > 0 {
 			p.OnProgress(0)
