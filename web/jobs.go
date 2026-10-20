@@ -131,7 +131,7 @@ func (js *jobs) active(folder string) *job {
 	return nil
 }
 
-var errBusy = errors.New("this folder is already being processed")
+var errBusy = errors.New("this recording is already being processed")
 
 // start queues a run. It runs on the server's context, not the request's:
 // closing the browser does not stop it, shutting down the server does.

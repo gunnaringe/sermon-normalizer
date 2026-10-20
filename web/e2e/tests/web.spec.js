@@ -348,7 +348,7 @@ test('the page: Input file, Edit, Options, Output', async ({ page }) => {
   const input = page.locator('.input-file');
   await expect(input).toContainText('FLAC · 48 kHz · 24-bit · 2 channels');
   await expect(input).toContainText('converted from the original WAV (2026-10-04_raw.wav');
-  await expect(input).toContainText('Mono (the stereo channels are identical)', { timeout: 30_000 });
+  await expect(input).toContainText('Mono (both channels are the same)', { timeout: 30_000 });
   await expect(input).toContainText('1:40');
   await expect(input.getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /download=1/);
 
@@ -359,7 +359,7 @@ test('the page: Input file, Edit, Options, Output', async ({ page }) => {
   await expect(page.getByText(/stereo gives the same sound in bigger files/)).toBeHidden();
   await page.locator('label.switch').click();
   await expect(stereo).toBeChecked();
-  await expect(page.getByText('⚠ The recording is mono (the stereo channels are identical): stereo gives the same sound in bigger files. Choose mono.')).toBeVisible();
+  await expect(page.getByText('⚠ The recording is mono (both channels are the same): stereo gives the same sound in bigger files. Choose mono.')).toBeVisible();
   await expect(page.getByLabel('Target loudness (LUFS)')).toHaveValue('-16'); // the stereo default
   await page.locator('section.step').nth(2).screenshot({ path: path.join(shots, 'edit-options.png') });
   await page.locator('label.switch').click();

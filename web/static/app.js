@@ -133,7 +133,7 @@ function uploadBox() {
   const status = h('p', { class: 'muted' });
   const progress = h('progress', { max: 1, value: 0, hidden: true });
   const drop = h('div', { class: 'drop' },
-    h('strong', {}, 'Upload a recording: '), 'drop the whole service (.wav or .flac) here, or ',
+    h('strong', {}, 'Upload a recording: '), 'drop a .wav or .flac file here, or ',
     h('button', { class: 'link', type: 'button', onclick: () => input.click() }, 'choose a file'), '.');
 
   function choose(file) {
@@ -168,7 +168,7 @@ function uploadBox() {
       h('p', {}, h('strong', {}, file.name), ' · ', formatSize(file.size), ' ',
         h('button', { class: 'link', type: 'button', onclick: () => { chosen.replaceChildren(); status.textContent = ''; } }, 'cancel')),
       h('p', {}, h('label', {}, 'Date ', date), ' ', h('span', { class: 'muted' }, guess.source)),
-      h('p', {}, h('label', {}, 'Name ', sermon), ' ', h('span', { class: 'muted' }, 'Only needed for a second sermon the same day.')),
+      h('p', {}, h('label', {}, 'Name ', sermon), ' ', h('span', { class: 'muted' }, 'Only needed for a second sermon on the same day.')),
       h('p', {}, button)));
     suggestNames(sermon);
   }
@@ -267,13 +267,13 @@ async function settingsView(box, part) {
       h('label', { class: 'check' }, h('input', {
         type: 'checkbox', name: 'autocomplete', checked: names.enabled,
         onchange: (e) => { names.enabled = e.target.checked; saveNames(); },
-      }), 'Suggest names when naming a sermon'),
+      }), 'Suggest names'),
       names.list.length
         ? h('ul', { class: 'names' }, names.list.map((n) => h('li', {}, n, ' ',
           h('button', { class: 'link', title: 'Remove ' + n, 'aria-label': 'Remove ' + n,
             onclick: () => { names.list = names.list.filter((x) => x !== n); saveNames(); } }, '✕'))))
         : h('p', { class: 'muted' }, names.enabled
-          ? 'No names yet: a name is remembered when you give a sermon one.' : 'Names are not being remembered.'));
+          ? 'No names yet. Names you use are saved here.' : 'Names are not saved.'));
   }
   showNames();
 
@@ -340,7 +340,7 @@ async function settingsView(box, part) {
     h('p', { class: 'muted' }, 'A second sermon on the same day needs a name. Used names are suggested next time. Remove one-off names here.'),
     namesBox,
     h('h2', {}, 'Waveform'),
-    h('p', { class: 'muted' }, 'Kept in this browser only, for every church.'),
+    h('p', { class: 'muted' }, 'Saved in this browser only.'),
     h('div', { class: 'panel' }, h('label', { class: 'check' }, h('input', {
       type: 'checkbox', name: 'wheel-zoom-key', checked: wheelZoomNeedsKey(),
       onchange: (e) => setWheelZoomNeedsKey(e.target.checked),

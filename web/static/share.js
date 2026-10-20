@@ -118,9 +118,9 @@ function showUpload() {
   view.replaceChildren(
     h('h1', {}, info.label),
     limitsLine = h('p', { class: 'muted' }, `For ${info.church}. ${limitsText()}.`),
-    info.state ? h('p', { class: 'error' }, 'This code takes no more uploads.') : drop,
+    info.state ? h('p', { class: 'error' }, 'This code cannot be used any more.') : drop,
     input, list,
-    h('p', { class: 'muted' }, 'Keep this page open until every file says it has been received. ', other));
+    h('p', { class: 'muted' }, 'Keep this page open until every file is received. ', other));
 }
 
 async function run() {
