@@ -228,6 +228,31 @@ func TestShareRefusesWhatItShould(t *testing.T) {
 	if !strings.Contains(do(st.studio, "GET", "/api/shares", "").Body.String(), `"revoked"`) {
 		t.Error("revoked share not listed")
 	}
+	// An open share cannot be removed; an ended one can, and then it is gone.
+	st.makeShare(`{"label":"Open","types":[".wav"]}`)
+	list := decode[struct{ Shares []struct{ ID, Label string } }](t, do(st.studio, "GET", "/api/shares", ""))
+	var openID string
+	for _, s := range list.Shares {
+		if s.Label == "Open" {
+			openID = s.ID
+		}
+	}
+	if w := do(st.studio, "POST", "/api/shares/"+openID+"/remove", ""); w.Code != http.StatusConflict {
+		t.Errorf("remove an open share: %d", w.Code)
+	}
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/remove", ""); w.Code != 200 {
+		t.Errorf("remove a revoked share: %d %s", w.Code, w.Body)
+	}
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/remove", ""); w.Code != http.StatusNotFound {
+		t.Errorf("remove it twice: %d", w.Code)
+	}
+	if w := do(st.studio, "POST", "/api/shares/remove-ended", ""); w.Code != 200 {
+		t.Errorf("remove ended with none: %d", w.Code)
+	}
+	body := do(st.studio, "GET", "/api/shares", "").Body.String()
+	if strings.Contains(body, sh.ID) || !strings.Contains(body, openID) {
+		t.Errorf("after removing: %s", body)
+	}
 }
 
 // A refused or cancelled upload gives its place in the limits back.

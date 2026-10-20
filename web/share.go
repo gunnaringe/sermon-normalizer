@@ -403,3 +403,79 @@ func (a *App) handleShareRevoke(w http.ResponseWriter, r *http.Request) {
 	a.cfg.Base.Logger.Printf("share: %s revoked share %s (%q)", t.id, sh.ID, sh.Label)
 	writeJSON(w, http.StatusOK, map[string]string{"id": id})
 }
+
+// handleShareRemove deletes a share that no longer takes uploads (revoked,
+// expired, used up or full) from the list, with its log:
+// POST api/shares/{id}/remove. An open share is revoked first.
+func (a *App) handleShareRemove(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	n, open, err := a.removeShares(t, func(sh *Share) bool { return sh.ID == id })
+	switch {
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err)
+	case open:
+		writeError(w, http.StatusConflict, errors.New("this share still takes uploads: revoke it first"))
+	case n == 0:
+		writeError(w, http.StatusNotFound, errors.New("no such share"))
+	default:
+		writeJSON(w, http.StatusOK, map[string]int{"removed": n})
+	}
+}
+
+// handleShareRemoveEnded deletes every share that no longer takes uploads:
+// POST api/shares/remove-ended.
+func (a *App) handleShareRemoveEnded(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	n, _, err := a.removeShares(t, func(*Share) bool { return true })
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"removed": n})
+}
+
+// removeShares drops the church's ended shares that pick says yes to, and the
+// partial files of their uploads. A share that still takes uploads is left
+// alone; open says one was picked.
+func (a *App) removeShares(t *tenant, pick func(*Share) bool) (n int, open bool, err error) {
+	a.shareMu.Lock()
+	defer a.shareMu.Unlock()
+	now := time.Now()
+	var keep, gone []*Share
+	for _, sh := range t.shares {
+		switch {
+		case !pick(sh):
+			keep = append(keep, sh)
+		case sh.state(now) == "":
+			keep = append(keep, sh)
+			open = true
+		default:
+			gone = append(gone, sh)
+		}
+	}
+	if len(gone) == 0 {
+		return 0, open, nil
+	}
+	old := t.shares
+	t.shares = keep
+	if err := a.saveShares(t); err != nil {
+		t.shares = old
+		return 0, open, err
+	}
+	for _, sh := range gone {
+		for uid := range sh.Pending {
+			if !a.share.busy[uid] {
+				os.Remove(partialPath(t, uid))
+			}
+		}
+		a.cfg.Base.Logger.Printf("share: %s removed share %s (%q)", t.id, sh.ID, sh.Label)
+	}
+	return len(gone), open, nil
+}

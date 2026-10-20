@@ -116,6 +116,26 @@ export async function sharesView(box) {
     } catch (err) { alertDialog({ body: err.message }); }
   };
 
+  const remove = (s) => async () => {
+    const ok = await confirmDialog({ title: 'Remove share', confirm: 'Remove', danger: true,
+      body: `"${s.label}" and its list of uploads are removed. Files already sent stay.` });
+    if (!ok) return;
+    try {
+      await api('POST', `api/shares/${encodeURIComponent(s.id)}/remove`);
+      await sharesView(box);
+    } catch (err) { alertDialog({ body: err.message }); }
+  };
+  const ended = data.shares.filter((s) => s.state);
+  const removeEnded = async () => {
+    const ok = await confirmDialog({ title: 'Remove ended shares', confirm: 'Remove', danger: true,
+      body: `${ended.length} share${ended.length === 1 ? '' : 's'} that no longer take${ended.length === 1 ? 's' : ''} uploads (revoked, expired, used up or full) are removed with their lists of uploads. Files already sent stay.` });
+    if (!ok) return;
+    try {
+      await api('POST', 'api/shares/remove-ended');
+      await sharesView(box);
+    } catch (err) { alertDialog({ body: err.message }); }
+  };
+
   const rows = data.shares.map((s) => h('div', { class: 'panel share' },
     h('p', {}, h('strong', {}, s.label), ' ', stateText(s), ' ',
       h('span', { class: 'muted mono' }, '…' + s.hint)),
@@ -124,7 +144,9 @@ export async function sharesView(box) {
     s.log.length ? h('details', {}, h('summary', {}, 'Uploads'),
       h('table', { class: 'list' }, s.log.map((u) => h('tr', {},
         h('td', {}, formatDateTime(u.time)), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
-    s.state !== 'revoked' ? h('p', {}, h('button', { name: 'revoke', onclick: revoke(s) }, 'Revoke')) : ''));
+    h('p', {}, s.state
+      ? h('button', { name: 'remove', onclick: remove(s) }, 'Remove')
+      : h('button', { name: 'revoke', onclick: revoke(s) }, 'Revoke'))));
 
   box.replaceChildren(
     h('h2', {}, 'Shares'),
@@ -141,5 +163,6 @@ export async function sharesView(box) {
       h('div', { class: 'wide' }, create, ' ', status))
       : h('p', { class: 'error' }, 'Shares need an inbox folder, and this church has none.'),
     h('h3', {}, 'Made'),
+    ended.length ? h('p', {}, h('button', { name: 'remove-ended', onclick: removeEnded }, `Remove ${ended.length} ended`)) : '',
     ...(rows.length ? rows : [h('p', { class: 'muted' }, 'No shares yet.')]));
 }

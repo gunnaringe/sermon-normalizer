@@ -805,4 +805,12 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('revoked');
   await up.reload();
   await expect(up.getByRole('alert')).toContainText('withdrawn');
+
+  // An ended share can be cleaned away, one by one or all at once.
+  await expect(page.getByRole('button', { name: 'Remove 1 ended' })).toBeVisible();
+  await page.screenshot({ path: path.join(shots, 'share-ended.png') });
+  await page.locator('.share', { hasText: 'Sound desk' }).getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Remove share' }).getByRole('button', { name: 'Remove' }).click();
+  await expect(page.locator('.share', { hasText: 'Sound desk' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /ended/ })).toHaveCount(0);
 });
