@@ -458,3 +458,33 @@ func TestStaticAndConfig(t *testing.T) {
 		t.Errorf("config %+v", cfg)
 	}
 }
+
+// Make builds one missing format from the saved version, and only that.
+func TestMakeFormat(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	ts.file(t, "2026-10-04/2026-10-04_raw.wav", "x")
+	mk := func(format string) *httptest.ResponseRecorder {
+		return ts.do(t, "POST", "/api/make?path=2026-10-04&format="+format, nil)
+	}
+	if rec := mk("wav"); rec.Code != http.StatusBadRequest {
+		t.Errorf("unknown format: %d", rec.Code)
+	}
+	if rec := mk("mp3"); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "not saved") {
+		t.Errorf("nothing saved: %d %s", rec.Code, rec.Body)
+	}
+	saved := sermonSettings{cutting: cutting{Sections: []span{{30, 3600}}, Cuts: []span{}}}
+	if err := writeSermon(filepath.Join(ts.root, "2026-10-04"), &sermonFile{Saved: &saved}); err != nil {
+		t.Fatal(err)
+	}
+	ts.jobs.sem <- struct{}{} // another encode is running: this one stays queued
+	defer func() { <-ts.jobs.sem }()
+	rec := mk("mp3")
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("make: %d %s", rec.Code, rec.Body)
+	}
+	snap := decode[jobSnapshot](t, rec)
+	if rec := mk("opus"); rec.Code != http.StatusConflict {
+		t.Errorf("second make while one runs: %d", rec.Code)
+	}
+	ts.do(t, "POST", "/api/jobs/"+snap.ID+"/cancel", nil)
+}

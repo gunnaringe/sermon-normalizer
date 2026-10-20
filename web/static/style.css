@@ -115,6 +115,7 @@ table.list tr.row:hover { background: var(--panel); cursor: pointer; }
   color: var(--muted);
 }
 .badge.on { color: var(--ok); border-color: var(--ok); }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
 .badge.busy { color: var(--accent); border-color: var(--accent); }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin: 0.8rem 0; }
@@ -227,4 +228,17 @@ main.narrow { max-width: 44rem; }
   .code-form input { width: 100%; }
   .toolbar .clock { margin-left: 0; }
   table.list td, table.list th { padding: 0.5rem 0.3rem; }
+}
+
+/* the folder list: a sermon opens its details in place */
+button.twisty { border: 0; background: none; padding: 0.2rem 0.5rem 0.2rem 0; color: var(--muted); font-size: 1rem; cursor: pointer; }
+button.sermon-name { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-align: left; }
+button.sermon-name:hover { text-decoration: underline; }
+table.list tr.detail-row td { background: var(--panel); border-bottom: 1px solid var(--line); padding: 0.6rem 0.8rem 0.8rem 1.6rem; }
+.detail .facts { margin: 0 0 0.6rem; color: var(--muted); }
+.detail .out strong { min-width: 4.5rem; }
+.raw-warning { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 0.7rem; }
+@media (max-width: 640px) {
+  table.list tr.detail-row td { padding: 0.6rem 0.5rem; }
+  .detail .outputs audio { width: 100%; }
 }

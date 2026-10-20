@@ -47,6 +47,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `PUT api/sermon` (adjust), `POST api/sermon/save`, `POST api/sermon/revert`; returned as
   `sermon` in the folder info.
 - `web/folders.go`: folder list/info, run options, `check` (validates a run).
+- `web/make.go`: `POST api/make?path&format`: one missing format from the saved version (a normal run, no Force).
 - `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
 - `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3
   preview, cached by path+size+mtime; `carry` moves the cache on import.
@@ -58,7 +59,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `api/shares` (only with `--share-listen`). `web/sharesite.go`: the public listener
   (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
-- `web/static/`: plain JS, no build. `icons/` = the logo: `logo.svg` is the one source (header, favicon,
+- `web/static/`: plain JS, no build. `sermons.js` = a sermon's details inside the folder list (play, download,
+  make a format); an unprocessed recording still opens the editor on click and only warns when expanded. `icons/` = the logo: `logo.svg` is the one source (header, favicon,
   `manifest.webmanifest`); the PNGs (home screen, favicon fallback) come from it via `scripts/make-icons.sh`;
   the public page serves only the ones listed in `sharePage`. `dialog.js` = confirm/alert/prompt in the app's look
   (never use the browser's `confirm`/`alert`/`prompt`). `vendor/wavesurfer/` is wavesurfer.js

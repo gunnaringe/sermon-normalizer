@@ -1,0 +1,75 @@
+// The folder list: a sermon opens its details (play, download, make a missing
+// format); a recording that is not processed warns and still opens the editor.
+import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const DATA = process.env.DATA;
+const shots = path.join(import.meta.dirname, '..', 'screenshots');
+fs.mkdirSync(shots, { recursive: true });
+const folder = '2026/2026-07-05';
+
+test.beforeAll(async ({ request }) => {
+  const dir = path.join(DATA, 'root', folder);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(path.join(DATA, 'upload.flac'), path.join(dir, '2026-07-05_raw.flac'));
+  const p = 'api/';
+  const q = '?path=' + encodeURIComponent(folder);
+  const settings = { sections: [{ start: 3, end: 25 }], cuts: [{ start: 10, end: 12 }], fadeIn: 0, fadeOut: 0 };
+  expect((await request.put(p + 'sermon' + q, { data: settings })).ok()).toBe(true);
+  expect((await request.post(p + 'sermon/save' + q)).ok()).toBe(true);
+  const run = await request.post(p + 'run' + q, {
+    data: { ...settings, flac: true, mp3: false, opus: true, stereo: false, noiseReduction: 0, targetLufs: -16, truePeak: -1.5, mp3Bitrate: '128k', opusBitrate: '64k', force: false },
+  });
+  expect(run.ok(), await run.text()).toBe(true);
+  const { id } = await run.json();
+  await expect.poll(async () => (await (await request.get(p + 'jobs/' + id)).json()).state, { timeout: 90_000 }).toBe('done');
+});
+
+test('a sermon opens its details in the list: play, download, make a missing format', async ({ page }) => {
+  await page.goto('#/folders/2026');
+  const row = page.locator('tr.row', { hasText: '2026-07-05' });
+  await expect(row).not.toContainText('not processed');
+  await row.click();
+  await expect(page).toHaveURL(/#\/folders\/2026$/);
+  const detail = page.locator('tr.detail-row');
+  await expect(detail.locator('audio')).toHaveCount(3); // FLAC, Opus, the original
+  await expect(detail).toContainText('Length 0:20');
+  await expect(detail.getByRole('link', { name: 'Download' }).first()).toHaveAttribute('href', /download=1/);
+  await expect(detail.getByText('Not made')).toBeVisible();
+  await page.screenshot({ path: path.join(shots, 'sermon-list-open.png') });
+
+  await detail.getByRole('button', { name: 'Make MP3' }).click();
+  await expect(detail.locator('audio')).toHaveCount(4, { timeout: 60_000 });
+  await expect(detail.getByRole('button', { name: /Make/ })).toHaveCount(0);
+  expect(fs.readdirSync(path.join(DATA, 'root', folder)).some((f) => f.endsWith('.mp3'))).toBe(true);
+
+  await row.click(); // closes again
+  await expect(detail).toHaveCount(0);
+  await row.getByRole('button', { name: /Show details/ }).click();
+  await expect(page.locator('tr.detail-row')).toHaveCount(1);
+});
+
+test('a recording that is not processed warns, and still opens the editor', async ({ page }) => {
+  await page.goto('#/folders/2026');
+  const row = page.locator('tr.row', { hasText: '2026-08-30' });
+  await expect(row).toContainText('not processed');
+  await row.getByRole('button', { name: /Show details/ }).click();
+  const warning = page.getByRole('alert');
+  await expect(warning).toContainText('full, unedited raw recording');
+  await expect(page).toHaveURL(/#\/folders\/2026$/);
+  await page.screenshot({ path: path.join(shots, 'sermon-list-unprocessed.png') });
+  await row.getByRole('link', { name: '2026-08-30' }).click();
+  await expect(page).toHaveURL(/#\/folder\/2026\/2026-08-30$/);
+});
+
+test('sermon details fit a phone', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, baseURL: process.env.BASE_URL || 'http://localhost:8080/' });
+  const page = await ctx.newPage();
+  await page.goto('#/folders/2026');
+  await page.locator('tr.row', { hasText: '2026-07-05' }).click();
+  await expect(page.locator('tr.detail-row audio').first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: path.join(shots, 'phone-sermon-list.png') });
+  await ctx.close();
+});
