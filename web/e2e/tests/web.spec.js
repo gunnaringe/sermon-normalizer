@@ -491,7 +491,7 @@ test('upload straight into a new date folder, in chunks', async ({ page }) => {
   expect(fs.readdirSync(dir).filter((f) => f !== 'recording.json')).toEqual(['2026-09-27_raw.flac']);
   expect(fs.readFileSync(path.join(dir, '2026-09-27_raw.flac')).equals(fs.readFileSync(path.join(DATA, 'upload.flac')))).toBe(true);
   // The date now has a recording: a second upload to it is refused.
-  await page.getByRole('link', { name: 'Folders' }).click();
+  await page.getByRole('link', { name: 'Recordings' }).click();
   await page.locator('input[type=file]').setInputFiles({ name: 'again 2026-09-27.flac', mimeType: 'audio/flac', buffer: Buffer.from('x') });
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page.getByText('already has a raw recording')).toBeVisible();
@@ -560,7 +560,7 @@ test('churches: add one, folders are separate, the choice is remembered', async 
   await page.getByRole('dialog').getByLabel('Name of the new church').fill('Second church');
   await page.getByRole('dialog').getByRole('button', { name: 'Add church' }).click();
   await expect(page.locator('#church')).toHaveValue('second-church');
-  await expect(page.getByText('No folders here yet.')).toBeVisible();
+  await expect(page.getByText('No recordings here yet.')).toBeVisible();
   await page.reload();
   await expect(page.locator('#church')).toHaveValue('second-church');
   await page.locator('#church').selectOption('first-church');

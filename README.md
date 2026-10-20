@@ -106,7 +106,7 @@ cancels running jobs and waits for them to clean up.
 
 ## Using it
 
-- **Folders:** the date folders with what they contain (`raw`, `✓ flac mp3 opus`).
+- **Recordings:** the date folders with what they contain (`raw`, `✓ flac mp3 opus`).
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
   ocenaudio. The controls are in three groups. **Navigate:** play, jump between silences
   (grey on the waveform), zoom (slider, `+`/`-`, or scroll over the waveform: zooms at the
@@ -144,15 +144,15 @@ cancels running jobs and waits for them to clean up.
   stereo is a switch; choosing stereo for a recording that is mono in effect (one channel,
   identical channels, or one side silent) shows a warning.
 - **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,
-  green when the file is there (play and download it from the folder list). `recording.json` keeps what each file was made from (sections, cuts,
+  green when the file is there (play and download it from the recordings list). `recording.json` keeps what each file was made from (sections, cuts,
   fades, sound, tags, bitrate), so a file made from other settings than the page shows says
-  *will regenerate*; files made from the folder list count too. The choice is the recording's own (not
+  *will regenerate*; files made from the recordings list count too. The choice is the recording's own (not
   carried over): it starts with the formats it has, or the defaults when it has none; a file whose format is no longer chosen says *will be deleted*.
   **Regenerate** saves the edit, makes the chosen formats that are missing or out of date and
   deletes the files of those not chosen (never the recording), asking first when that replaces or
   deletes a file. The run is followed live and keeps going if the browser is closed. Cancelling leaves
   nothing half-written.
-- **Upload** (at the top of the folder list): drop or pick the recording and its date (suggested from the file name or the file's
+- **Upload** (at the top of the recordings list): drop or pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
   and continue after a dropped connection. No inbox needed.
@@ -164,7 +164,7 @@ cancels running jobs and waits for them to clean up.
   remembered per church and suggested next time; **Settings → Sermon names** turns that off and
   lists them, so a one-off can be removed.
 - **Inbox** (with `--inbox`): recordings that arrive by other means go into their date folder
-  by themselves (see below); there is no inbox page. The folder list shows a "converting" or
+  by themselves (see below); there is no inbox page. The recordings list shows a "converting" or
   "preparing" tag while a recording is made ready.
 
 **A WAV is converted to FLAC as soon as it arrives** (upload, inbox, or opening a folder that

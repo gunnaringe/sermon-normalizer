@@ -71,11 +71,11 @@ async function foldersView(path) {
   }
   view.replaceChildren(
     data.path ? crumbs(data.path) : '',
-    h('h1', {}, data.path ? data.path.split('/').pop() : 'Folders'),
+    h('h1', {}, data.path ? data.path.split('/').pop() : 'Recordings'),
     uploadBox(),
     data.entries.length
       ? h('table', { class: 'list' }, body)
-      : h('p', { class: 'muted' }, 'No folders here yet. Upload a recording above',
+      : h('p', { class: 'muted' }, 'No recordings here yet. Upload one above',
         config.inbox ? ', or put one in the inbox folder.' : '.'));
 }
 
