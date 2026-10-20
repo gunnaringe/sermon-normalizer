@@ -76,6 +76,14 @@ func readState(folder string) *folderState {
 	if data, err := os.ReadFile(statePath(folder)); err == nil && json.Unmarshal(data, st) != nil {
 		st = &folderState{}
 	}
+	if st.Saved == nil && st.Adjusted == nil {
+		// Before recording.json the sermon was kept in sermon.json: use it
+		// until the first write moves it over.
+		var old sermonFile
+		if data, err := os.ReadFile(filepath.Join(folder, "sermon.json")); err == nil && json.Unmarshal(data, &old) == nil {
+			st.sermonFile = old
+		}
+	}
 	for _, c := range []**sermonSettings{&st.Saved, &st.Adjusted} {
 		if *c == nil {
 			continue

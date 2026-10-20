@@ -162,3 +162,24 @@ func TestStateUpdatesDoNotLoseChanges(t *testing.T) {
 		t.Errorf("folder of a recording in original/: %s", got)
 	}
 }
+
+// A folder from before recording.json keeps its saved and adjusted sermon in
+// sermon.json; it is read from there until the first write.
+func TestLegacySermonJSON(t *testing.T) {
+	dir := t.TempDir()
+	old := `{"saved":null,"adjusted":{"sections":[{"start":268.4,"end":476.8}],"cuts":[],"fadeIn":0,"fadeOut":0}}`
+	if err := os.WriteFile(filepath.Join(dir, "sermon.json"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := readState(dir)
+	if st.Adjusted == nil || len(st.Adjusted.Sections) != 1 || st.Adjusted.Sections[0].End != 476.8 {
+		t.Fatalf("adjusted: %+v", st.Adjusted)
+	}
+	// Once recording.json has a sermon, it wins.
+	if err := os.WriteFile(statePath(dir), []byte(`{"saved":{"sections":[{"start":1,"end":2}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st := readState(dir); st.Saved == nil || st.Adjusted != nil {
+		t.Errorf("state: %+v", st)
+	}
+}
