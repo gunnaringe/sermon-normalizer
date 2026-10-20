@@ -61,6 +61,7 @@ type TenantInfo struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Group string `json:"group,omitempty"` // who may use it; only with access control
+	Logo  string `json:"logo,omitempty"`  // the church's own logo (see logo.go): its version; "" = none
 }
 
 type tenant struct {
@@ -81,7 +82,7 @@ func (t *tenant) info() TenantInfo {
 			name = "Default"
 		}
 	}
-	return TenantInfo{ID: t.id, Name: name}
+	return TenantInfo{ID: t.id, Name: name, Logo: t.logoVersion()}
 }
 
 // infoFor is info() as shown to a user: administrators also see the group.
@@ -318,6 +319,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tenants", a.handleTenants)
 	mux.HandleFunc("POST /api/tenants", a.handleTenantCreate)
 	mux.HandleFunc("PUT /api/church", a.handleChurchRename)
+	mux.HandleFunc("GET /api/logo", a.handleLogo)
+	mux.HandleFunc("PUT /api/logo", a.handleLogoPut)
+	mux.HandleFunc("DELETE /api/logo", a.handleLogoDelete)
 	if a.share != nil {
 		mux.HandleFunc("GET /api/shares", a.handleShares)
 		mux.HandleFunc("POST /api/shares", a.handleShareCreate)

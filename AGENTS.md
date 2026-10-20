@@ -37,6 +37,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/meta.go`: a church's default tags (title/artist/album templates with
   `{yyyy}` `{mm}` `{dd}` `{date}` `{weekday}` `{name}`...), settings API, the tags of a run.
   Stored per church in its `church.json`; `normalizer.Tags` carries them to ffmpeg.
+- `web/logo.go`: a church's own logo, `<church>/logo.png|jpg|webp|svg` (`PUT/GET/DELETE api/logo`, ≤1 MB, type sniffed; served
+  with a sandbox CSP); its version is `logo` in the church list, and the header shows it instead of the app's.
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/namelist.go`: remembered sermon names per church (suggestions on/off + list, learned on

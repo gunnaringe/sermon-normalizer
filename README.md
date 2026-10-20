@@ -58,6 +58,10 @@ The folder name is the church's id and, until it is renamed on the Settings page
 church in the app ("+ Add church…") or just make the folder. A `church.json` that cannot be read stops
 the server from starting rather than being overwritten.
 
+**Logo:** *Settings → Church → Upload logo…* (PNG, JPEG, WebP or SVG, up to 1 MB) puts the church's own
+logo in the header instead of the app's; it is kept as `logo.<ext>` in the church folder. A user with one
+church and no right to add more sees just its name in the header; otherwise a quiet dropdown switches church.
+
 | Flag | Default | |
 |---|---|---|
 | `--data-dir` | | the folder with a folder per church (see above) |
