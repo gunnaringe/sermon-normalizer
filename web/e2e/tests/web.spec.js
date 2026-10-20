@@ -867,6 +867,7 @@ test('the recording keeps the name it arrived with: in the conversion note and i
   await expect(page.locator('.input-file')).toContainText('R_20270101-101010.flac');
   await expect(page.locator('.input-file').getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /R_20270101-101010\.flac/);
   expect(JSON.parse(fs.readFileSync(path.join(folder, 'recording.json'), 'utf8')).sourceName).toBe('R_20270101-101010.wav');
+});
 
 test('split a section, put in a pause, and choose what Play plays', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
