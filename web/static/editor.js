@@ -477,16 +477,24 @@ export async function editorView(view, path, config) {
     try { list.replaceChildren(...rows); } finally { rebuilding = false; }
   }
 
+  // showLabel writes a section's or cut's label on its region in the waveform.
+  const showLabel = (x) => x.region.setContent(x.label || undefined);
+  const labelInput = (x, name) => h('input', {
+    type: 'text', class: 'span-label', maxlength: 60, value: x.label || '', placeholder: t('label (optional)'), 'aria-label': t('{name} label', { name }),
+    oninput: (e) => { x.label = e.target.value; showLabel(x); changed(); },
+  });
+
   const sectionOf = (r) => sections.find((x) => x.region === r);
   const first = () => sections[0].region.start;
   const last = () => sections[sections.length - 1].region.end;
 
   // addSection adds a section between two times; it returns it, or null if empty.
-  function addSection(start, end) {
+  function addSection(start, end, label = '') {
     start = Math.max(0, Math.min(start, duration));
     end = Math.max(0, Math.min(end, duration));
     if (end - start < 0.05) return null;
-    const section = { region: regions.addRegion({ id: 'section-' + (++sectionSeq), start, end, color: css('--selection'), drag: true, resize: true }) };
+    const section = { region: regions.addRegion({ id: 'section-' + (++sectionSeq), start, end, color: css('--selection'), drag: true, resize: true }), label };
+    showLabel(section);
     sections.push(section);
     tidySections();
     return section;
@@ -500,6 +508,7 @@ export async function editorView(view, path, config) {
       const a = sections[i - 1].region, b = sections[i].region;
       if (b.start > a.end) { i++; continue; }
       if (b.end > a.end) a.setOptions({ end: b.end });
+      if (!sections[i - 1].label) { sections[i - 1].label = sections[i].label; showLabel(sections[i - 1]); }
       b.remove();
       sections.splice(i, 1);
     }
@@ -572,6 +581,7 @@ export async function editorView(view, path, config) {
       x.row = h('div', { class: 'section' },
         h('strong', {}, name),
         h('label', {}, t('From'), ' ', x.startIn), h('label', {}, t('to'), ' ', x.endIn), x.info,
+        labelInput(x, name),
         h('button', { title: t('Play this section'), onclick: () => playFor(r.start, r.end - r.start) }, t('Play')),
         h('button', { onclick: () => removeSection(x) }, t('Remove')));
       return x.row;
@@ -606,11 +616,12 @@ export async function editorView(view, path, config) {
   const sortCuts = () => cuts.sort((a, b) => a.region.start - b.region.start);
 
   // addCut adds a cut between two times; it returns the cut, or null if empty.
-  function addCut(start, end) {
+  function addCut(start, end, label = '') {
     start = Math.max(0, Math.min(start, duration));
     end = Math.max(0, Math.min(end, duration));
     if (end - start < 0.05) return null;
-    const cut = { region: regions.addRegion({ id: 'cut-' + (++cutSeq), start, end, color: css('--cut'), drag: true, resize: true }) };
+    const cut = { region: regions.addRegion({ id: 'cut-' + (++cutSeq), start, end, color: css('--cut'), drag: true, resize: true }), label };
+    showLabel(cut);
     cuts.push(cut);
     sortCuts();
     renderCuts();
@@ -667,13 +678,15 @@ export async function editorView(view, path, config) {
       c.row = h('div', { class: 'cut' },
         h('strong', {}, t('Cut {n}', { n: i + 1 })),
         h('label', {}, t('From'), ' ', c.startIn), h('label', {}, t('to'), ' ', c.endIn), c.info,
+        labelInput(c, t('Cut {n}', { n: i + 1 })),
         h('button', { title: t('The cut starts at the playhead'), onclick: here('start') }, t('Set start')),
         h('button', { title: t('The cut ends at the playhead'), onclick: here('end') }, t('Set end')),
         h('button', { title: t('Play 3 s before and after the cut, as it will sound'), onclick: () => {
           const from = Math.max(r.start - 3, 0);
           playFor(from, r.end + 3 - from, true);
         } }, t('Hear join')),
-        h('button', { onclick: () => removeCut(c) }, t('Remove')));
+        h('button', { onclick: () => removeCut(c) }, t('Remove')),
+        c.warn = h('p', { class: 'cut-warn', role: 'status' }));
       return c.row;
     }));
     syncCuts();
@@ -684,9 +697,17 @@ export async function editorView(view, path, config) {
       const r = c.region;
       if (document.activeElement !== c.startIn) c.startIn.value = formatTime(r.start);
       if (document.activeElement !== c.endIn) c.endIn.value = formatTime(r.end);
-      const outside = !sections.some((x) => r.start < x.region.end && r.end > x.region.start);
-      c.row.classList.toggle('outside', outside);
-      c.info.textContent = (outside ? t('outside the sermon') + ' · ' : '') + t('length {time}', { time: formatTime(r.end - r.start, 1) });
+      // How much of the cut is in a section: none, some or all. A cut outside
+      // the sections is allowed (what is outside is left out anyway), but it does nothing.
+      const inside = sections.reduce((n, x) => n + Math.max(0, Math.min(r.end, x.region.end) - Math.max(r.start, x.region.start)), 0);
+      const none = inside < 0.001, partly = !none && inside < r.end - r.start - 0.001;
+      c.row.classList.toggle('outside', none);
+      c.row.classList.toggle('partly', partly);
+      c.info.textContent = t('length {time}', { time: formatTime(r.end - r.start, 1) });
+      const n = cuts.indexOf(c) + 1;
+      c.warn.textContent = none ? '⚠ ' + t('Cut {n} does not have any effect as it is not in an included section', { n })
+        : partly ? '⚠ ' + t('Cut {n} is only partially part of a section', { n }) : '';
+      c.warn.hidden = !c.warn.textContent;
     }
     cutHint.textContent = !sections.length ? t('Select the sermon first. Then cut out parts you do not want, such as a song.')
       : cuts.length ? '' : t('Nothing cut out. Use the button, press c, or shift-drag on the waveform.');
@@ -713,13 +734,16 @@ export async function editorView(view, path, config) {
   let sermon = info.sermon || { saved: null, adjusted: null };
   let lastSent = JSON.stringify(sermon.adjusted || sermon.saved);
 
+  // spanOf is a section or cut as it is kept: its times and its label, if any.
+  const spanOf = (x) => ({ start: x.region.start, end: x.region.end, ...(x.label ? { label: x.label } : {}) });
+
   // currentSettings is what is on the page, or null while there is nothing (valid) to keep.
   function currentSettings() {
     if (!sections.length || restoring) return null;
-    const secs = sections.map((x) => ({ start: x.region.start, end: x.region.end }));
-    const list = cuts.map((c) => ({ start: c.region.start, end: c.region.end }));
+    const secs = sections.map(spanOf);
+    const list = cuts.map(spanOf);
     if (secs.some((x) => x.end - x.start < 0.05)) return null;
-    if (list.some((c) => c.end - c.start < 0.05 || c.start < first() || c.end > last())) return null;
+    if (list.some((c) => c.end - c.start < 0.05)) return null; // one outside the sermon is fine
     if (!(opts.fadeIn >= 0) || !(opts.fadeOut >= 0)) return null;
     return { sections: secs, cuts: list, fadeIn: opts.fadeIn, fadeOut: opts.fadeOut };
   }
@@ -746,9 +770,9 @@ export async function editorView(view, path, config) {
     try {
       for (const x of [...sections, ...cuts]) x.region.remove();
       sections.length = cuts.length = 0;
-      for (const x of set.sections) addSection(x.start, x.end);
+      for (const x of set.sections) addSection(x.start, x.end, x.label);
       if (sections.length) {
-        for (const c of set.cuts) addCut(c.start, c.end);
+        for (const c of set.cuts) addCut(c.start, c.end, c.label);
         reveal(first());
       }
       for (const key of ['fadeIn', 'fadeOut']) {
@@ -930,8 +954,8 @@ export async function editorView(view, path, config) {
       force,
       ...(info.tags ? tags : {}),
       noiseReduction: Math.round(opts.noiseReduction),
-      sections: sections.map((x) => ({ start: x.region.start, end: x.region.end })),
-      cuts: sections.length ? cuts.map((c) => ({ start: c.region.start, end: c.region.end })) : [],
+      sections: sections.map(spanOf),
+      cuts: sections.length ? cuts.map(spanOf) : [],
     };
   }
 

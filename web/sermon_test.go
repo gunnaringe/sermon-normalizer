@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -91,10 +92,10 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 	// Nothing invalid is kept.
 	for name, body := range map[string]string{
 		"no sections":   `{"sections":[],"cuts":[]}`,
-		"cut outside":   `{"sections":[{"start":20,"end":80}],"cuts":[{"start":70,"end":90}]}`,
 		"backwards cut": `{"sections":[{"start":20,"end":80}],"cuts":[{"start":40,"end":30}]}`,
 		"end first":     `{"sections":[{"start":50,"end":20}],"cuts":[]}`,
 		"negative fade": `{"sections":[{"start":20,"end":80}],"cuts":[],"fadeIn":-1}`,
+		"long label":    `{"sections":[{"start":20,"end":80,"label":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}],"cuts":[]}`,
 		"unknown field": `{"sections":[{"start":20,"end":80}],"cuts":[],"x":1}`,
 		"start and end": `{"start":20,"end":80,"cuts":[]}`,
 	} {
@@ -160,5 +161,33 @@ func TestStateUpdatesDoNotLoseChanges(t *testing.T) {
 	}
 	if got := folderOfRecording(filepath.Join(folder, "original", "2026-10-04_raw.flac")); got != folder {
 		t.Errorf("folder of a recording in original/: %s", got)
+	}
+}
+
+// A cut that is not in a section is kept, and changes nothing; one that sticks
+// out of the sermon is cut at the edge. Labels are tidied and change nothing.
+func TestCuttingOutsideSections(t *testing.T) {
+	c := cutting{
+		Sections: []span{{Start: 20, End: 80, Label: "  The   sermon "}},
+		Cuts:     []span{{Start: 0, End: 10, Label: "Song"}, {Start: 70, End: 90}, {Start: 30, End: 40}},
+	}
+	c.normalize()
+	o := normalizer.DefaultOptions()
+	if err := c.apply(&o); err != nil {
+		t.Fatal(err)
+	}
+	want := []normalizer.Span{{Start: 30, End: 40}, {Start: 70, End: 80}}
+	if !reflect.DeepEqual(o.Cuts, want) || o.Start != 20 || o.End != 80 {
+		t.Errorf("start %v end %v cuts %v, want 20 80 %v", o.Start, o.End, o.Cuts, want)
+	}
+	if c.Sections[0].Label != "The sermon" || len(c.Cuts) != 3 || c.Cuts[0].Label != "Song" {
+		t.Errorf("kept: %+v", c)
+	}
+	// The files do not depend on the labels or on a cut outside.
+	plain := cutting{Sections: []span{{Start: 20, End: 80}}, Cuts: []span{{Start: 30, End: 40}, {Start: 70, End: 80}}}
+	plain.normalize()
+	o2 := normalizer.DefaultOptions()
+	if err := plain.apply(&o2); err != nil || cutOf(o) != cutOf(o2) {
+		t.Errorf("the cut differs: %v", err)
 	}
 }

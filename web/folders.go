@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/gunnaringe/sermon-studio/normalizer"
@@ -274,7 +275,13 @@ func (s *Server) handleFolder(w http.ResponseWriter, r *http.Request) {
 type span struct {
 	Start float64 `json:"start"`
 	End   float64 `json:"end"`
+	// Label is the user's own note on a section or cut ("Intro", "Song"). It
+	// changes nothing in the files, so it is not part of what makes them out of date.
+	Label string `json:"label,omitempty"`
 }
+
+// maxSpanLabel is the longest label of a section or cut, in characters.
+const maxSpanLabel = 60
 
 // cutting is what of the recording becomes the sermon: the sections, in
 // order, without the cuts. One section with cuts and several sections give
@@ -288,10 +295,19 @@ type cutting struct {
 // sorts the cuts. Empty lists are [] in JSON.
 func (c *cutting) normalize() {
 	sort.Slice(c.Sections, func(i, j int) bool { return c.Sections[i].Start < c.Sections[j].Start })
+	for i := range c.Sections {
+		c.Sections[i].Label = strings.Join(strings.Fields(c.Sections[i].Label), " ")
+	}
+	for i := range c.Cuts {
+		c.Cuts[i].Label = strings.Join(strings.Fields(c.Cuts[i].Label), " ")
+	}
 	merged := []span{}
 	for _, x := range c.Sections {
 		if n := len(merged); n > 0 && x.Start <= merged[n-1].End {
 			merged[n-1].End = math.Max(merged[n-1].End, x.End)
+			if merged[n-1].Label == "" {
+				merged[n-1].Label = x.Label
+			}
 		} else {
 			merged = append(merged, x)
 		}
@@ -307,6 +323,14 @@ func (c *cutting) normalize() {
 // takes them: from the first section's start to the last one's end, with the
 // gaps between sections and the cuts left out. c must be normalized.
 func (c cutting) apply(o *normalizer.Options) error {
+	for _, x := range append(slices.Clone(c.Sections), c.Cuts...) {
+		if utf8.RuneCountInString(x.Label) > maxSpanLabel {
+			return fmt.Errorf("a label can be at most %d characters", maxSpanLabel)
+		}
+		if strings.ContainsFunc(x.Label, unicode.IsControl) {
+			return errors.New("a label cannot hold control characters")
+		}
+	}
 	for _, x := range c.Sections {
 		if x.Start < 0 || x.End-x.Start < minSpan {
 			return errors.New("a section must end after it starts")
@@ -325,36 +349,22 @@ func (c cutting) apply(o *normalizer.Options) error {
 		o.Cuts = append(o.Cuts, normalizer.Span{Start: c.Sections[i-1].End, End: c.Sections[i].Start})
 	}
 	for _, x := range c.Cuts {
-		switch {
-		case x.Start < 0 || x.End-x.Start < minSpan:
+		if x.Start < 0 || x.End-x.Start < minSpan {
 			return errors.New("a cut must end after it starts")
-		case x.Start < first.Start || x.End > last.End:
-			return errors.New("a cut must be inside the sermon")
 		}
-		o.Cuts = append(o.Cuts, normalizer.Span{Start: x.Start, End: x.End})
+		// What is outside the sermon is left out anyway: a cut there changes nothing
+		// (the editor warns about it), and one that sticks out is cut at the edge.
+		start, end := math.Max(x.Start, first.Start), math.Min(x.End, last.End)
+		if end-start < minSpan {
+			continue
+		}
+		o.Cuts = append(o.Cuts, normalizer.Span{Start: start, End: end})
 	}
 	return nil
 }
 
 // minSpan is the shortest section or cut (seconds), as in the editor.
 const minSpan = 0.05
-
-// idleCuts are the cuts that fall wholly between sections, so leave nothing out.
-func (c cutting) idleCuts() int {
-	n := 0
-	for _, x := range c.Cuts {
-		inside := false
-		for _, s := range c.Sections {
-			if x.Start < s.End && x.End > s.Start {
-				inside = true
-			}
-		}
-		if !inside {
-			n++
-		}
-	}
-	return n
-}
 
 // runRequest is the cut and the options, as sent by the front end.
 type runRequest struct {
@@ -423,11 +433,7 @@ func (s *Server) check(abs string, q runRequest) plan {
 	if err := pl.opt.Validate(); err != nil {
 		return fail(err)
 	}
-	if n := q.idleCuts(); n == 1 {
-		pl.Notices = append(pl.Notices, "This cut is between two sections, so it changes nothing.")
-	} else if n > 1 {
-		pl.Notices = append(pl.Notices, fmt.Sprintf("%d cuts are between sections, so they change nothing.", n))
-	}
+	// A cut that is in no section changes nothing: the editor warns by the cut itself.
 	paths, err := normalizer.NewPaths(abs)
 	if err != nil {
 		return fail(err)

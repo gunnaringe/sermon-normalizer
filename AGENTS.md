@@ -48,7 +48,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock).
 - `web/sermon.go`: the sermon part of it: `saved` (the version the user saved) + `adjusted`
   (what the editor keeps as you edit; null when equal to saved): sections, cuts, fades.
-  `cutting` (`folders.go`) turns sections + cuts into the pipeline's Start/End/Cuts (gaps become cuts).
+  `cutting` (`folders.go`) turns sections + cuts into the pipeline's Start/End/Cuts (gaps become cuts; a cut outside the
+  sermon is clipped to it or dropped, never an error; sections and cuts have an optional `label`, which is not part of `cutOf`).
   `PUT api/sermon` (adjust), `POST api/sermon/save`, `POST api/sermon/revert`; returned as
   `sermon` in the folder info.
 - `web/folders.go`: `api/recordings` (every date folder of the church, flat: the page groups/searches it), `api/labels` (a
