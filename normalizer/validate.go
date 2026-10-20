@@ -2,6 +2,7 @@ package normalizer
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -27,6 +28,11 @@ func (o Options) Validate() error {
 		return errors.New("max true peak must be from -20 to 0 dBTP")
 	case strings.TrimSpace(o.Mp3Bitrate) == "" || strings.TrimSpace(o.OpusBitrate) == "":
 		return errors.New("bitrates cannot be empty")
+	}
+	for _, p := range o.Pauses {
+		if p.At < 0 || p.Seconds < 0 || p.Seconds > MaxPause {
+			return fmt.Errorf("a pause can be from 0 to %g seconds", MaxPause)
+		}
 	}
 	for _, c := range o.Cuts {
 		switch {

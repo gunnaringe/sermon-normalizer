@@ -62,7 +62,7 @@ Each can have a label, which shows on the waveform.
   (grey on the waveform), zoom (slider, `+`/`-`, or scroll over the waveform: zooms at the
   mouse; shift+scroll moves along; *Settings › Waveform* can make it need ctrl/cmd). **Sermon:** drag on the waveform
   to select the sermon and drag the edges to adjust, or set the start and end at the playhead;
-  *Hear start*, *Hear end* and *Play sermon* check the cut. The from/to fields follow the
+  *Hear start*, *Hear end* and *Hear the whole sermon* (in Navigate) check the cut as it will be published. The from/to fields follow the
   selection and can be typed in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed).
   The sermon can be **several sections** (below). **Cut out:** parts of the sermon that should
   go, such as a song in the middle (below).
@@ -81,14 +81,20 @@ Each can have a label, which shows on the waveform.
   confirmation) throws the adjustments away and goes back to it. Both versions are in the file.
 - **Several sections:** drag on an empty part of the waveform to add another section; the parts
   between sections are left out, as if cut. Use whichever feels natural: one section with cuts,
-  or several sections (or both). Sections that come to overlap become one; *Remove* drops one.
+  or several sections (or both). Sections that come to overlap become one; sections that only touch stay two.
+  *Remove* drops one. **Split here** (or `x`) splits the section at the playhead into two that touch: label each,
+  move the edge apart to leave a part out, or put a pause between them.
+- **Pause:** a section (but the last) and a cut each have a *Pause* field: seconds of silence (0 to 30) put into the sermon where
+  the section ends, or where the cut is. It shows on the waveform and in the length, and is part of what makes the
+  files out of date.
 - **Cutting parts out:** with the sermon selected, *Cut out here* (or `c`) marks 10 s from the
   playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
   dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut outside
   the sections is allowed (what is outside is left out anyway) but does nothing, and a warning by it says so (also when it is only
   partly in a section). Every section and cut can have a **label** ("Intro", "Song"), shown on the waveform and kept
-  with the edit; labels change nothing in the files. *Hear join* plays 3 s either side of a cut as it will sound, and with
-  *Play without the cuts* (on by default) playback jumps over the cuts and the gaps between sections. The outputs are made from
+  with the edit; labels change nothing in the files. *Hear join* plays 3 s either side of a cut as it will sound. In Navigate,
+  what the Play button plays is **The published parts** (the default: playback jumps over the cuts and the gaps between sections, and waits out the pauses)
+  or **The recording** (as it is, so the parts in between can be heard too). The outputs are made from
   what is left, joined with a 15 ms fade on each side so the join does not click; the length
   shown is that of the sections after the cuts.
 - **Options:** checked as you change them; your choices carry over to the next folder. Mono or

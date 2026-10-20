@@ -547,6 +547,24 @@ func TestIntegrationCuts(t *testing.T) {
 	}
 }
 
+// Pauses are silence in the sermon, where a part ends and inside a part.
+func TestIntegrationPauses(t *testing.T) {
+	ff := requireFFmpeg(t)
+	dir := dateFolder(t)
+	service(t, ff, filepath.Join(dir, date+"_raw.wav"), 2)
+
+	opt := DefaultOptions()
+	opt.Start, opt.End = 10, 90
+	opt.Cuts = []Span{{30, 40}}
+	opt.Pauses = []Pause{{30, 3}, {60, 2}} // 10-30, 3 s, 40-60, 2 s, 60-90: 70 s and 5 s of silence
+	opt.FadeIn, opt.FadeOut = 1, 1
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
+		t.Fatal(err)
+	}
+	checkOutputs(t, ff, dir, 75)
+	wantFiles(t, dir, date+".flac", date+".mp3", date+".opus", "original/"+date+"_raw.flac")
+}
+
 // The verdict on a recording's channels, and its format and metadata.
 func TestIntegrationVerdictAndProbe(t *testing.T) {
 	ff := requireFFmpeg(t)

@@ -278,6 +278,8 @@ type span struct {
 	// Label is the user's own note on a section or cut ("Intro", "Song"). It
 	// changes nothing in the files, so it is not part of what makes them out of date.
 	Label string `json:"label,omitempty"`
+	// Pause is silence (seconds) put into the sermon where a section ends, or where a cut starts.
+	Pause float64 `json:"pause,omitempty"`
 }
 
 // maxSpanLabel is the longest label of a section or cut, in characters.
@@ -291,8 +293,8 @@ type cutting struct {
 	Cuts     []span `json:"cuts"`
 }
 
-// normalize sorts the sections and merges those that overlap or touch, and
-// sorts the cuts. Empty lists are [] in JSON.
+// normalize sorts the sections and merges those that overlap (ones that only touch stay two: a
+// pause or a label can be between them), and sorts the cuts. Empty lists are [] in JSON.
 func (c *cutting) normalize() {
 	sort.Slice(c.Sections, func(i, j int) bool { return c.Sections[i].Start < c.Sections[j].Start })
 	for i := range c.Sections {
@@ -303,7 +305,10 @@ func (c *cutting) normalize() {
 	}
 	merged := []span{}
 	for _, x := range c.Sections {
-		if n := len(merged); n > 0 && x.Start <= merged[n-1].End {
+		if n := len(merged); n > 0 && x.Start < merged[n-1].End {
+			if x.End >= merged[n-1].End {
+				merged[n-1].Pause = x.Pause // the pause is where the section ends
+			}
 			merged[n-1].End = math.Max(merged[n-1].End, x.End)
 			if merged[n-1].Label == "" {
 				merged[n-1].Label = x.Label
@@ -330,6 +335,9 @@ func (c cutting) apply(o *normalizer.Options) error {
 		if strings.ContainsFunc(x.Label, unicode.IsControl) {
 			return errors.New("a label cannot hold control characters")
 		}
+		if !(x.Pause >= 0 && x.Pause <= normalizer.MaxPause) {
+			return fmt.Errorf("a pause can be from 0 to %g seconds", normalizer.MaxPause)
+		}
 	}
 	for _, x := range c.Sections {
 		if x.Start < 0 || x.End-x.Start < minSpan {
@@ -340,13 +348,19 @@ func (c cutting) apply(o *normalizer.Options) error {
 		if len(c.Cuts) > 0 {
 			return errors.New("select the sermon before cutting parts out of it")
 		}
-		o.Start, o.End, o.Cuts = 0, 0, nil
+		o.Start, o.End, o.Cuts, o.Pauses = 0, 0, nil, nil
 		return nil
 	}
 	first, last := c.Sections[0], c.Sections[len(c.Sections)-1]
 	o.Start, o.End, o.Cuts = first.Start, last.End, nil
+	o.Pauses = nil
 	for i := 1; i < len(c.Sections); i++ {
-		o.Cuts = append(o.Cuts, normalizer.Span{Start: c.Sections[i-1].End, End: c.Sections[i].Start})
+		if c.Sections[i-1].End < c.Sections[i].Start { // sections that touch have no gap
+			o.Cuts = append(o.Cuts, normalizer.Span{Start: c.Sections[i-1].End, End: c.Sections[i].Start})
+		}
+		if p := c.Sections[i-1].Pause; p > 0 {
+			o.Pauses = append(o.Pauses, normalizer.Pause{At: c.Sections[i-1].End, Seconds: p})
+		}
 	}
 	for _, x := range c.Cuts {
 		if x.Start < 0 || x.End-x.Start < minSpan {
@@ -359,6 +373,9 @@ func (c cutting) apply(o *normalizer.Options) error {
 			continue
 		}
 		o.Cuts = append(o.Cuts, normalizer.Span{Start: start, End: end})
+		if x.Pause > 0 && start > first.Start {
+			o.Pauses = append(o.Pauses, normalizer.Pause{At: start, Seconds: x.Pause})
+		}
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ type Options struct {
 	OriginalName string
 	Start, End   float64 // cut raw to edit (seconds); 0 = from the beginning / to the end
 	Cuts         []Span  // parts of Start..End to leave out (seconds in the recording), e.g. a song
+	Pauses       []Pause // silences put into the sermon, at times in the recording
 	FadeIn       float64 // seconds at the start of the sermon; 0 = off
 	FadeOut      float64 // seconds at the end of the sermon; 0 = off
 	Outputs      Outputs
@@ -56,6 +58,16 @@ func (t Tags) args() []string {
 
 // cutting reports whether a sermon is selected in the recording.
 func (o Options) cutting() bool { return o.Start > 0 || o.End > 0 }
+
+// Pause is silence put into the sermon: Seconds long, where the recording is at At (seconds in the
+// recording). At is where a kept part ends (before a cut or a gap), or inside a part, which it
+// then splits. A pause at the end of the sermon, or outside it, has no effect.
+type Pause struct {
+	At, Seconds float64
+}
+
+// MaxPause is the longest pause, in seconds.
+const MaxPause = 30.0
 
 // joinFade is the fade (seconds) on each side of a join where a part was cut
 // out, so the join does not click.
@@ -89,6 +101,46 @@ func (o Options) keep(end float64) []Span {
 		}
 	}
 	return out
+}
+
+// parts is keep with the pauses worked in: the parts of the recording the sermon is made of, cut
+// where a pause falls inside one, and the silence (seconds) that follows each (the last one's is
+// not made).
+func (o Options) parts(end float64) (kept []Span, after []float64) {
+	kept = o.keep(end)
+	after = make([]float64, len(kept))
+	pauses := slices.Clone(o.Pauses)
+	sort.Slice(pauses, func(i, j int) bool { return pauses[i].At < pauses[j].At })
+	for _, p := range pauses {
+		if p.Seconds <= 0 {
+			continue
+		}
+		for i, k := range kept {
+			if math.Abs(p.At-k.End) < 0.001 {
+				after[i] += p.Seconds
+				break
+			}
+			if p.At >= k.Start+0.05 && p.At <= k.End-0.05 {
+				kept = slices.Insert(kept, i+1, Span{p.At, k.End})
+				kept[i].End = p.At
+				after = slices.Insert(after, i+1, after[i])
+				after[i] = p.Seconds
+				break
+			}
+		}
+	}
+	return kept, after
+}
+
+// pauseTotal is the silence the sermon has in it, in seconds.
+func pauseTotal(after []float64) float64 {
+	var n float64
+	for i, s := range after {
+		if i < len(after)-1 {
+			n += s
+		}
+	}
+	return n
 }
 
 // ChannelDefaults are the defaults that depend on mono or stereo: the usual
@@ -377,21 +429,33 @@ func (p *Pipeline) ingest(ctx context.Context) (string, error) {
 // Each kept part is its own input, so ffmpeg never has to hold the audio
 // between two parts in memory.
 func (p *Pipeline) cutInput(ctx context.Context) (args []string, graph string, err error) {
-	if len(p.Opt.Cuts) == 0 {
+	if len(p.Opt.Cuts) == 0 && len(p.Opt.Pauses) == 0 {
 		return append(p.cutArgs(), "-i", p.raw), "", nil
 	}
 	end, err := p.FF.Duration(ctx, p.raw)
 	if err != nil {
 		return nil, "", err
 	}
-	kept := p.Opt.keep(end)
+	kept, after := p.Opt.parts(end)
 	if len(kept) == 0 {
 		return nil, "", errors.New("the cuts leave nothing of the sermon")
 	}
+	// With silence between them the parts must agree on rate and channels with it.
+	same := ""
+	for _, s := range after[:len(after)-1] {
+		if s > 0 {
+			same = "aresample=48000,aformat=channel_layouts=" + p.Opt.Channels()
+		}
+	}
 	var parts []string
+	var order string // the parts and the silences in the order they are joined
+	n := 0
 	for i, k := range kept {
 		args = append(args, "-ss", secs(k.Start), "-to", secs(k.End), "-i", p.raw)
 		f := []string{"asetpts=PTS-STARTPTS"}
+		if same != "" {
+			f = append(f, same)
+		}
 		if i > 0 {
 			f = append(f, fmt.Sprintf("afade=t=in:d=%g", joinFade))
 		}
@@ -399,12 +463,15 @@ func (p *Pipeline) cutInput(ctx context.Context) (args []string, graph string, e
 			f = append(f, fmt.Sprintf("afade=t=out:st=%.3f:d=%g", math.Max(k.End-k.Start-joinFade, 0), joinFade))
 		}
 		parts = append(parts, fmt.Sprintf("[%d:a]%s[p%d]", i, strings.Join(f, ","), i))
+		order += fmt.Sprintf("[p%d]", i)
+		n++
+		if i < len(kept)-1 && after[i] > 0 {
+			parts = append(parts, fmt.Sprintf("anullsrc=r=48000:cl=%s:d=%g[s%d]", p.Opt.Channels(), after[i], i))
+			order += fmt.Sprintf("[s%d]", i)
+			n++
+		}
 	}
-	var labels string
-	for i := range kept {
-		labels += fmt.Sprintf("[p%d]", i)
-	}
-	return args, strings.Join(parts, ";") + fmt.Sprintf(";%sconcat=n=%d:v=0:a=1[cut]", labels, len(kept)), nil
+	return args, strings.Join(parts, ";") + fmt.Sprintf(";%sconcat=n=%d:v=0:a=1[cut]", order, n), nil
 }
 
 // cutsNote is " without 2 cuts" for the log, or nothing.
@@ -576,10 +643,11 @@ func (p *Pipeline) sermonLength(ctx context.Context) (float64, error) {
 		return 0, err
 	}
 	var length float64
-	for _, k := range p.Opt.keep(end) { // an end past the end of the recording just runs to the end
+	kept, after := p.Opt.parts(end) // an end past the end of the recording just runs to the end
+	for _, k := range kept {
 		length += k.End - k.Start
 	}
-	return length, nil
+	return length + pauseTotal(after), nil
 }
 
 // --- 4. mp3 + opus --------------------------------------------------------

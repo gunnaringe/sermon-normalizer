@@ -1,8 +1,11 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -189,5 +192,67 @@ func TestCuttingOutsideSections(t *testing.T) {
 	o2 := normalizer.DefaultOptions()
 	if err := plain.apply(&o2); err != nil || cutOf(o) != cutOf(o2) {
 		t.Errorf("the cut differs: %v", err)
+	}
+}
+
+// Sections that touch stay two (a pause can be between them); pauses go to the pipeline; and one makes
+// the files differ, where none leaves the fingerprints as they were.
+func TestCuttingPauses(t *testing.T) {
+	c := cutting{
+		Sections: []span{{Start: 10, End: 20, Pause: 2}, {Start: 20, End: 30, Label: "b", Pause: 9}, {Start: 40, End: 60}},
+		Cuts:     []span{{Start: 25, End: 28, Pause: 1.5}, {Start: 5, End: 8, Pause: 4}},
+	}
+	c.normalize()
+	if len(c.Sections) != 3 {
+		t.Fatalf("touching sections were merged: %+v", c.Sections)
+	}
+	o := normalizer.DefaultOptions()
+	if err := c.apply(&o); err != nil {
+		t.Fatal(err)
+	}
+	// 20-30 touches 10-20: no gap there; the gap 30-40 and the cuts are cuts. A pause where a section ends or a
+	// cut starts inside the sermon; the cut before the sermon has none.
+	wantCuts := []normalizer.Span{{Start: 30, End: 40}, {Start: 25, End: 28}}
+	wantPauses := []normalizer.Pause{{At: 20, Seconds: 2}, {At: 30, Seconds: 9}, {At: 25, Seconds: 1.5}}
+	if o.Start != 10 || o.End != 60 || !reflect.DeepEqual(o.Cuts, wantCuts) || !reflect.DeepEqual(o.Pauses, wantPauses) {
+		t.Errorf("options: %v-%v cuts %v pauses %v", o.Start, o.End, o.Cuts, o.Pauses)
+	}
+	if err := o.Validate(); err != nil {
+		t.Error(err)
+	}
+
+	// Sections that overlap merge; the pause is the one of the section that ends last.
+	m := cutting{Sections: []span{{Start: 10, End: 30, Pause: 1}, {Start: 20, End: 40, Pause: 3}, {Start: 25, End: 35, Pause: 7}}}
+	m.normalize()
+	if len(m.Sections) != 1 || m.Sections[0].End != 40 || m.Sections[0].Pause != 3 {
+		t.Errorf("merged: %+v", m.Sections)
+	}
+
+	for _, p := range []float64{-1, 31, math.NaN()} {
+		bad := cutting{Sections: []span{{Start: 10, End: 20, Pause: p}}, Cuts: []span{}}
+		bad.normalize()
+		if err := bad.apply(&o); err == nil {
+			t.Errorf("pause %v accepted", p)
+		}
+	}
+
+	// The fingerprints: the same without pauses as before they existed, different with one.
+	plain := normalizer.DefaultOptions()
+	plain.Start, plain.End = 10, 60
+	old := func(v any) string {
+		data, _ := json.Marshal(v)
+		sum := sha256.Sum256(data)
+		return hex.EncodeToString(sum[:8])
+	}
+	if got, want := cutOf(plain), old(struct {
+		Start, End, FadeIn, FadeOut float64
+		Cuts                        []normalizer.Span
+	}{10, 60, 0, 0, nil}); got != want {
+		t.Errorf("cutOf without pauses changed: %s, was %s", got, want)
+	}
+	withPause := plain
+	withPause.Pauses = []normalizer.Pause{{At: 30, Seconds: 2}}
+	if cutOf(plain) == cutOf(withPause) || madeFrom(plain, "mp3") == madeFrom(withPause, "mp3") {
+		t.Error("a pause does not change the fingerprints")
 	}
 }
