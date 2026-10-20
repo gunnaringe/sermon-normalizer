@@ -838,4 +838,32 @@ test('a recording being imported shows that, not what is left to do', async ({ p
   await expect(row).toContainText('converting');
   await expect(row).not.toContainText('to do');
   await expect(row.locator('.badge')).toHaveCount(1);
+
+test('the recording keeps the name it arrived with: in the conversion note and in original/', async ({ page }) => {
+  // A 3 s WAV, 8 kHz mono: a recorder's file.
+  const n = 8000 * 3;
+  const wavFile = Buffer.alloc(44 + n * 2);
+  wavFile.write('RIFF', 0); wavFile.writeUInt32LE(36 + n * 2, 4); wavFile.write('WAVEfmt ', 8);
+  wavFile.writeUInt32LE(16, 16); wavFile.writeUInt16LE(1, 20); wavFile.writeUInt16LE(1, 22);
+  wavFile.writeUInt32LE(8000, 24); wavFile.writeUInt32LE(16000, 28); wavFile.writeUInt16LE(2, 32); wavFile.writeUInt16LE(16, 34);
+  wavFile.write('data', 36); wavFile.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) wavFile.writeInt16LE(Math.round(8000 * Math.sin(i / 8)), 44 + i * 2);
+
+  await page.goto('');
+  await page.locator('input[type=file]').setInputFiles({ name: 'R_20270101-101010.wav', mimeType: 'audio/wav', buffer: wavFile });
+  await page.locator('input[name=date]').fill('2027-01-01');
+  await page.getByRole('button', { name: 'Upload' }).click();
+  await expect(page).toHaveURL(/#\/first-church\/folder\/2027\/2027-01-01$/);
+  await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.input-file')).toContainText('converted from the original WAV (R_20270101-101010.wav', { timeout: 30_000 });
+
+  await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 30_000 });
+  await page.evaluate(() => window.__editor.addSection(0.2, 2.8));
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible({ timeout: 60_000 });
+  const folder = path.join(DATA, 'root/2027/2027-01-01');
+  expect(fs.readdirSync(path.join(folder, 'original'))).toEqual(['R_20270101-101010.flac']);
+  await expect(page.locator('.input-file')).toContainText('R_20270101-101010.flac');
+  await expect(page.locator('.input-file').getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /R_20270101-101010\.flac/);
+  expect(JSON.parse(fs.readFileSync(path.join(folder, 'recording.json'), 'utf8')).sourceName).toBe('R_20270101-101010.wav');
 });

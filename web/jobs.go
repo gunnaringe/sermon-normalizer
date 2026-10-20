@@ -202,6 +202,9 @@ func (js *jobs) run(ctx context.Context, j *job, pl plan) {
 			}
 		})
 	}}
+	if sn := readState(pl.paths.Folder).SourceName; sn != "" {
+		pl.opt.OriginalName = stemOf(sn)
+	}
 	p := &normalizer.Pipeline{P: pl.paths, Opt: pl.opt, FF: js.s.cfg.FFmpeg, Out: lw,
 		OnStep:     func(t string) { j.update(func() { j.steps = append(j.steps, t); j.progress = 0 }) },
 		OnProgress: func(f float64) { j.update(func() { j.progress = f }) },

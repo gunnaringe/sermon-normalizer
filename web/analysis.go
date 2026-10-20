@@ -186,6 +186,9 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 			a.mu.Unlock()
 		}()
 		from := sourceFile{Name: filepath.Base(raw)}
+		if sn := readState(folderOfRecording(raw)).SourceName; sn != "" {
+			from.Name = stemOf(sn) + filepath.Ext(raw) // as it arrived
+		}
 		if st, err := os.Stat(raw); err == nil {
 			from.Size = st.Size()
 		}

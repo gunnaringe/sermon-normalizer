@@ -49,7 +49,9 @@ so there is nothing else to keep in step.
     2026-10-04_raw.flac         the whole recording
 ```
 
-- The recording is moved into `original/` as it is (`_raw.flac`, `_raw.mp3`, `_raw.mka`...); a
+- The recording is moved into `original/` as it is, under the name it arrived with (`R_20261018-104506.wav` is kept as
+  `R_20261018-104506.flac`; a video's sound as `.mka`; an MP3 stays `.mp3`). The name is kept in `recording.json` as `sourceName`;
+  a recording that has none (from before) is `<date>_raw.<ext>`. Either is found in `original/` (`_raw.flac`, `_raw.mp3`, `_raw.mka`...); a
   WAV or video not converted yet is converted there first, and **deleted only if the audio is
   identical**. Across disks a file is copied, verified and only then deleted.
 - A recording already in `original/` is never replaced by a run that only adds files; one that redoes files replaces it.

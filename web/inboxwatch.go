@@ -120,7 +120,7 @@ func (s *Server) ingest(name string) error {
 	if err := normalizer.MoveFile(src, dst); err != nil {
 		return err
 	}
-	s.markImported(folder)
+	s.markImported(folder, name)
 	s.cfg.Logger.Printf("inbox: %s is now %s", name, s.relPath(dst))
 	s.analyses.state(dst, true)
 	return nil
