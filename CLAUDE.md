@@ -85,6 +85,12 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`
   in `web/e2e/package.json`.
 
-Deploy: push to `main` → GitHub Actions publishes `ghcr.io/gunnaringe/sermon-studio:main-<ts>-<sha>`
+Changes go in PRs (branch, push, `gh pr create`), not straight to `main`. Visible
+changes get screenshots: `scripts/test.sh e2e [-g name]` saves them in
+`web/e2e/screenshots/`, then `scripts/pr-shots.sh --pr <name|png>...` puts them in
+the PR (orphan `pr-shots` branch; nothing lands in `main`). Show only the screens
+that changed.
+
+Deploy: merging to `main` → GitHub Actions publishes `ghcr.io/gunnaringe/sermon-studio:main-<ts>-<sha>`
 → Flux rolls it out on kate (`clusters/kate/norkirken/`, namespace `norkirken`,
 https://sermons.haxxor.xyz).
