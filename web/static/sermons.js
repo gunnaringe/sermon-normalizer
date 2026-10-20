@@ -3,6 +3,7 @@
 // been processed, only a way into the editor.
 import { api, q, h, href, formatSize, formatTime, forTenant } from './util.js';
 import { alertDialog } from './dialog.js';
+import { t, tn, tr } from './i18n.js';
 
 const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
 const fileURL = (f, download) => forTenant('api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path));
@@ -39,9 +40,9 @@ export function sermonDetail(entry, ctx = {}) {
   // into files.
   function labelEditor() {
     const box = h('div', { class: 'labels' });
-    const input = h('input', { type: 'text', class: 'label-input', name: 'label', placeholder: 'Add a label', maxlength: 30,
-      'aria-label': 'Add a label', autocomplete: 'off', enterkeyhint: 'done' });
-    const add = h('button', { type: 'button', class: 'label-add', name: 'add-label', title: 'Add the label', 'aria-label': 'Add the label', hidden: true,
+    const input = h('input', { type: 'text', class: 'label-input', name: 'label', placeholder: t('Add a label'), maxlength: 30,
+      'aria-label': t('Add a label'), autocomplete: 'off', enterkeyhint: 'done' });
+    const add = h('button', { type: 'button', class: 'label-add', name: 'add-label', title: t('Add the label'), 'aria-label': t('Add the label'), hidden: true,
       onclick: () => commit() }, '+');
     const menu = h('ul', { class: 'suggest', role: 'listbox', hidden: true });
     // Keep the focus in the field while a suggestion or the button is pressed.
@@ -60,7 +61,7 @@ export function sermonDetail(entry, ctx = {}) {
     const draw = () => {
       box.replaceChildren(
         ...entry.labels.map((l) => h('span', { class: 'chip own' }, l,
-          h('button', { type: 'button', class: 'x', title: 'Remove ' + l, 'aria-label': 'Remove label ' + l,
+          h('button', { type: 'button', class: 'x', title: t('Remove {name}', { name: l }), 'aria-label': t('Remove label {name}', { name: l }),
             onclick: () => save(entry.labels.filter((x) => x !== l)) }, '×'))),
         ...(entry.labels.length < MAX_LABELS ? [h('span', { class: 'label-add-box' }, input, add, menu)] : []));
       drawMenu();
@@ -107,19 +108,19 @@ export function sermonDetail(entry, ctx = {}) {
     const b = h('button', { type: 'button', name: 'copy-link', onclick: async () => {
       try {
         await navigator.clipboard.writeText(url);
-        b.textContent = 'Link copied';
-        setTimeout(() => { b.textContent = 'Copy link'; }, 2000);
+        b.textContent = t('Link copied');
+        setTimeout(() => { b.textContent = t('Copy link'); }, 2000);
       } catch (err) {
-        alertDialog({ title: 'Link to this recording', body: url });
+        alertDialog({ title: t('Link to this recording'), body: url });
       }
-    } }, 'Copy link');
+    } }, t('Copy link'));
     return b;
   }
 
   function unprocessed(info) {
     return [
       labelEditor(),
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Open in the editor'), copyLink()),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Open in the editor')), copyLink()),
     ];
   }
 
@@ -128,23 +129,23 @@ export function sermonDetail(entry, ctx = {}) {
     const tags = info.tags || {};
     const facts = [
       saved
-        ? `Length ${formatTime(keptSeconds(saved), 0)}` + (saved.sections.length > 1 ? ` (${saved.sections.length} sections)` : '')
-        : 'Not saved in the editor yet',
-      tags.title && 'Title: ' + tags.title,
-      tags.artist && 'Artist: ' + tags.artist,
-      tags.album && 'Album: ' + tags.album,
+        ? t('Length {time}', { time: formatTime(keptSeconds(saved), 0) }) + (saved.sections.length > 1 ? ' (' + tn(saved.sections.length, '{n} section', '{n} sections') + ')' : '')
+        : t('Not saved in the editor yet'),
+      tags.title && t('Title: {value}', { value: tags.title }),
+      tags.artist && t('Artist: {value}', { value: tags.artist }),
+      tags.album && t('Album: {value}', { value: tags.album }),
     ].filter(Boolean);
     const status = h('p', { class: 'muted making', 'aria-live': 'polite' });
     const buttons = [];
     const downloads = FORMATS.map(([format, label]) => {
       const o = info.outputs.find((x) => x.format === format);
-      if (o) return h('a', { class: 'button dl on', href: fileURL(o, true), title: formatSize(o.size) }, 'Download ' + label);
+      if (o) return h('a', { class: 'button dl on', href: fileURL(o, true), title: formatSize(o.size) }, t('Download {format}', { format: label }));
       const b = h('button', {
         class: 'dl',
         disabled: !saved,
-        title: saved ? `Not made yet: make ${label}` : 'Save the sermon in the editor first',
+        title: saved ? t('Not made yet: make {format}', { format: label }) : t('Save the sermon in the editor first'),
         onclick: () => make(format, label, b, status, buttons),
-      }, 'Download ' + label);
+      }, t('Download {format}', { format: label }));
       buttons.push(b);
       return b;
     });
@@ -152,25 +153,25 @@ export function sermonDetail(entry, ctx = {}) {
     return [
       h('p', { class: 'facts' }, facts.join(' · ')),
       labelEditor(),
-      h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': 'The sermon' }),
+      h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
       h('p', { class: 'actions' }, downloads),
       status,
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Edit sermon'), copyLink()),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Edit sermon')), copyLink()),
     ];
   }
 
   async function make(format, label, button, status, buttons) {
     for (const b of buttons) b.disabled = true;
     button.classList.add('busy');
-    status.textContent = `Making ${label}: the conversion is running…`;
+    status.textContent = t('Making {format}: the conversion is running…', { format: label });
     try {
       let job = await api('POST', 'api/make?path=' + q(entry.path) + '&format=' + format);
       while (job.state === 'queued' || job.state === 'running') {
         await sleep(1000);
-        status.textContent = `Making ${label}: the conversion is running… ${Math.round((job.progress || 0) * 100)}%`;
+        status.textContent = t('Making {format}: the conversion is running… {percent}%', { format: label, percent: Math.round((job.progress || 0) * 100) });
         job = await api('GET', 'api/jobs/' + job.id);
       }
-      if (job.state !== 'done') throw new Error(job.error || `${label} was not made (${job.state})`);
+      if (job.state !== 'done') throw new Error(job.error ? tr(job.error) : t('{format} was not made ({state})', { format: label, state: job.state }));
       await show();
     } catch (err) {
       button.classList.remove('busy');

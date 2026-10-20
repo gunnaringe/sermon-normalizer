@@ -6,7 +6,8 @@ import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
 import { confirmDialog } from './dialog.js';
-import { api, q, h, href, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, suggestNames, dateInput, formatDateTime, wheelZoomNeedsKey } from './util.js';
+import { t, tn, tr, lang } from './i18n.js';
+import { api, q, h, href, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, suggestNames, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
 
 const STORE = 'sermon-studio-options';
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
@@ -27,8 +28,8 @@ function describeFormat(fmt) {
     describeCodec(fmt),
     fmt.sampleRate ? `${fmt.sampleRate / 1000} kHz` : '',
     fmt.bits ? `${fmt.bits}-bit` : '',
-    fmt.channels === 1 ? '1 channel' : `${fmt.channels} channels`,
-    fmt.bitrate ? `${fmt.bitrate.toLocaleString('en')} kb/s` : '',
+    tn(fmt.channels, '{n} channel', '{n} channels'),
+    fmt.bitrate ? `${fmt.bitrate.toLocaleString(lang)} kb/s` : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -77,7 +78,7 @@ export async function editorView(view, path, config) {
   let stopAt = null; // playback pauses here (hear start/end, play selection)
   let addCutButton = null; // disabled until there is a section
   let skipNow = false; // this playback jumps over the cuts even with "play without the cuts" off
-  let lastCheck = { error: 'Checking…' };
+  let lastCheck = { error: t('Checking…') };
   let events = null; // the job's event stream
   cleanups.push(() => events && events.close());
 
@@ -91,50 +92,50 @@ export async function editorView(view, path, config) {
   const skipBox = h('input', { type: 'checkbox', checked: true });
   const inputPanel = h('div', { class: 'panel input-file' });
   const channelWarning = h('p', { class: 'notice', role: 'status' });
-  const pills = h('div', { class: 'pills', role: 'group', 'aria-label': 'Formats' });
+  const pills = h('div', { class: 'pills', role: 'group', 'aria-label': t('Formats') });
   const outputNote = h('p', { class: 'muted' });
   const checkOut = h('div', {});
-  const saveButton = h('button', { class: 'primary', disabled: true, title: 'Make this the saved version and make the files', onclick: save }, 'Save');
+  const saveButton = h('button', { class: 'primary', disabled: true, title: t('Make this the saved version and make the files'), onclick: save }, t('Save'));
   // The fades are part of the edit; they sit with the sections and cuts.
   const fadeInput = (key, label) => h('label', { class: 'fade' }, h('span', { class: 'name' }, label), h('input', {
     type: 'number', name: key, value: opts[key], step: 0.5, min: 0,
     oninput: (e) => { opts[key] = e.target.value === '' ? NaN : Number(e.target.value); changed(); },
   }));
-  const fades = h('div', { class: 'toolbar' }, fadeInput('fadeIn', 'Fade in (s)'), fadeInput('fadeOut', 'Fade out (s)'));
+  const fades = h('div', { class: 'toolbar' }, fadeInput('fadeIn', t('Fade in (s)')), fadeInput('fadeOut', t('Fade out (s)')));
   const saveNote = h('span', { class: 'muted' });
   const versionOut = h('div', {});
-  const revertButton = h('button', { disabled: true, title: 'Throw away the adjustments and go back to the saved version', onclick: revertVersion }, 'Revert…');
+  const revertButton = h('button', { disabled: true, title: t('Throw away the adjustments and go back to the saved version'), onclick: revertVersion }, t('Revert…'));
   const jobPanel = h('section', {});
 
   // Another date or name for this sermon: renames the folder and its files.
   const renamePanel = h('div', { class: 'panel', hidden: true });
-  const renameButton = h('button', { class: 'link', title: 'Change the date or name of this sermon', onclick: () => {
+  const renameButton = h('button', { class: 'link', title: t('Change the date or name of this sermon'), onclick: () => {
     const [, d = '', n = ''] = info.date.match(/^(\d{4}-\d{2}-\d{2})(?: (.*))?$/) || [];
-    const date = dateInput({ name: 'date', value: d, required: true, 'aria-label': 'Date' });
-    const name = h('input', { type: 'text', value: n, maxlength: 60, placeholder: 'optional, e.g. Evening', 'aria-label': 'Name' });
+    const date = dateInput({ name: 'date', value: d, required: true, 'aria-label': t('Date') });
+    const name = h('input', { type: 'text', value: n, maxlength: 60, placeholder: t('optional, e.g. Evening'), 'aria-label': t('Name') });
     const msg = h('span', { class: 'error' });
     const save = h('button', { class: 'primary', onclick: async () => {
       try {
         const res = await api('POST', 'api/rename?path=' + q(path), { date: date.value, name: name.value });
         location.hash = href('folder', res.path);
       } catch (err) { msg.textContent = err.message; }
-    } }, 'Rename');
+    } }, t('Rename'));
     renamePanel.replaceChildren(
-      h('label', {}, 'Date ', date), ' ', h('label', {}, 'Name ', name), ' ', save, ' ',
-      h('button', { onclick: () => { renamePanel.hidden = true; } }, 'Cancel'), ' ', msg,
-      h('p', { class: 'muted' }, 'The folder and its files are renamed. Files already made keep their tags.'));
+      h('label', {}, t('Date'), ' ', date), ' ', h('label', {}, t('Name'), ' ', name), ' ', save, ' ',
+      h('button', { onclick: () => { renamePanel.hidden = true; } }, t('Cancel')), ' ', msg,
+      h('p', { class: 'muted' }, t('The folder and its files are renamed. Files already made keep their tags.')));
     renamePanel.hidden = false;
     suggestNames(name);
-  } }, 'Rename…');
+  } }, t('Rename…'));
 
   view.replaceChildren(
-    h('div', { class: 'crumbs' }, h('a', { href: href('recording', path) }, '← Recordings')),
+    h('div', { class: 'crumbs' }, h('a', { href: href('recording', path) }, t('← Recordings'))),
     h('h1', {}, info.date, ' ', renameButton),
     renamePanel,
-    h('section', { class: 'step', 'aria-labelledby': 'step-input' }, h('h2', { id: 'step-input' }, 'Input file'), inputPanel),
-    h('section', { class: 'step', 'aria-labelledby': 'step-edit' }, h('h2', { id: 'step-edit' }, 'Edit'), waveSection),
-    h('section', { class: 'step', 'aria-labelledby': 'step-options' }, h('h2', { id: 'step-options' }, 'Options'), optionsForm()),
-    h('section', { class: 'step', 'aria-labelledby': 'step-output' }, h('h2', { id: 'step-output' }, 'Output'),
+    h('section', { class: 'step', 'aria-labelledby': 'step-input' }, h('h2', { id: 'step-input' }, t('Input file')), inputPanel),
+    h('section', { class: 'step', 'aria-labelledby': 'step-edit' }, h('h2', { id: 'step-edit' }, t('Edit')), waveSection),
+    h('section', { class: 'step', 'aria-labelledby': 'step-options' }, h('h2', { id: 'step-options' }, t('Options')), optionsForm()),
+    h('section', { class: 'step', 'aria-labelledby': 'step-output' }, h('h2', { id: 'step-output' }, t('Output')),
       h('div', { class: 'panel' },
         pills, outputNote, checkOut,
         h('p', {}, saveButton)),
@@ -147,47 +148,49 @@ export async function editorView(view, path, config) {
   function showInput() {
     const raw = info.raw, rec = info.recording, from = info.convertedFrom;
     if (!raw) {
-      inputPanel.replaceChildren(h('p', {}, 'No recording yet.'));
+      inputPanel.replaceChildren(h('p', {}, t('No recording yet.')));
       return;
     }
     const fmt = rec && rec.format;
     const rows = [
-      ['File', [raw.name, h('span', { class: 'muted' }, ' · ' + formatSize(raw.size))]],
-      ['Format', fmt ? describeFormat(fmt) : h('span', { class: 'muted' }, 'Reading…')],
-      ['Length', fmt ? formatTime(fmt.duration, 0) : h('span', { class: 'muted' }, '…')],
-      ['Source', from && isVideo(from.name)
-        ? `${describeCodec(fmt)}, the sound of the original video (${from.name}, ${formatSize(from.size)}), ` +
-          'copied out unchanged; verified identical'
+      [t('File'), [raw.name, h('span', { class: 'muted' }, ' · ' + formatSize(raw.size))]],
+      [t('Format'), fmt ? describeFormat(fmt) : h('span', { class: 'muted' }, t('Reading…'))],
+      [t('Length'), fmt ? formatTime(fmt.duration, 0) : h('span', { class: 'muted' }, '…')],
+      [t('Source'), from && isVideo(from.name)
+        ? t('{codec}, the sound of the original video ({name}, {size}), copied out unchanged; verified identical',
+          { codec: describeCodec(fmt), name: from.name, size: formatSize(from.size) })
         : from
-          ? `${describeCodec(fmt) || 'FLAC'}, converted from the original ${describeCodec(from.format) || 'WAV'} ` +
-            `(${from.name}, ${formatSize(from.size)}); verified identical`
-          : (fmt ? `${describeCodec(fmt)} as it was received` : '…')],
-      ['Channels', channelsText()],
+          ? t('{codec}, converted from the original {original} ({name}, {size}); verified identical',
+            { codec: describeCodec(fmt) || 'FLAC', original: describeCodec(from.format) || 'WAV', name: from.name, size: formatSize(from.size) })
+          : (fmt ? t('{codec} as it was received', { codec: describeCodec(fmt) }) : '…')],
+      [t('Channels'), channelsText()],
     ];
     const md = fmt && fmt.metadata ? Object.entries(fmt.metadata) : [];
     inputPanel.replaceChildren(
       h('dl', { class: 'facts' }, rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
-      md.length ? h('details', { class: 'metadata' }, h('summary', {}, `Metadata in the file (${md.length})`),
+      md.length ? h('details', { class: 'metadata' }, h('summary', {}, t('Metadata in the file ({n})', { n: md.length })),
         h('dl', { class: 'facts' }, md.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : '',
-      h('p', {}, h('a', { class: 'button', href: fileURL(raw, true) }, 'Download original')));
+      h('p', {}, h('a', { class: 'button', href: fileURL(raw, true) }, t('Download original'))));
     showChannelWarning();
   }
 
   // verdict is what the recording's channels are, for people.
   function verdict(v) {
     return {
-      mono: 'Mono (one channel)',
-      stereo: 'Stereo',
-      identical: 'Mono (both channels are the same)',
-      more: 'More than two channels',
-      'one-sided': `Mono (the ${v.quiet} side is ${v.quietBy ? v.quietBy + ' dB quieter' : 'silent'})`,
+      mono: t('Mono (one channel)'),
+      stereo: t('Stereo'),
+      identical: t('Mono (both channels are the same)'),
+      more: t('More than two channels'),
+      'one-sided': v.quietBy
+        ? t('Mono (the {side} side is {by} dB quieter)', { side: t(v.quiet), by: v.quietBy })
+        : t('Mono (the {side} side is silent)', { side: t(v.quiet) }),
     }[v.kind] || v.kind;
   }
 
   function channelsText() {
     const rec = info.recording;
-    if (!rec) return h('span', { class: 'muted' }, 'Checking…');
-    return rec.channels ? verdict(rec.channels) : h('span', { class: 'muted' }, rec.error || 'Not known');
+    if (!rec) return h('span', { class: 'muted' }, t('Checking…'));
+    return rec.channels ? verdict(rec.channels) : h('span', { class: 'muted' }, rec.error ? tr(rec.error) : t('Not known'));
   }
 
   // A recording that is mono in effect gains nothing from stereo, or worse.
@@ -195,8 +198,9 @@ export async function editorView(view, path, config) {
     const v = info.recording && info.recording.channels;
     const mono = v && ['mono', 'identical', 'one-sided'].includes(v.kind);
     channelWarning.textContent = opts.stereo && mono
-      ? `⚠ The recording is ${verdict(v).toLowerCase()}: stereo gives ` +
-        (v.kind === 'one-sided' ? 'the sermon on one side only' : 'the same sound in bigger files') + '. Choose mono.'
+      ? t(v.kind === 'one-sided'
+        ? '⚠ The recording is {verdict}: stereo gives the sermon on one side only. Choose mono.'
+        : '⚠ The recording is {verdict}: stereo gives the same sound in bigger files. Choose mono.', { verdict: verdict(v).toLowerCase() })
       : '';
     channelWarning.hidden = !channelWarning.textContent;
   }
@@ -223,18 +227,18 @@ export async function editorView(view, path, config) {
   // ---- waveform ----
   async function prepareWaveform() {
     const bar = h('progress', { max: 1, value: 0 });
-    const note = h('p', { class: 'muted' }, 'Preparing the waveform…');
+    const note = h('p', { class: 'muted' }, t('Preparing the waveform…'));
     waveSection.replaceChildren(note, bar);
     let st = await api('POST', 'api/analysis?path=' + q(path));
     while (alive && st.state === 'running') {
       bar.value = st.progress;
-      note.textContent = st.stage === 'convert' ? (info.raw && isVideo(info.raw.name) ? 'Taking the sound out of the video…' : 'Converting the recording to FLAC…') : 'Preparing the waveform…';
+      note.textContent = st.stage === 'convert' ? (info.raw && isVideo(info.raw.name) ? t('Taking the sound out of the video…') : t('Converting the recording to FLAC…')) : t('Preparing the waveform…');
       await new Promise((r) => setTimeout(r, 500));
       st = await api('GET', 'api/analysis?path=' + q(path));
     }
     if (!alive) return;
     if (st.state !== 'done') {
-      waveSection.replaceChildren(h('p', { class: 'error' }, 'Could not read the recording: ' + (st.error || st.state)));
+      waveSection.replaceChildren(h('p', { class: 'error' }, t('Could not read the recording: {error}', { error: st.error ? tr(st.error) : st.state })));
       return;
     }
     if (info.raw && converts(info.raw.name)) { // it became FLAC (or .mka) meanwhile
@@ -251,63 +255,61 @@ export async function editorView(view, path, config) {
     silenceEdges = data.silences.flatMap((s) => [s.start, s.end]);
     const minimapEl = h('div', { id: 'minimap' });
     const waveEl = h('div', { id: 'waveform' });
-    const zoom = h('input', { type: 'range', min: 0, max: 100, step: 'any', value: 0, 'aria-label': 'Zoom', oninput: () => applyZoom() });
+    const zoom = h('input', { type: 'range', min: 0, max: 100, step: 'any', value: 0, 'aria-label': t('Zoom'), oninput: () => applyZoom() });
     const clock = h('span', { class: 'clock' });
-    const playButton = h('button', { onclick: () => ws.playPause(), title: 'Play / pause (space)' }, '▶ Play');
+    const playButton = h('button', { onclick: () => ws.playPause(), title: t('Play / pause (space)') }, t('▶ Play'));
     const button = (label, title, fn) => h('button', { title, onclick: fn }, label);
-    addCutButton = h('button', { title: 'Cut out a part of the sermon, starting at the playhead (c)', onclick: addCutHere }, 'Cut out here');
+    addCutButton = h('button', { title: t('Cut out a part of the sermon, starting at the playhead (c)'), onclick: addCutHere }, t('Cut out here'));
     waveSection.replaceChildren(
       minimapEl, waveEl,
       h('div', { class: 'controls' },
         h('div', { class: 'group wide' },
-          h('strong', {}, 'Navigate'),
+          h('strong', {}, t('Navigate')),
           h('div', { class: 'toolbar' },
             playButton,
-            button('◀ silence', 'Previous silence edge ([)', () => jump(-1)),
-            button('silence ▶', 'Next silence edge (])', () => jump(1)),
+            button(t('◀ silence'), t('Previous silence edge ([)'), () => jump(-1)),
+            button(t('silence ▶'), t('Next silence edge (])'), () => jump(1)),
             h('span', { class: 'sep' }),
             h('span', { class: 'zoom' },
-              button('−', 'Zoom out (-)', () => { zoom.value = Math.max(0, +zoom.value - 10); applyZoom(); }),
+              button('−', t('Zoom out (-)'), () => { zoom.value = Math.max(0, +zoom.value - 10); applyZoom(); }),
               zoom,
-              button('+', 'Zoom in (+)', () => { zoom.value = Math.min(100, +zoom.value + 10); applyZoom(); })),
+              button('+', t('Zoom in (+)'), () => { zoom.value = Math.min(100, +zoom.value + 10); applyZoom(); })),
             clock)),
         h('div', { class: 'group' },
-          h('strong', {}, 'Sermon'),
+          h('strong', {}, t('Sermon')),
           h('div', { class: 'toolbar' },
-            button('Set start', 'The section at the playhead (or the next one) starts there (s)', markStart),
-            button('Set end', 'The section at the playhead (or the one before) ends there (e)', markEnd),
+            button(t('Set start'), t('The section at the playhead (or the next one) starts there (s)'), markStart),
+            button(t('Set end'), t('The section at the playhead (or the one before) ends there (e)'), markEnd),
             h('span', { class: 'sep' }),
-            button('Hear start', 'Play 5 s from the start of the sermon', hearStart),
-            button('Hear end', 'Play the last 5 s of the sermon', hearEnd),
-            button('Play sermon', 'Play all the sections (p)', playSelection)),
+            button(t('Hear start'), t('Play 5 s from the start of the sermon'), hearStart),
+            button(t('Hear end'), t('Play the last 5 s of the sermon'), hearEnd),
+            button(t('Play sermon'), t('Play all the sections (p)'), playSelection)),
           sectionHint,
           sectionList,
           lengthOut),
         h('div', { class: 'group' },
-          h('strong', {}, 'Cut out'),
+          h('strong', {}, t('Cut out')),
           h('div', { class: 'toolbar' },
             addCutButton,
-            h('label', { class: 'check', title: 'Playback jumps over the parts that are cut out and the gaps between sections' }, skipBox, ' Play without the cuts')),
+            h('label', { class: 'check', title: t('Playback jumps over the parts that are cut out and the gaps between sections') }, skipBox, ' ' + t('Play without the cuts'))),
           cutHint,
           cutList),
         h('div', { class: 'group' },
-          h('strong', {}, 'Fades'),
+          h('strong', {}, t('Fades')),
           fades),
         h('div', { class: 'group wide' },
-          h('strong', {}, 'Saved version'),
+          h('strong', {}, t('Saved version')),
           versionOut,
           h('div', { class: 'toolbar' }, revertButton, saveNote),
-          h('p', { class: 'muted' }, 'Your changes are kept as you make them. Save, under Output, makes them the saved version and makes the files. Revert goes back to the saved version.'))),
+          h('p', { class: 'muted' }, t('Your changes are kept as you make them. Save, under Output, makes them the saved version and makes the files. Revert goes back to the saved version.')))),
       h('p', { class: 'touch-hint' },
-        'Drag along the waveform to select the sermon. Drag on an empty part to add another section. ' +
-        'Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.'),
+        t('Drag along the waveform to select the sermon. Drag on an empty part to add another section. Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.')),
       h('p', { class: 'keys' },
-        'Drag on the waveform to select the sermon. Drag on an empty part to add another section, or hold ', h('kbd', {}, 'shift'), ' and drag to cut out a part. Drag the edges to adjust. Grey marks silence. Keys: ',
-        h('kbd', {}, 'space'), ' play · ', h('kbd', {}, 's'), '/', h('kbd', {}, 'e'), ' start/end at the playhead · ', h('kbd', {}, 'c'), ' cut out here · ',
-        h('kbd', {}, '['), '/', h('kbd', {}, ']'), ' silences · ', h('kbd', {}, '←'), '/', h('kbd', {}, '→'), ' 1 s (shift 0.1 s) · ',
-        h('kbd', {}, '+'), '/', h('kbd', {}, '-'), ' zoom · ', h('kbd', {}, 'p'), ' play sermon. ',
-        wheelZoomNeedsKey() ? [h('kbd', {}, 'ctrl'), '+scroll zooms'] : 'Scroll zooms',
-        ' at the mouse, ', h('kbd', {}, 'shift'), '+scroll moves along (Settings › Waveform).'),
+        kbdText(t('Drag on the waveform to select the sermon. Drag on an empty part to add another section, or hold <kbd>shift</kbd> and drag to cut out a part. Drag the edges to adjust. Grey marks silence. Keys:')), ' ',
+        kbdText(t('<kbd>space</kbd> play · <kbd>s</kbd>/<kbd>e</kbd> start/end at the playhead · <kbd>c</kbd> cut out here · <kbd>[</kbd>/<kbd>]</kbd> silences · <kbd>←</kbd>/<kbd>→</kbd> 1 s (shift 0.1 s) · <kbd>+</kbd>/<kbd>-</kbd> zoom · <kbd>p</kbd> play sermon.')), ' ',
+        kbdText(wheelZoomNeedsKey()
+          ? t('<kbd>ctrl</kbd>+scroll zooms at the mouse, <kbd>shift</kbd>+scroll moves along (Settings › Waveform).')
+          : t('Scroll zooms at the mouse, <kbd>shift</kbd>+scroll moves along (Settings › Waveform).'))),
     );
     renderCuts();
 
@@ -324,30 +326,30 @@ export async function editorView(view, path, config) {
       autoCenter: false,
       plugins: [
         regions,
-        TimelinePlugin.create({ formatTimeCallback: (t) => formatTime(t, 0) }),
+        TimelinePlugin.create({ formatTimeCallback: (s) => formatTime(s, 0) }),
         MinimapPlugin.create({ container: minimapEl, height: 40, waveColor: css('--wave'), progressColor: css('--wave-progress'), overlayColor: 'rgba(128,128,128,0.25)' }),
-        HoverPlugin.create({ formatTimeCallback: (t) => formatTime(t, 1), lineColor: css('--muted'), labelBackground: css('--panel'), labelColor: css('--fg') }),
+        HoverPlugin.create({ formatTimeCallback: (s) => formatTime(s, 1), lineColor: css('--muted'), labelBackground: css('--panel'), labelColor: css('--fg') }),
       ],
     });
     cleanups.push(() => ws.destroy());
     // Peaks and duration up front: the browser never downloads or decodes
     // the whole recording, it only streams the preview while playing.
     ws.load(previewURL, [data.peaks], data.duration).catch((e) => {
-      if (alive) waveSection.prepend(h('p', { class: 'error' }, 'Could not load the preview: ' + e.message));
+      if (alive) waveSection.prepend(h('p', { class: 'error' }, t('Could not load the preview: {error}', { error: e.message })));
     });
 
-    ws.on('play', () => { playButton.textContent = '⏸ Pause'; });
-    ws.on('pause', () => { playButton.textContent = '▶ Play'; });
-    ws.on('timeupdate', (t) => {
-      clock.textContent = `${formatTime(t, 1)} / ${formatTime(duration, 0)}`;
-      if (stopAt !== null && t >= stopAt) {
+    ws.on('play', () => { playButton.textContent = t('⏸ Pause'); });
+    ws.on('pause', () => { playButton.textContent = t('▶ Play'); });
+    ws.on('timeupdate', (now) => {
+      clock.textContent = `${formatTime(now, 1)} / ${formatTime(duration, 0)}`;
+      if (stopAt !== null && now >= stopAt) {
         stopAt = null;
         skipNow = false;
         ws.pause();
         return;
       }
       if ((skipBox.checked || skipNow) && ws.isPlaying()) {
-        const cut = skipped().find((c) => t >= c.start - 0.03 && t < c.end);
+        const cut = skipped().find((c) => now >= c.start - 0.03 && now < c.end);
         if (cut) ws.setTime(cut.end);
       }
     });
@@ -513,10 +515,10 @@ export async function editorView(view, path, config) {
   }
 
   // setEdge moves the start or end of a section to t; false if it would be empty.
-  function setEdge(x, which, t) {
+  function setEdge(x, which, time) {
     const r = x.region;
-    if (which === 'start' ? t > r.end - 0.05 : t < r.start + 0.05) return false;
-    r.setOptions({ [which]: t });
+    if (which === 'start' ? time > r.end - 0.05 : time < r.start + 0.05) return false;
+    r.setOptions({ [which]: time });
     tidySections();
     return true;
   }
@@ -525,8 +527,8 @@ export async function editorView(view, path, config) {
   // values. With none, an empty row makes the first one from typed times.
   function renderSections() {
     if (!sections.length) {
-      const startIn = h('input', { type: 'text', class: 'time', placeholder: 'start', 'aria-label': 'Sermon from' });
-      const endIn = h('input', { type: 'text', class: 'time', placeholder: 'end', 'aria-label': 'Sermon to' });
+      const startIn = h('input', { type: 'text', class: 'time', placeholder: t('start'), 'aria-label': t('{name} from', { name: t('Sermon') }) });
+      const endIn = h('input', { type: 'text', class: 'time', placeholder: t('end'), 'aria-label': t('{name} to', { name: t('Sermon') }) });
       const edit = () => {
         if (rebuilding) return;
         const start = startIn.value.trim() === '' ? 0 : parseTime(startIn.value);
@@ -539,17 +541,17 @@ export async function editorView(view, path, config) {
         input.addEventListener('change', edit);
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { edit(); input.blur(); } });
       }
-      rebuild(sectionList, h('div', { class: 'section' }, h('strong', {}, 'Sermon'),
-        h('label', {}, 'From ', startIn), h('label', {}, 'to ', endIn)));
+      rebuild(sectionList, h('div', { class: 'section' }, h('strong', {}, t('Sermon')),
+        h('label', {}, t('From'), ' ', startIn), h('label', {}, t('to'), ' ', endIn)));
       syncSections();
       syncCuts();
       return;
     }
     rebuild(sectionList, ...sections.map((x, i) => {
       const r = x.region;
-      const name = sections.length > 1 ? `Section ${i + 1}` : 'Sermon';
-      const startIn = x.startIn = h('input', { type: 'text', class: 'time', 'aria-label': `${name} from` });
-      const endIn = x.endIn = h('input', { type: 'text', class: 'time', 'aria-label': `${name} to` });
+      const name = sections.length > 1 ? t('Section {n}', { n: i + 1 }) : t('Sermon');
+      const startIn = x.startIn = h('input', { type: 'text', class: 'time', 'aria-label': t('{name} from', { name }) });
+      const endIn = x.endIn = h('input', { type: 'text', class: 'time', 'aria-label': t('{name} to', { name }) });
       x.info = h('span', { class: 'muted' });
       const edit = () => {
         if (rebuilding) return;
@@ -569,9 +571,9 @@ export async function editorView(view, path, config) {
       }
       x.row = h('div', { class: 'section' },
         h('strong', {}, name),
-        h('label', {}, 'From ', x.startIn), h('label', {}, 'to ', x.endIn), x.info,
-        h('button', { title: 'Play this section', onclick: () => playFor(r.start, r.end - r.start) }, 'Play'),
-        h('button', { onclick: () => removeSection(x) }, 'Remove'));
+        h('label', {}, t('From'), ' ', x.startIn), h('label', {}, t('to'), ' ', x.endIn), x.info,
+        h('button', { title: t('Play this section'), onclick: () => playFor(r.start, r.end - r.start) }, t('Play')),
+        h('button', { onclick: () => removeSection(x) }, t('Remove')));
       return x.row;
     }));
     syncSections();
@@ -583,11 +585,11 @@ export async function editorView(view, path, config) {
       const r = x.region;
       if (document.activeElement !== x.startIn) x.startIn.value = formatTime(r.start);
       if (document.activeElement !== x.endIn) x.endIn.value = formatTime(r.end);
-      x.info.textContent = 'length ' + formatTime(r.end - r.start, 1);
+      x.info.textContent = t('length {time}', { time: formatTime(r.end - r.start, 1) });
     }
     sectionHint.textContent = sections.length
-      ? 'Drag on an empty part of the waveform to add another section. Parts between sections are left out.'
-      : 'Drag on the waveform to select the sermon, or set its start and end at the playhead (s, e).';
+      ? t('Drag on an empty part of the waveform to add another section. Parts between sections are left out.')
+      : t('Drag on the waveform to select the sermon, or set its start and end at the playhead (s, e).');
   }
 
   // skipped are the parts left out between the first section's start and the
@@ -635,8 +637,8 @@ export async function editorView(view, path, config) {
   function renderCuts() {
     rebuild(cutList, ...cuts.map((c, i) => {
       const r = c.region;
-      c.startIn = h('input', { type: 'text', class: 'time', 'aria-label': `Cut ${i + 1} from` });
-      c.endIn = h('input', { type: 'text', class: 'time', 'aria-label': `Cut ${i + 1} to` });
+      c.startIn = h('input', { type: 'text', class: 'time', 'aria-label': t('Cut {n} from', { n: i + 1 }) });
+      c.endIn = h('input', { type: 'text', class: 'time', 'aria-label': t('Cut {n} to', { n: i + 1 }) });
       c.info = h('span', { class: 'muted' });
       const edit = () => {
         if (rebuilding) return;
@@ -655,23 +657,23 @@ export async function editorView(view, path, config) {
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { edit(); input.blur(); } });
       }
       const here = (which) => () => {
-        const t = ws.getCurrentTime();
-        if (which === 'start' && t < r.end - 0.05) r.setOptions({ start: t });
-        if (which === 'end' && t > r.start + 0.05) r.setOptions({ end: t });
+        const now = ws.getCurrentTime();
+        if (which === 'start' && now < r.end - 0.05) r.setOptions({ start: now });
+        if (which === 'end' && now > r.start + 0.05) r.setOptions({ end: now });
         sortCuts();
         renderCuts();
         changed();
       };
       c.row = h('div', { class: 'cut' },
-        h('strong', {}, `Cut ${i + 1}`),
-        h('label', {}, 'From ', c.startIn), h('label', {}, 'to ', c.endIn), c.info,
-        h('button', { title: 'The cut starts at the playhead', onclick: here('start') }, 'Set start'),
-        h('button', { title: 'The cut ends at the playhead', onclick: here('end') }, 'Set end'),
-        h('button', { title: 'Play 3 s before and after the cut, as it will sound', onclick: () => {
+        h('strong', {}, t('Cut {n}', { n: i + 1 })),
+        h('label', {}, t('From'), ' ', c.startIn), h('label', {}, t('to'), ' ', c.endIn), c.info,
+        h('button', { title: t('The cut starts at the playhead'), onclick: here('start') }, t('Set start')),
+        h('button', { title: t('The cut ends at the playhead'), onclick: here('end') }, t('Set end')),
+        h('button', { title: t('Play 3 s before and after the cut, as it will sound'), onclick: () => {
           const from = Math.max(r.start - 3, 0);
           playFor(from, r.end + 3 - from, true);
-        } }, 'Hear join'),
-        h('button', { onclick: () => removeCut(c) }, 'Remove'));
+        } }, t('Hear join')),
+        h('button', { onclick: () => removeCut(c) }, t('Remove')));
       return c.row;
     }));
     syncCuts();
@@ -684,14 +686,14 @@ export async function editorView(view, path, config) {
       if (document.activeElement !== c.endIn) c.endIn.value = formatTime(r.end);
       const outside = !sections.some((x) => r.start < x.region.end && r.end > x.region.start);
       c.row.classList.toggle('outside', outside);
-      c.info.textContent = (outside ? 'outside the sermon · ' : '') + 'length ' + formatTime(r.end - r.start, 1);
+      c.info.textContent = (outside ? t('outside the sermon') + ' · ' : '') + t('length {time}', { time: formatTime(r.end - r.start, 1) });
     }
-    cutHint.textContent = !sections.length ? 'Select the sermon first. Then cut out parts you do not want, such as a song.'
-      : cuts.length ? '' : 'Nothing cut out. Use the button, press c, or shift-drag on the waveform.';
+    cutHint.textContent = !sections.length ? t('Select the sermon first. Then cut out parts you do not want, such as a song.')
+      : cuts.length ? '' : t('Nothing cut out. Use the button, press c, or shift-drag on the waveform.');
     if (addCutButton) addCutButton.disabled = !sections.length;
-    const parts = sections.length > 1 ? `${sections.length} sections` : '';
-    const what = [parts, cuts.length ? (cuts.length === 1 ? '1 cut' : `${cuts.length} cuts`) : ''].filter(Boolean).join(' and ');
-    lengthOut.textContent = sections.length ? 'Length ' + formatTime(keptLength(), 1) + (what ? ` (${what})` : '') : '';
+    const parts = sections.length > 1 ? tn(sections.length, '{n} section', '{n} sections') : '';
+    const what = [parts, cuts.length ? tn(cuts.length, '{n} cut', '{n} cuts') : ''].filter(Boolean).join(' ' + t('and') + ' ');
+    lengthOut.textContent = sections.length ? t('Length {time}', { time: formatTime(keptLength(), 1) }) + (what ? ` (${what})` : '') : '';
   }
 
   // keptLength is the sections without the cuts: what the outputs will last.
@@ -726,13 +728,13 @@ export async function editorView(view, path, config) {
   async function persistAdjusted() {
     const state = currentSettings();
     if (!state || JSON.stringify(state) === lastSent) return;
-    saveNote.textContent = 'Keeping…';
+    saveNote.textContent = t('Keeping…');
     try {
       sermon = await api('PUT', 'api/sermon?path=' + q(path), state);
       lastSent = JSON.stringify(state);
-      saveNote.textContent = 'Changes kept.';
+      saveNote.textContent = t('Changes kept.');
     } catch (e) {
-      saveNote.textContent = 'Not kept: ' + e.message;
+      saveNote.textContent = t('Not kept: {error}', { error: e.message });
     }
     renderVersion();
   }
@@ -763,17 +765,17 @@ export async function editorView(view, path, config) {
   }
 
   const describe = (set) => [
-    set.sections.map((x) => `${formatTime(x.start, 0)} to ${formatTime(x.end, 0)}`).join(' and '),
-    set.cuts.length === 1 ? '1 cut' : `${set.cuts.length} cuts`,
-    set.fadeIn || set.fadeOut ? `fade ${set.fadeIn} s in, ${set.fadeOut} s out` : 'no fades',
+    set.sections.map((x) => t('{from} to {to}', { from: formatTime(x.start, 0), to: formatTime(x.end, 0) })).join(' ' + t('and') + ' '),
+    tn(set.cuts.length, '{n} cut', '{n} cuts'),
+    set.fadeIn || set.fadeOut ? t('fade {in} s in, {out} s out', { in: set.fadeIn, out: set.fadeOut }) : t('no fades'),
   ].join(', ');
 
   function renderVersion() {
     const { saved, adjusted } = sermon;
     const at = sermon.savedAt ? ' ' + formatDateTime(sermon.savedAt) : '';
     versionOut.replaceChildren(
-      saved ? h('p', {}, h('strong', {}, 'Saved' + at + ': '), describe(saved)) : h('p', { class: 'muted' }, 'Nothing is saved yet.'),
-      adjusted ? h('p', {}, h('strong', {}, 'Adjusted, not saved: '), describe(adjusted)) : '');
+      saved ? h('p', {}, h('strong', {}, t('Saved') + at + ': '), describe(saved)) : h('p', { class: 'muted' }, t('Nothing is saved yet.')),
+      adjusted ? h('p', {}, h('strong', {}, t('Adjusted, not saved:') + ' '), describe(adjusted)) : '');
     revertButton.disabled = !adjusted || !saved;
     renderOutputs();
   }
@@ -782,12 +784,12 @@ export async function editorView(view, path, config) {
   async function revertVersion() {
     if (!sermon.adjusted || !sermon.saved) return;
     const ok = await confirmDialog({
-      title: 'Go back to the saved version?',
+      title: t('Go back to the saved version?'),
       body: [
-        h('p', {}, 'Your adjustments are discarded:'), h('ul', {}, h('li', {}, describe(sermon.adjusted))),
-        h('p', {}, 'Back to the saved version:'), h('ul', {}, h('li', {}, describe(sermon.saved))),
+        h('p', {}, t('Your adjustments are discarded:')), h('ul', {}, h('li', {}, describe(sermon.adjusted))),
+        h('p', {}, t('Back to the saved version:')), h('ul', {}, h('li', {}, describe(sermon.saved))),
       ],
-      confirm: 'Revert',
+      confirm: t('Revert'),
       danger: true,
     });
     if (!ok) return;
@@ -795,9 +797,9 @@ export async function editorView(view, path, config) {
       sermon = await api('POST', 'api/sermon/revert?path=' + q(path));
       lastSent = JSON.stringify(sermon.saved);
       applySettings(sermon.saved);
-      saveNote.textContent = 'Back to the saved version.';
+      saveNote.textContent = t('Back to the saved version.');
     } catch (e) {
-      saveNote.textContent = 'Not reverted: ' + e.message;
+      saveNote.textContent = t('Not reverted: {error}', { error: e.message });
     }
     renderVersion();
   }
@@ -886,7 +888,7 @@ export async function editorView(view, path, config) {
     }));
     // Mono or stereo: a switch between the two, not a box to tick.
     const stereo = h('input', {
-      type: 'checkbox', role: 'switch', name: 'stereo', checked: opts.stereo, 'aria-label': 'Stereo',
+      type: 'checkbox', role: 'switch', name: 'stereo', checked: opts.stereo, 'aria-label': t('Stereo'),
       onchange: (e) => {
         followChannels(e.target.checked);
         opts.stereo = e.target.checked;
@@ -895,17 +897,17 @@ export async function editorView(view, path, config) {
       },
     });
     const channels = h('div', { class: 'channels' },
-      h('span', { class: 'name' }, 'Channels'),
-      h('label', { class: 'switch' }, h('span', { class: 'side off' }, 'Mono'), stereo, h('span', { class: 'track', 'aria-hidden': 'true' }), h('span', { class: 'side on' }, 'Stereo')));
+      h('span', { class: 'name' }, t('Channels')),
+      h('label', { class: 'switch' }, h('span', { class: 'side off' }, t('Mono')), stereo, h('span', { class: 'track', 'aria-hidden': 'true' }), h('span', { class: 'side on' }, t('Stereo'))));
     return h('div', { class: 'panel' },
       h('div', { class: 'options' },
-        h('div', {}, h('strong', {}, 'Sound'), channels, channelWarning),
-        info.tags ? h('div', {}, h('strong', {}, 'Tags'), tag('title', 'Title'), tag('artist', 'Artist'), tag('album', 'Album'))
-          : h('div', {}, h('strong', {}, 'Tags'), h('span', { class: 'muted' }, info.tagsError || 'No tags'))),
-      h('details', {}, h('summary', {}, 'More sound options'),
+        h('div', {}, h('strong', {}, t('Sound')), channels, channelWarning),
+        info.tags ? h('div', {}, h('strong', {}, t('Tags')), tag('title', t('Title')), tag('artist', t('Artist')), tag('album', t('Album')))
+          : h('div', {}, h('strong', {}, t('Tags')), h('span', { class: 'muted' }, info.tagsError ? tr(info.tagsError) : t('No tags')))),
+      h('details', {}, h('summary', {}, t('More sound options')),
         h('div', { class: 'options' },
-          num('noiseReduction', 'Noise reduction (dB)', 1), num('targetLufs', 'Target loudness (LUFS)', 0.5),
-          num('truePeak', 'Max true peak (dBTP)', 0.1), text('mp3Bitrate', 'MP3 bitrate'), text('opusBitrate', 'Opus bitrate'))));
+          num('noiseReduction', t('Noise reduction (dB)'), 1), num('targetLufs', t('Target loudness (LUFS)'), 0.5),
+          num('truePeak', t('Max true peak (dBTP)'), 0.1), text('mp3Bitrate', t('MP3 bitrate')), text('opusBitrate', t('Opus bitrate')))));
   }
 
   // followChannels moves the loudness and bitrates to the new defaults when
@@ -938,7 +940,7 @@ export async function editorView(view, path, config) {
     if (!alive) return;
     const req = request();
     if ([req.fadeIn, req.fadeOut, req.noiseReduction, req.targetLufs, req.truePeak].some(Number.isNaN)) {
-      showCheck({ error: 'Fill in all numbers.' });
+      showCheck({ error: t('Fill in all numbers.') });
       return;
     }
     try {
@@ -959,8 +961,8 @@ export async function editorView(view, path, config) {
   function showCheck(res) {
     lastCheck = res;
     checkOut.replaceChildren(
-      res.error ? h('p', { class: 'error' }, res.error) : '',
-      ...(res.notices || []).map((n) => h('p', { class: 'notice' }, n)));
+      res.error ? h('p', { class: 'error' }, tr(res.error)) : '',
+      ...(res.notices || []).map((n) => h('p', { class: 'notice' }, tr(n))));
     renderOutputs();
   }
 
@@ -987,12 +989,12 @@ export async function editorView(view, path, config) {
     pills.replaceChildren(...FORMATS.map(([format, label]) => {
       const { file, stale, unknown } = outputState(format);
       const chosen = Boolean(opts[format]);
-      const note = !file ? (chosen ? 'will be made' : 'not made')
-        : !chosen ? 'will be deleted'
-          : stale ? 'out of date, will be made again' : 'up to date';
+      const note = !file ? (chosen ? t('will be made') : t('not made'))
+        : !chosen ? t('will be deleted')
+          : stale ? t('out of date, will be made again') : t('up to date');
       return h('div', { 'data-format': format, class: 'pill' + (file ? ' exists' : '') + (chosen ? ' chosen' : '') + (stale ? ' stale' : '') },
         h('button', {
-          class: 'pick', 'aria-pressed': String(chosen), title: chosen ? `Leave ${label} out` : `Make ${label} too`,
+          class: 'pick', 'aria-pressed': String(chosen), title: chosen ? t('Leave {format} out', { format: label }) : t('Make {format} too', { format: label }),
           onclick: () => { opts[format] = !opts[format]; renderOutputs(); },
         }, h('span', { class: 'box', 'aria-hidden': 'true' }, chosen ? '☑' : '☐'), ' ', label, file ? ' ✓' : ''),
         h('span', { class: 'state' + (file && !chosen ? ' delete' : chosen && (stale || !file) ? ' will' : '') }, note));
@@ -1001,9 +1003,9 @@ export async function editorView(view, path, config) {
     const blocked = (make.length > 0 || keep) && Boolean(lastCheck.error); // deleting does not need a valid edit
     outputNote.textContent = blocked ? ''
       : make.length || del.length || keep
-        ? 'Save ' + [keep ? 'keeps the edit' : '', make.length ? 'makes: ' + labels(make) : '', del.length ? 'deletes: ' + labels(del) : '']
-          .filter(Boolean).join(', ') + '.'
-        : 'Saved, and everything chosen is up to date.';
+        ? t('Save {what}.', { what: [keep ? t('keeps the edit') : '', make.length ? t('makes: {formats}', { formats: labels(make) }) : '', del.length ? t('deletes: {formats}', { formats: labels(del) }) : '']
+          .filter(Boolean).join(', ') })
+        : t('Saved, and everything chosen is up to date.');
     saveButton.disabled = blocked || busy() || !(make.length || del.length || keep);
   }
 
@@ -1021,10 +1023,10 @@ export async function editorView(view, path, config) {
     const deleted = del.map((f) => outputState(f).file.name);
     if (deleted.length) {
       const ok = await confirmDialog({
-        title: 'Delete files?',
-        body: [h('p', {}, 'These formats are not chosen any more, so their files are deleted:'),
+        title: t('Delete files?'),
+        body: [h('p', {}, t('These formats are not chosen any more, so their files are deleted:')),
           h('ul', {}, deleted.map((n) => h('li', {}, n)))],
-        confirm: 'Save and delete',
+        confirm: t('Save and delete'),
         danger: true,
       });
       if (!ok) return;
@@ -1033,11 +1035,11 @@ export async function editorView(view, path, config) {
     try {
       if (unsaved()) {
         sermon = await api('POST', 'api/sermon/save?path=' + q(path));
-        saveNote.textContent = 'Saved.';
+        saveNote.textContent = t('Saved.');
         renderVersion();
       }
     } catch (e) {
-      saveNote.textContent = 'Not saved: ' + e.message;
+      saveNote.textContent = t('Not saved: {error}', { error: e.message });
       renderOutputs();
       return;
     }
@@ -1055,7 +1057,7 @@ export async function editorView(view, path, config) {
       showJob(job);
       follow(job.id);
     } catch (e) {
-      showCheck({ ...lastCheck, error: 'Saved, but the files were not made: ' + e.message });
+      showCheck({ ...lastCheck, error: t('Saved, but the files were not made: {error}', { error: e.message }) });
     }
   }
 
@@ -1075,22 +1077,22 @@ export async function editorView(view, path, config) {
 
   function showJob(j) {
     const running = j.state === 'queued' || j.state === 'running';
-    const title = { queued: 'Waiting for another run to finish…', running: 'Processing…', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' }[j.state];
+    const title = { queued: t('Waiting for another run to finish…'), running: t('Processing…'), done: t('Done'), failed: t('Failed'), cancelled: t('Cancelled') }[j.state];
     const steps = j.steps.map((s, i) => {
       const last = i === j.steps.length - 1;
-      return h('li', { class: last && running ? 'current' : last && j.state === 'failed' ? 'failed' : '' }, s);
+      return h('li', { class: last && running ? 'current' : last && j.state === 'failed' ? 'failed' : '' }, tr(s));
     });
     const log = h('pre', { class: 'log' }, j.log.join('\n'));
     jobPanel.replaceChildren(h('div', { class: 'panel' },
       h('h2', {}, title),
       h('ul', { class: 'steps' }, steps),
       running ? h('progress', { max: 1, value: j.progress }) : '',
-      j.warnings.length ? h('div', {}, j.warnings.map((w) => h('p', { class: 'warn' }, '⚠ ' + w))) : '',
-      j.error ? h('p', { class: 'error' }, j.error) : '',
-      j.state === 'cancelled' ? h('p', {}, 'Cancelled. Nothing half-written was left behind.') : '',
-      j.state === 'done' ? h('p', {}, 'Done. Listen to and download the files under Recordings.') : '',
-      h('details', { open: running }, h('summary', {}, 'Log'), log),
-      running ? h('button', { onclick: cancel }, 'Cancel') : ''));
+      j.warnings.length ? h('div', {}, j.warnings.map((w) => h('p', { class: 'warn' }, '⚠ ' + tr(w)))) : '',
+      j.error ? h('p', { class: 'error' }, tr(j.error)) : '',
+      j.state === 'cancelled' ? h('p', {}, t('Cancelled. Nothing half-written was left behind.')) : '',
+      j.state === 'done' ? h('p', {}, t('Done. Listen to and download the files under Recordings.')) : '',
+      h('details', { open: running }, h('summary', {}, t('Log')), log),
+      running ? h('button', { onclick: cancel }, t('Cancel')) : ''));
     log.scrollTop = log.scrollHeight;
     renderOutputs();
   }
@@ -1100,7 +1102,7 @@ export async function editorView(view, path, config) {
       job = await api('POST', 'api/jobs/' + job.id + '/cancel');
       showJob(job);
     } catch (e) {
-      jobPanel.prepend(h('p', { class: 'error' }, e.message));
+      jobPanel.prepend(h('p', { class: 'error' }, tr(e.message)));
     }
   }
 
@@ -1113,7 +1115,7 @@ export async function editorView(view, path, config) {
       if (alive) waveSection.replaceChildren(h('p', { class: 'error' }, e.message));
     });
   } else {
-    waveSection.replaceChildren(h('p', {}, 'Nothing to cut yet. Upload a recording first.'));
+    waveSection.replaceChildren(h('p', {}, t('Nothing to cut yet. Upload a recording first.')));
   }
   renderVersion();
   renderOutputs();

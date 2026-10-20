@@ -1,4 +1,5 @@
 // Shared helpers: API calls, times, and building DOM without innerHTML.
+import { t, tr } from './i18n.js';
 
 // The church the UI is working with; every request to the server names it.
 let tenant = localStorage.getItem('tenant') || '';
@@ -37,7 +38,7 @@ export async function api(method, url, body) {
   }
   const resp = await fetch(url.startsWith('api/tenants') || url === 'api/session' ? url : forTenant(url), opts);
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(data.error || `${resp.status} ${resp.statusText}`);
+  if (!resp.ok) throw new Error(tr(data.error || `${resp.status} ${resp.statusText}`));
   return data;
 }
 
@@ -106,7 +107,7 @@ export function formatDateTime(d) {
 // dateInput is a text field for a date as yyyy-mm-dd (the browser's date
 // picker would show the locale's format, e.g. mm/dd/yyyy).
 export function dateInput(attrs = {}) {
-  return h('input', { type: 'text', class: 'date', maxlength: 10, inputmode: 'numeric', placeholder: 'yyyy-mm-dd',
+  return h('input', { type: 'text', class: 'date', maxlength: 10, inputmode: 'numeric', placeholder: t('yyyy-mm-dd'),
     pattern: '\\d{4}-\\d{2}-\\d{2}', autocomplete: 'off', ...attrs });
 }
 
@@ -132,6 +133,12 @@ export function h(tag, attrs, ...children) {
     el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
   return el;
+}
+
+// kbdText turns the <kbd>key</kbd> marks of a (translated) text into <kbd>
+// elements; the rest stays text.
+export function kbdText(text) {
+  return text.split(/<kbd>(.*?)<\/kbd>/).map((part, i) => (i % 2 ? h('kbd', {}, part) : part));
 }
 
 // typing reports whether a key event belongs to a form field, where
