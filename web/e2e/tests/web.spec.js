@@ -838,6 +838,7 @@ test('a recording being imported shows that, not what is left to do', async ({ p
   await expect(row).toContainText('converting');
   await expect(row).not.toContainText('to do');
   await expect(row.locator('.badge')).toHaveCount(1);
+});
 
 test('the recording keeps the name it arrived with: in the conversion note and in original/', async ({ page }) => {
   // A 3 s WAV, 8 kHz mono: a recorder's file.
