@@ -39,7 +39,7 @@ test('the recordings page shows the years and the recordings with their status',
   await page.goto('');
   await expect(page.locator('button.year-head', { hasText: '2026' })).toHaveAttribute('aria-expanded', 'true'); // the newest year is open
   const row = page.locator('.year tr', { hasText: '2026-10-04' });
-  await expect(row).toContainText('not processed');
+  await expect(row).toContainText('to do');
   await row.click();
   await expect(row.locator('xpath=following-sibling::tr[1]').getByRole('link', { name: 'Open in the editor' })).toBeVisible();
   await row.getByRole('button', { name: 'Show details' }).click();
@@ -203,7 +203,7 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   await expect(page.locator('.error')).toContainText('inside the sermon');
   await page.locator('.cut.outside').getByRole('button', { name: 'Remove' }).click();
   await expect(page.locator('.cut')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   await page.screenshot({ path: path.join(shots, 'cuts.png'), fullPage: true });
 
   await page.locator('.cut').first().getByRole('button', { name: 'Remove' }).click();
@@ -240,7 +240,7 @@ test('several sections: drag to add, gaps left out, overlaps merge, keys, remove
   await page.getByLabel('Section 2 to').fill('70');
   await page.getByLabel('Section 2 to').press('Enter');
   await expect(page.getByText('Length 0:40.0 (2 sections)')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
 
   // A cut in a section counts; the run check sees the gap as left out.
   await editor(page, () => window.__editor.addCut(60, 65));
@@ -270,14 +270,14 @@ test('several sections: drag to add, gaps left out, overlaps merge, keys, remove
   await page.locator('.section').getByRole('button', { name: 'Remove' }).click();
   expect(await sections(page)).toEqual([]);
   await expect(page.getByText('Drag on the waveform to select the sermon, or')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 });
 
 test('recording.json keeps the adjustments; Save makes them the saved version, Revert goes back', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   const file = path.join(DATA, 'root/2026/2026-10-04/recording.json');
   const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
-  await expect(page.getByRole('button', { name: 'Save…' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await expect(page.getByText('Nothing is saved yet.')).toBeVisible();
 
   // Adjusting is kept as you go, but nothing is saved yet.
@@ -300,19 +300,15 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
   await expect(page.getByText('Length 1:00.0 (2 cuts)')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled(); // nothing to go back to yet
 
-  // Save asks first; Cancel changes nothing.
-  await page.getByRole('button', { name: 'Save…' }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('The saved version will be');
-  await expect(dialog).toContainText('2 cuts');
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  expect(read().saved).toBeNull();
-  await page.getByRole('button', { name: 'Save…' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  // Save makes it the saved version (with no format chosen, it makes no files).
+  for (const label of ['FLAC', 'MP3', 'Opus']) await pick(page, label).click();
+  await expect(page.getByText('Save keeps the edit.')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
   expect(read()).toMatchObject({ adjusted: null, saved: { sections: [{ start: 12, end: 88 }], fadeIn: 2 } });
   expect(read().savedAt).toBeTruthy();
-  await expect(page.getByRole('button', { name: 'Save…' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expect(page.getByText('Saved, and everything chosen is up to date.')).toBeVisible();
 
   // Adjust again: the saved version stays as it was, next to the adjustments.
   await page.locator('.cut').first().getByRole('button', { name: 'Remove' }).click();
@@ -373,7 +369,7 @@ test('the page: Input file, Edit, Options, Output', async ({ page }) => {
   }
   await pick(page, 'FLAC').click();
   await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByText('Regenerate saves the edit and makes: MP3, Opus.')).toBeVisible();
+  await expect(page.getByText('Save keeps the edit, makes: MP3, Opus.')).toBeVisible();
   await page.locator('section.step').first().screenshot({ path: path.join(shots, 'edit-input.png') });
   await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-new.png') });
   // The choice is this recording's own: not remembered, here or for other folders.
@@ -381,7 +377,7 @@ test('the page: Input file, Edit, Options, Output', async ({ page }) => {
   await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 });
 });
 
-test('regenerate makes the chosen formats, and only what is missing or out of date', async ({ page }) => {
+test('Save makes the chosen formats, and only what is missing or out of date', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await page.getByLabel('Sermon from').fill('0:21');
   await page.getByLabel('Sermon from').press('Enter');
@@ -390,16 +386,14 @@ test('regenerate makes the chosen formats, and only what is missing or out of da
   await pick(page, 'FLAC').click();
   await pick(page, 'Opus').click();
   await page.getByLabel('Fade in (s)').fill('1');
-  // Nothing is saved yet: Regenerate says it saves, then runs.
-  await page.getByRole('button', { name: 'Regenerate' }).click();
-  await expect(page.getByRole('dialog')).toContainText('They become the saved version.');
-  await page.getByRole('dialog').getByRole('button', { name: 'Regenerate' }).click();
+  // Save keeps the edit, then makes the files; it asks nothing when it deletes nothing.
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible({ timeout: 60_000 });
   await expect(pill(page, 'MP3')).toHaveClass(/exists/);
   await expect(pill(page, 'MP3')).toContainText('up to date');
   await expect(pill(page, 'FLAC')).toContainText('not made');
-  await expect(page.getByText('Everything chosen is up to date.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeDisabled();
+  await expect(page.getByText('Saved, and everything chosen is up to date.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   // The files are downloaded from the folder list, not here.
   await expect(page.locator('section.step').last().getByRole('link', { name: 'Download' })).toHaveCount(0);
   await expect(page.locator('.input-file')).toContainText('2026-10-04_raw.flac'); // moved into original/ by the run
@@ -414,13 +408,15 @@ test('regenerate makes the chosen formats, and only what is missing or out of da
 
   // A change to the edit makes the MP3 out of date; choosing Opus adds it.
   await page.getByLabel('Fade in (s)').fill('2');
-  await expect(pill(page, 'MP3')).toContainText('will regenerate');
+  await expect(pill(page, 'MP3')).toContainText('out of date, will be made again');
   await pick(page, 'Opus').click();
-  await expect(page.getByText('Regenerate saves the edit and makes: MP3, Opus.')).toBeVisible();
+  await expect(page.getByText('Save keeps the edit, makes: MP3, Opus.')).toBeVisible();
   await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-stale.png') });
   // Back as it was made: up to date again.
   await page.getByLabel('Fade in (s)').fill('1');
   await expect(pill(page, 'MP3')).toContainText('up to date');
+  const stateFile = path.join(DATA, 'root/2026/2026-10-04/recording.json');
+  await expect.poll(() => JSON.parse(fs.readFileSync(stateFile, 'utf8')).adjusted).toBeNull(); // kept: the same as saved
 
   // After a reload the recording's files decide what is chosen; the fade and the finished run stay.
   await page.reload();
@@ -434,38 +430,29 @@ test('a run can be cancelled', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await page.getByLabel('Sermon from').fill('0:01');
   await page.getByLabel('Sermon from').press('Enter');
-  // Replacing a file asks first; Cancel in the dialog changes nothing.
-  await expect(pill(page, 'MP3')).toContainText('will regenerate');
-  await page.getByRole('button', { name: 'Regenerate' }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('These files are replaced');
-  await expect(dialog).toContainText('2026-10-04.mp3');
-  await page.screenshot({ path: path.join(shots, 'dialog.png') });
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Processing…' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Regenerate' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Regenerate' }).click();
+  await expect(pill(page, 'MP3')).toContainText('out of date, will be made again');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Cancelled' })).toBeVisible({ timeout: 30_000 });
   const left = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).filter((f) => f.includes('.partial') || f.startsWith('.'));
   expect(left).toEqual([]);
 });
 
-test('a format that is not chosen any more is deleted by Regenerate', async ({ page }) => {
+test('a format that is not chosen any more is deleted by Save, after asking', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04', { keep: true });
   // The sermon's files decide what is chosen, not the choice in another folder.
   await expect(pick(page, 'MP3')).toHaveAttribute('aria-pressed', 'true');
   await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'false');
   await pick(page, 'MP3').click();
   await expect(pill(page, 'MP3')).toContainText('will be deleted');
-  await expect(page.getByText('Regenerate deletes: MP3.')).toBeVisible();
+  await expect(page.getByText('Save deletes: MP3.')).toBeVisible();
   await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-delete.png') });
-  await page.getByRole('button', { name: 'Regenerate' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('These files are deleted');
+  await expect(dialog).toContainText('their files are deleted');
   await expect(dialog).toContainText('2026-10-04.mp3');
-  await dialog.getByRole('button', { name: 'Regenerate' }).click();
+  await page.screenshot({ path: path.join(shots, 'dialog.png') });
+  await dialog.getByRole('button', { name: 'Save and delete' }).click();
   await expect(pill(page, 'MP3')).toContainText('not made');
   const dir = path.join(DATA, 'root/2026/2026-10-04');
   expect(fs.existsSync(path.join(dir, '2026-10-04.mp3'))).toBe(false);

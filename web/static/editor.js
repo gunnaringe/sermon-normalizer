@@ -94,7 +94,7 @@ export async function editorView(view, path, config) {
   const pills = h('div', { class: 'pills', role: 'group', 'aria-label': 'Formats' });
   const outputNote = h('p', { class: 'muted' });
   const checkOut = h('div', {});
-  const regenerateButton = h('button', { class: 'primary', disabled: true, onclick: regenerate }, 'Regenerate');
+  const saveButton = h('button', { class: 'primary', disabled: true, title: 'Make this the saved version and make the files', onclick: save }, 'Save');
   // The fades are part of the edit; they sit with the sections and cuts.
   const fadeInput = (key, label) => h('label', { class: 'fade' }, h('span', { class: 'name' }, label), h('input', {
     type: 'number', name: key, value: opts[key], step: 0.5, min: 0,
@@ -103,7 +103,6 @@ export async function editorView(view, path, config) {
   const fades = h('div', { class: 'toolbar' }, fadeInput('fadeIn', 'Fade in (s)'), fadeInput('fadeOut', 'Fade out (s)'));
   const saveNote = h('span', { class: 'muted' });
   const versionOut = h('div', {});
-  const saveButton = h('button', { disabled: true, title: 'Make the current settings the saved version', onclick: saveVersion }, 'Save…');
   const revertButton = h('button', { disabled: true, title: 'Throw away the adjustments and go back to the saved version', onclick: revertVersion }, 'Revert…');
   const jobPanel = h('section', {});
 
@@ -138,7 +137,7 @@ export async function editorView(view, path, config) {
     h('section', { class: 'step', 'aria-labelledby': 'step-output' }, h('h2', { id: 'step-output' }, 'Output'),
       h('div', { class: 'panel' },
         pills, outputNote, checkOut,
-        h('p', {}, regenerateButton)),
+        h('p', {}, saveButton)),
       jobPanel),
   );
 
@@ -297,8 +296,8 @@ export async function editorView(view, path, config) {
         h('div', { class: 'group wide' },
           h('strong', {}, 'Saved version'),
           versionOut,
-          h('div', { class: 'toolbar' }, saveButton, revertButton, saveNote),
-          h('p', { class: 'muted' }, 'Your changes are kept as you make them. Save makes them the saved version. Revert goes back to it. Regenerate saves them and makes the files.'))),
+          h('div', { class: 'toolbar' }, revertButton, saveNote),
+          h('p', { class: 'muted' }, 'Your changes are kept as you make them. Save, under Output, makes them the saved version and makes the files. Revert goes back to the saved version.'))),
       h('p', { class: 'touch-hint' },
         'Drag along the waveform to select the sermon. Drag on an empty part to add another section. ' +
         'Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.'),
@@ -775,31 +774,8 @@ export async function editorView(view, path, config) {
     versionOut.replaceChildren(
       saved ? h('p', {}, h('strong', {}, 'Saved' + at + ': '), describe(saved)) : h('p', { class: 'muted' }, 'Nothing is saved yet.'),
       adjusted ? h('p', {}, h('strong', {}, 'Adjusted, not saved: '), describe(adjusted)) : '');
-    saveButton.disabled = !adjusted;
     revertButton.disabled = !adjusted || !saved;
-  }
-
-  // saveVersion makes the adjustments the saved version, after asking.
-  async function saveVersion() {
-    await persistAdjusted();
-    if (!sermon.adjusted) return;
-    const ok = await confirmDialog({
-      title: 'Save these settings?',
-      body: [
-        sermon.saved ? [h('p', {}, 'This replaces the saved version:'), h('ul', {}, h('li', {}, describe(sermon.saved)))] : '',
-        h('p', {}, sermon.saved ? 'With:' : 'The saved version will be:'),
-        h('ul', {}, h('li', {}, describe(sermon.adjusted))),
-      ],
-      confirm: 'Save',
-    });
-    if (!ok) return;
-    try {
-      sermon = await api('POST', 'api/sermon/save?path=' + q(path));
-      saveNote.textContent = 'Saved.';
-    } catch (e) {
-      saveNote.textContent = 'Not saved: ' + e.message;
-    }
-    renderVersion();
+    renderOutputs();
   }
 
   // revertVersion drops the adjustments and goes back to the saved version, after asking.
@@ -990,18 +966,18 @@ export async function editorView(view, path, config) {
 
   function busy() { return job && (job.state === 'queued' || job.state === 'running'); }
 
-  // ---- output: the formats, what is there, and what Regenerate makes ----
+  // ---- output: the formats, what is there, and what Save makes ----
   const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
 
-  // outputState is a format's file: there or not, and whether Regenerate
-  // would make it again (stale: made from other settings; unknown: no record).
+  // outputState is a format's file: there or not, and whether Save would make
+  // it again (stale: made from other settings; unknown: no record).
   function outputState(format) {
     const file = info.outputs.find((o) => o.format === format) || null;
     const st = (lastCheck.outputs || {})[format];
     return { file, stale: Boolean(file && st && (st.stale || !st.known)), unknown: Boolean(file && st && !st.known) };
   }
 
-  // toMake is what Regenerate makes: the chosen formats that are missing or out
+  // toMake is what Save makes: the chosen formats that are missing or out
   // of date; toDelete what it deletes: the files of the formats not chosen.
   const toMake = () => FORMATS.map(([f]) => f).filter((f) => opts[f] && (!outputState(f).file || outputState(f).stale));
   const toDelete = () => FORMATS.map(([f]) => f).filter((f) => !opts[f] && outputState(f).file);
@@ -1013,7 +989,7 @@ export async function editorView(view, path, config) {
       const chosen = Boolean(opts[format]);
       const note = !file ? (chosen ? 'will be made' : 'not made')
         : !chosen ? 'will be deleted'
-          : stale ? 'will regenerate' : 'up to date';
+          : stale ? 'out of date, will be made again' : 'up to date';
       return h('div', { 'data-format': format, class: 'pill' + (file ? ' exists' : '') + (chosen ? ' chosen' : '') + (stale ? ' stale' : '') },
         h('button', {
           class: 'pick', 'aria-pressed': String(chosen), title: chosen ? `Leave ${label} out` : `Make ${label} too`,
@@ -1021,41 +997,50 @@ export async function editorView(view, path, config) {
         }, h('span', { class: 'box', 'aria-hidden': 'true' }, chosen ? '☑' : '☐'), ' ', label, file ? ' ✓' : ''),
         h('span', { class: 'state' + (file && !chosen ? ' delete' : chosen && (stale || !file) ? ' will' : '') }, note));
     }));
-    const make = toMake(), del = toDelete();
-    const blocked = make.length > 0 && Boolean(lastCheck.error); // deleting does not need a valid edit
+    const make = toMake(), del = toDelete(), keep = unsaved();
+    const blocked = (make.length > 0 || keep) && Boolean(lastCheck.error); // deleting does not need a valid edit
     outputNote.textContent = blocked ? ''
-      : make.length || del.length
-        ? 'Regenerate ' + [make.length ? 'saves the edit and makes: ' + labels(make) : '', del.length ? 'deletes: ' + labels(del) : '']
-          .filter(Boolean).join(', and ') + '.'
-        : 'Everything chosen is up to date.';
-    regenerateButton.disabled = blocked || busy() || !(make.length || del.length);
+      : make.length || del.length || keep
+        ? 'Save ' + [keep ? 'keeps the edit' : '', make.length ? 'makes: ' + labels(make) : '', del.length ? 'deletes: ' + labels(del) : '']
+          .filter(Boolean).join(', ') + '.'
+        : 'Saved, and everything chosen is up to date.';
+    saveButton.disabled = blocked || busy() || !(make.length || del.length || keep);
   }
 
-  // regenerate saves the edit, then makes the chosen formats that are missing
-  // or out of date and deletes the files of those not chosen; it asks first
-  // when that replaces or deletes files, or changes the saved version.
-  async function regenerate() {
+  // unsaved: the edit on the page is not the saved version.
+  const unsaved = () => Boolean(sermon.adjusted) || (!sermon.saved && sections.length > 0);
+
+  // save makes the edit the saved version, then deletes the files of the
+  // formats not chosen (after asking) and makes the chosen ones that are
+  // missing or out of date. The edit is saved even when the files cannot be
+  // made now: the recordings page shows them as out of date.
+  async function save() {
     await persistAdjusted();
     const make = toMake(), del = toDelete();
-    if (!make.length && !del.length) return;
     const replaced = make.map(outputState).filter((x) => x.file).map((x) => x.file.name);
     const deleted = del.map((f) => outputState(f).file.name);
-    const changes = make.length > 0 && (Boolean(sermon.adjusted) || !sermon.saved);
-    if (replaced.length || deleted.length || changes) {
+    if (deleted.length) {
       const ok = await confirmDialog({
-        title: 'Regenerate?',
-        body: [
-          make.length ? h('p', {}, 'The sermon is made from the recording, with the sections, cuts and fades shown here.') : '',
-          changes ? h('p', {}, sermon.saved ? 'They replace the saved version.' : 'They become the saved version.') : '',
-          replaced.length ? [h('p', {}, 'These files are replaced:'), h('ul', {}, replaced.map((n) => h('li', {}, n)))] : '',
-          deleted.length ? [h('p', {}, 'These files are deleted:'), h('ul', {}, deleted.map((n) => h('li', {}, n)))] : '',
-        ],
-        confirm: 'Regenerate',
-        danger: replaced.length > 0 || deleted.length > 0,
+        title: 'Delete files?',
+        body: [h('p', {}, 'These formats are not chosen any more, so their files are deleted:'),
+          h('ul', {}, deleted.map((n) => h('li', {}, n)))],
+        confirm: 'Save and delete',
+        danger: true,
       });
       if (!ok) return;
     }
-    regenerateButton.disabled = true;
+    saveButton.disabled = true;
+    try {
+      if (unsaved()) {
+        sermon = await api('POST', 'api/sermon/save?path=' + q(path));
+        saveNote.textContent = 'Saved.';
+        renderVersion();
+      }
+    } catch (e) {
+      saveNote.textContent = 'Not saved: ' + e.message;
+      renderOutputs();
+      return;
+    }
     try {
       if (del.length) {
         const inf = await api('POST', 'api/outputs/remove?path=' + q(path) + del.map((f) => '&format=' + f).join(''));
@@ -1064,15 +1049,13 @@ export async function editorView(view, path, config) {
         check();
       }
       if (!make.length) return;
-      if (sermon.adjusted) sermon = await api('POST', 'api/sermon/save?path=' + q(path));
-      renderVersion();
       const req = request(replaced.length > 0);
       for (const [f] of FORMATS) req[f] = make.includes(f);
       job = await api('POST', 'api/run?path=' + q(path), req);
       showJob(job);
       follow(job.id);
     } catch (e) {
-      showCheck({ ...lastCheck, error: e.message });
+      showCheck({ ...lastCheck, error: 'Saved, but the files were not made: ' + e.message });
     }
   }
 

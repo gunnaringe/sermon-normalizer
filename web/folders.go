@@ -26,9 +26,13 @@ type folderEntry struct {
 	Raw     bool     `json:"raw"`
 	Outputs []string `json:"outputs"`
 	Pending bool     `json:"pending"`    // has sources but not all outputs
-	Convert bool     `json:"converting"` // the raw WAV is being converted to FLAC
+	Convert bool     `json:"converting"` // the recording is being converted (normalizer.ConvertsTo)
 	Prepare bool     `json:"preparing"`  // the waveform and preview are being made
 	Job     string   `json:"job,omitempty"`
+	// Saved: the editor has a saved version (the recording is done); Outdated:
+	// some of its files were made from another cut than that.
+	Saved    bool `json:"saved"`
+	Outdated bool `json:"outdated"`
 	// Imported is when the recording arrived, if that is known.
 	Imported *time.Time `json:"imported,omitempty"`
 	Labels   []string   `json:"labels"`
@@ -72,6 +76,13 @@ func (s *Server) entry(abs string) folderEntry {
 		st := readState(abs)
 		e.Imported = st.Imported
 		e.Labels = append(e.Labels, st.Labels...)
+		if st.Saved != nil {
+			e.Saved = true
+			cut := savedCut(*st.Saved)
+			for _, m := range st.Outputs {
+				e.Outdated = e.Outdated || (m.Cut != "" && m.Cut != cut)
+			}
+		}
 	}
 	return e
 }
@@ -433,7 +444,7 @@ func (s *Server) check(abs string, q runRequest) plan {
 	case pl.opt.Start == 0 && pl.opt.End == 0:
 		return fail(errors.New("select where the sermon starts and ends"))
 	case s.analyses.converting(raw):
-		return fail(errors.New("the recording is still being converted to FLAC"))
+		return fail(errors.New("the recording is still being converted"))
 	}
 	pl.Outputs = s.outputStatus(paths, pl.opt)
 	return pl
@@ -469,7 +480,7 @@ func (s *Server) recordOutputs(pl plan, began time.Time) {
 	made := map[string]outputMade{}
 	for _, x := range outputsOf(pl.paths) {
 		if st, err := os.Stat(x.path); err == nil && on[x.format] && !st.ModTime().Before(began.Add(-time.Second)) {
-			made[x.format] = outputMade{MadeAt: st.ModTime().UTC(), From: madeFrom(pl.opt, x.format),
+			made[x.format] = outputMade{MadeAt: st.ModTime().UTC(), From: madeFrom(pl.opt, x.format), Cut: cutOf(pl.opt),
 				Stereo: pl.opt.Stereo, Bitrate: bitrateFor(pl.opt, x.format)}
 		}
 	}

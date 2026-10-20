@@ -66,6 +66,7 @@ type sourceFile struct {
 type outputMade struct {
 	MadeAt  time.Time `json:"madeAt"`
 	From    string    `json:"from"`
+	Cut     string    `json:"cut,omitempty"` // cutOf: which cut it was made from
 	Stereo  bool      `json:"stereo"`
 	Bitrate string    `json:"bitrate,omitempty"`
 }
@@ -196,6 +197,30 @@ func madeFrom(o normalizer.Options, format string) string {
 	data, _ := json.Marshal(v)
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:8])
+}
+
+// cutOf is the fingerprint of the cut alone: the parts of the recording and
+// the fades. An output made from another cut than the saved version is out of
+// date, whatever the sound settings.
+func cutOf(o normalizer.Options) string {
+	v := struct {
+		Start, End, FadeIn, FadeOut float64
+		Cuts                        []normalizer.Span
+	}{o.Start, o.End, o.FadeIn, o.FadeOut, o.Cuts}
+	data, _ := json.Marshal(v)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:8])
+}
+
+// savedCut is cutOf the saved version, or "" when it cannot be read.
+func savedCut(saved sermonSettings) string {
+	q := requestFrom(normalizer.DefaultOptions())
+	q.cutting, q.FadeIn, q.FadeOut = saved.cutting, saved.FadeIn, saved.FadeOut
+	o, err := q.options()
+	if err != nil {
+		return ""
+	}
+	return cutOf(o)
 }
 
 func bitrateFor(o normalizer.Options, format string) string {

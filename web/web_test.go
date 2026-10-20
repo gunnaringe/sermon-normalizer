@@ -627,3 +627,33 @@ func TestRecordingsAndLabels(t *testing.T) {
 		t.Errorf("clear: %d", rec.Code)
 	}
 }
+
+// A recording is done once a version is saved; its files are out of date when
+// made from another cut than that (sound settings do not count).
+func TestRecordingSavedAndOutdated(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	ts.file(t, "2026-10-04/2026-10-04_raw.flac", "x")
+	ts.file(t, "2026-10-04/2026-10-04.mp3", "x")
+	folder := filepath.Join(ts.root, "2026-10-04")
+	if e := ts.entry(folder); e.Saved || e.Outdated {
+		t.Fatalf("before saving: %+v", e)
+	}
+	saved := sermonSettings{cutting: cutting{Sections: []span{{21, 79}}, Cuts: []span{}}, FadeIn: 1}
+	other := saved
+	other.FadeIn = 2
+	write := func(made sermonSettings) {
+		ts.updateState(folder, func(st *folderState) error {
+			st.Saved = &saved
+			st.Outputs = map[string]outputMade{"mp3": {From: "x", Cut: savedCut(made)}}
+			return nil
+		})
+	}
+	write(saved)
+	if e := ts.entry(folder); !e.Saved || e.Outdated {
+		t.Errorf("made from the saved cut: %+v", e)
+	}
+	write(other)
+	if e := ts.entry(folder); !e.Saved || !e.Outdated {
+		t.Errorf("made from another cut: %+v", e)
+	}
+}

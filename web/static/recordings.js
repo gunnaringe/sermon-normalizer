@@ -10,8 +10,16 @@ function badges(e) {
   if (e.job) out.push(h('span', { class: 'badge busy' }, 'processing'));
   if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
   if (e.preparing) out.push(h('span', { class: 'badge busy' }, 'preparing'));
-  if (e.raw && e.outputs.length === 0) out.push(h('span', { class: 'badge warn', title: 'Only the full, unedited recording of the service exists' }, 'not processed'));
-  if (e.outputs.length) out.push(h('span', { class: 'badge on', title: 'Ready to play and download' }, 'ready'));
+  // Done is cut and saved (or made before there was saving); the files follow.
+  const done = e.saved || e.outputs.length > 0;
+  if (e.raw && !done) out.push(h('span', { class: 'badge warn', title: 'Not cut yet: open it in the editor' }, 'to do'));
+  if (done) out.push(h('span', { class: 'badge on', title: 'Cut and saved' }, 'done'));
+  if (!e.job && e.saved && e.outputs.length === 0) {
+    out.push(h('span', { class: 'badge warn', title: 'No files made: open it in the editor and press Save' }, 'no files'));
+  }
+  if (!e.job && e.outdated) {
+    out.push(h('span', { class: 'badge warn', title: 'Made from an older cut: open it in the editor and press Save' }, 'files out of date'));
+  }
   return out;
 }
 

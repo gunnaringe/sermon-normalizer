@@ -69,7 +69,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
 - `web/static/`: plain JS, no build. `app.js` = the hash router (`#/<church>/…`, old addresses without a church are moved; the
   church comes from the address) and the Settings overlay (`openSettings`, over whichever page is shown). `recordings.js` = the one recordings page (years, search, Newly imported, rows, `open(path)` for links); `sermons.js` = a sermon's details inside it (labels, copy link, play, download,
-  make a format); clicking anywhere on a date row expands it; an unprocessed recording only offers the editor there. `icons/` = the logo: `logo.svg` is the one source (header, favicon,
+  make a format); clicking anywhere on a date row expands it; one with no files only offers the editor there. Its status (`badges`): to do / done from `saved` (or files), plus no files / files out of date (`outdated`: an output's `cut` ≠ `cutOf` the saved version). `icons/` = the logo: `logo.svg` is the one source (header, favicon,
   `manifest.webmanifest`); the PNGs (home screen, favicon fallback) come from it via `scripts/make-icons.sh`;
   the public page serves only the ones listed in `sharePage`. `dialog.js` = confirm/alert/prompt in the app's look
   (never use the browser's `confirm`/`alert`/`prompt`). `vendor/wavesurfer/` is wavesurfer.js
@@ -83,7 +83,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 ## Rules that matter
 
 - Outputs go through `FFmpeg.RunTo` (`.partial`, renamed on success); existing
-  outputs are skipped by a run; Regenerate (Force in the API) redoes the stale ones it turns on.
+  outputs are skipped by a run; the editor's Save (Force in the API) redoes the stale ones it turns on. Save keeps the edit first, then runs.
 - Delete a source only after its copy is verified identical (`FFmpeg.Convert`: `SameAudio` for
   WAV/AIFF→FLAC, the same packets for a video's sound; byte MD5 for copies). A run moves the whole
   recording into `<date>/original/` as it is (any of `normalizer.InputTypes`); the outputs are cut
@@ -95,7 +95,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   ~100 s timeout). Start background work on `s.ctx` under `s.wg`.
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.
 - Messages from `normalizer` show in the web UI: use the form's names
-  (Start, Regenerate, mono), not flags. English everywhere.
+  (Start, Save, mono), not flags. English everywhere.
 - The public upload page is on the internet without a login: add nothing to `ShareHandler`
   that reads files or reaches the studio; `TestSharePublicIsSeparate` checks this.
 - Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`

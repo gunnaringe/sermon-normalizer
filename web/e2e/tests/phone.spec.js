@@ -59,6 +59,6 @@ test('phone: the editor by touch', async ({ page }) => {
   await page.getByRole('button', { name: 'Cut out here' }).tap();
   await expect(page.getByLabel('Cut 1 from')).toBeVisible();
   await page.getByRole('button', { name: '+', exact: true }).tap();
-  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   await fits(page, 'editor');
 });

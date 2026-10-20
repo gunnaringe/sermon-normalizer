@@ -138,10 +138,9 @@ cancels running jobs and waits for them to clean up.
   waveform, sections, cuts and fades), **Options** (mono ↔ stereo, tags, sound) and **Output**.
 - **Saved version:** the sections, the cuts and the fades are kept in `recording.json` in the date
   folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
-  the next time the sermon is opened. **Save…** (after a confirmation) makes them the *saved
-  version*, which stays as it is while you adjust further; **Revert…** (after a confirmation)
-  throws the adjustments away and goes back to it. Both versions are in the file. **Regenerate**
-  saves what is on the page first.
+  the next time the sermon is opened. **Save** (under Output) makes them the *saved version*,
+  which stays as it is while you adjust further, and makes the files; **Revert…** (after a
+  confirmation) throws the adjustments away and goes back to it. Both versions are in the file.
 - **Several sections:** drag on an empty part of the waveform to add another section; the parts
   between sections are left out, as if cut. Use whichever feels natural: one section with cuts,
   or several sections (or both). Sections that come to overlap become one; *Remove* drops one.
@@ -158,19 +157,23 @@ cancels running jobs and waits for them to clean up.
 - **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,
   green when the file is there (play and download it from the recordings list). `recording.json` keeps what each file was made from (sections, cuts,
   fades, sound, tags, bitrate), so a file made from other settings than the page shows says
-  *will regenerate*; files made from the recordings list count too. The choice is the recording's own (not
+  *out of date*; files made from the recordings list count too. The choice is the recording's own (not
   carried over): it starts with the formats it has, or the defaults when it has none; a file whose format is no longer chosen says *will be deleted*.
-  **Regenerate** saves the edit, makes the chosen formats that are missing or out of date and
-  deletes the files of those not chosen (never the recording), asking first when that replaces or
-  deletes a file. The run is followed live and keeps going if the browser is closed. Cancelling leaves
-  nothing half-written.
+  **Save** saves the edit, then makes the chosen formats that are missing or out of date and
+  deletes the files of those not chosen (never the recording), asking first when it deletes a
+  file. The edit is saved even if the files cannot be made right then. The run is followed live and
+  keeps going if the browser is closed. Cancelling leaves nothing half-written.
+- **Status** on the recordings page, worked out from what is there: *to do* (not cut yet), *done*
+  (a saved version, or files made), and next to it *no files* or *files out of date* (made from
+  another cut than the saved one) when Save has more to do; *converting*, *preparing* and
+  *processing* while the server works on it.
 - **Newly imported:** a recording that arrived (upload, inbox, share) in the last 7 days is also listed
   on top of the first page, with when it came; the import time is kept in its `recording.json`.
 - **Upload** (at the top of the recordings page): drop or pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
   and continue after a dropped connection. No inbox needed.
-- **Several sermons a day:** give the second one a name (upload form, optional). Its folder is
+- **Names:** a recording can have a name (upload form, optional), e.g. for two sermons a day. Its folder is
   `<year>/<date> <name>` and its files `<date> <name>_raw.flac`, `<date> <name>.mp3`... Without a name
   a date can hold one sermon. **Rename…** on a sermon's page changes its date or name (the folder and
   the files named after it, also in `original/`; files already made keep their tags). A recording
@@ -266,7 +269,7 @@ apart. The browser only streams the preview; the cut is always made from the ori
 - MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or
   the loudness is off. They are always made from the master; without FLAC it is a temporary
   hidden file in the date folder, removed when the run ends.
-- Up-to-date outputs are kept; Regenerate redoes those that are out of date (and cuts again). Output is written to a `.partial` file and
+- Up-to-date outputs are kept; Save redoes those that are out of date (and cuts again). Output is written to a `.partial` file and
   renamed when done, so an interrupted run never leaves a half-written file behind.
 - Mono is the usual choice for speech, and mono and stereo recordings both work either way.
   With stereo, the run warns if the source is mono or its two channels are identical or nearly

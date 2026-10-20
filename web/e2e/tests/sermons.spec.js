@@ -1,5 +1,5 @@
 // The folder list: a sermon opens its details (play, download, make a missing
-// format); a recording that is not processed warns and still opens the editor.
+// format); a recording that is not cut yet is "to do" and still opens the editor.
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,8 +29,8 @@ test.beforeAll(async ({ request }) => {
 test('a sermon opens its details in the list: play, download, make a missing format', async ({ page }) => {
   await page.goto('');
   const row = page.locator('.year tr.row', { hasText: '2026-07-05' });
-  await expect(row).not.toContainText('not processed');
-  await expect(row).toContainText('ready');
+  await expect(row).not.toContainText('to do');
+  await expect(row).toContainText('done');
   await row.click();
   await expect(page).toHaveURL(/#\/first-church$/);
   const detail = page.locator('tr.detail-row');
@@ -63,10 +63,10 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await expect(page.locator('tr.detail-row')).toHaveCount(1);
 });
 
-test('a recording that is not processed has the tag and an edit button, and still opens the editor', async ({ page }) => {
+test('a recording that is not cut yet is "to do", has an edit button, and still opens the editor', async ({ page }) => {
   await page.goto('');
   const row = page.locator('.year tr.row', { hasText: '2026-08-30' });
-  await expect(row).toContainText('not processed');
+  await expect(row).toContainText('to do');
   await row.click(); // anywhere on the row
   await expect(page.getByRole('link', { name: 'Open in the editor' })).toBeVisible();
   await expect(page.locator('tr.detail-row audio')).toHaveCount(0);
