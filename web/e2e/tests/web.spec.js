@@ -599,7 +599,7 @@ test('settings: default tags are saved and used on the sermon page', async ({ pa
   await expect(page.locator('input[name=artist]')).toHaveValue('Norkirken Melhus');
 });
 
-test('a second sermon the same day: upload with a name, then rename', async ({ page }) => {
+test('two sermons the same day: upload with a name, then rename', async ({ page }) => {
   await page.goto('');
   await page.screenshot({ path: path.join(shots, 'folders-upload.png') });
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
@@ -612,7 +612,7 @@ test('a second sermon the same day: upload with a name, then rename', async ({ p
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
   await page.locator('input[name=date]').fill('2026-11-01');
   await page.getByRole('button', { name: 'Upload' }).click();
-  await expect(page.getByText('give it a name')).toBeVisible();
+  await expect(page.getByText('give this one a name')).toBeVisible();
   await page.locator('input[aria-label=Name]').fill('Kveld');
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-11-01%20Kveld$|#\/folder\/2026\/2026-11-01 Kveld$/);

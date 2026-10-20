@@ -88,9 +88,9 @@ func (s *Server) suggestDate(ctx context.Context, path string, mod time.Time) (s
 }
 
 // newRawFolder is the folder for a new raw recording of date (made after the
-// layout, not created here): <date>, or <date> <name> when there is a name,
-// for a second sermon the same day. It fails if the folder already has a raw
-// recording; the status is the HTTP status for the error.
+// layout, not created here): <date>, or <date> <name> when there is a name.
+// It fails if the folder already has a raw recording; the status is the HTTP
+// status for the error.
 func (s *Server) newRawFolder(date, name string) (string, int, error) {
 	d, err := time.Parse("2006-01-02", date)
 	if err != nil {
@@ -116,7 +116,7 @@ func (s *Server) newRawFolder(date, name string) (string, int, error) {
 		return "", http.StatusInternalServerError, err
 	}
 	if raw := paths.Source(); raw != "" {
-		return "", http.StatusConflict, fmt.Errorf("%s already has a raw recording (%s); to add another sermon that day, give it a name", filepath.Base(folder), filepath.Base(raw))
+		return "", http.StatusConflict, fmt.Errorf("%s already has a raw recording (%s); give this one a name", filepath.Base(folder), filepath.Base(raw))
 	}
 	return folder, 0, nil
 }

@@ -168,7 +168,7 @@ function uploadBox() {
       h('p', {}, h('strong', {}, file.name), ' · ', formatSize(file.size), ' ',
         h('button', { class: 'link', type: 'button', onclick: () => { chosen.replaceChildren(); status.textContent = ''; } }, 'cancel')),
       h('p', {}, h('label', {}, 'Date ', date), ' ', h('span', { class: 'muted' }, guess.source)),
-      h('p', {}, h('label', {}, 'Name ', sermon), ' ', h('span', { class: 'muted' }, 'Only needed for a second sermon on the same day.')),
+      h('p', {}, h('label', {}, 'Name ', sermon)),
       h('p', {}, button)));
     suggestNames(sermon);
   }
@@ -337,7 +337,7 @@ async function settingsView(box, part) {
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + p.help + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
     h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
     h('h2', {}, 'Sermon names'),
-    h('p', { class: 'muted' }, 'A second sermon on the same day needs a name. Used names are suggested next time. Remove one-off names here.'),
+    h('p', { class: 'muted' }, 'Names you give recordings are suggested next time. Remove one-off names here.'),
     namesBox,
     h('h2', {}, 'Waveform'),
     h('p', { class: 'muted' }, 'Saved in this browser only.'),
