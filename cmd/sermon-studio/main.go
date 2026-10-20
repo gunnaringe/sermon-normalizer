@@ -38,6 +38,7 @@ func run() error {
 	logoutURL := flag.String("logout-url", "", "the login proxy's logout address (a POST); shows a Log out button in the header")
 	cacheDir := flag.String("cache-dir", defaultCacheDir(), "where waveform data and previews are kept")
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
+	trashDays := flag.Int("trash-days", web.DefaultTrashDays, "keep a deleted recording in the trash for this many days")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
 	ffBin := flag.String("ffmpeg", "ffmpeg", "path to ffmpeg")
 	shareListen := flag.String("share-listen", "", "address for the public upload page, where recordings are sent with a code made in the studio (Settings → Shares); \"\" = off")
@@ -80,7 +81,7 @@ func run() error {
 	}
 	srv, err := web.NewApp(web.AppConfig{
 		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir,
-			Layout: *layout, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
+			Layout: *layout, TrashDays: *trashDays, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
 		DataDir: *dataDir, GroupsHeader: *groupsHeader, LogoutURL: *logoutURL,
 		Share: share,
 	})

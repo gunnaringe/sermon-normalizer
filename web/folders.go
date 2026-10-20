@@ -111,7 +111,7 @@ func (s *Server) allRecordings() []folderEntry {
 }
 
 func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"recordings": s.allRecordings(), "newFor": int(newFor.Seconds())})
+	writeJSON(w, http.StatusOK, map[string]any{"recordings": s.allRecordings(), "newFor": int(newFor.Seconds()), "trashDays": s.trashDays()})
 }
 
 const (

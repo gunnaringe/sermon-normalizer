@@ -2,7 +2,7 @@
 // play, download, make a missing format), or, for a recording that has not
 // been processed, only a way into the editor.
 import { api, q, h, href, formatSize, formatTime, forTenant } from './util.js';
-import { alertDialog } from './dialog.js';
+import { alertDialog, confirmDialog } from './dialog.js';
 import { t, tn, tr } from './i18n.js';
 
 const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
@@ -23,7 +23,8 @@ const MAX_LABELS = 10;
 
 // sermonDetail returns the panel for a folder; it fills in when the folder
 // has been read, and again after a format was made. ctx.suggestions() lists
-// the labels already used; ctx.changed() is told when this one's labels change.
+// the labels already used; ctx.changed() is told when this one's labels change; ctx.deleted() when it
+// was moved to the trash (ctx.trashDays is how long it stays there).
 export function sermonDetail(entry, ctx = {}) {
   const panel = h('div', { class: 'detail' }, h('p', { class: 'muted' }, 'Loading…'));
   const editURL = href('folder', entry.path);
@@ -117,10 +118,26 @@ export function sermonDetail(entry, ctx = {}) {
     return b;
   }
 
+  // deleteButton moves the recording to the trash, after asking.
+  function deleteButton() {
+    return h('button', { type: 'button', class: 'delete', name: 'delete-recording', onclick: async () => {
+      const ok = await confirmDialog({
+        title: t('Delete {name}?', { name: entry.name }),
+        body: h('p', {}, t('It is moved to the trash, with its files and the original recording, and is removed for good after {days} days. Until then you can restore it under Settings → Trash.', { days: ctx.trashDays })),
+        confirm: t('Delete'), danger: true,
+      });
+      if (!ok) return;
+      try {
+        await api('POST', 'api/recordings/delete?path=' + q(entry.path));
+        if (ctx.deleted) ctx.deleted();
+      } catch (err) { alertDialog({ body: err.message }); }
+    } }, t('Delete…'));
+  }
+
   function unprocessed(info) {
     return [
       labelEditor(),
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Open in the editor')), copyLink()),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Open in the editor')), copyLink(), deleteButton()),
     ];
   }
 
@@ -156,7 +173,7 @@ export function sermonDetail(entry, ctx = {}) {
       h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
       h('p', { class: 'actions' }, downloads),
       status,
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Edit sermon')), copyLink()),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Edit sermon')), copyLink(), deleteButton()),
     ];
   }
 

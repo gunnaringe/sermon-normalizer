@@ -452,3 +452,10 @@ label.switch:has(input:not(:checked)) .side.off, label.switch:has(input:checked)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* delete and the trash */
+.button.delete, button.delete { color: var(--error); }
+button.delete:hover:not(:disabled) { border-color: var(--error); background: color-mix(in srgb, var(--error) 8%, var(--panel)); }
+.trash-item { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.5rem; padding: 0.45rem 0; border-top: 1px solid var(--line); }
+.trash-item:first-child { border-top: 0; }
+.trash-actions { margin-left: auto; display: inline-flex; gap: 0.4rem; }

@@ -5,6 +5,7 @@ import { api, q, h, href, INPUT_TYPES, isInputType, formatSize, formatDate, form
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
+import { trashView } from './trash.js';
 import { recordingsView } from './recordings.js';
 import { t, tr, lang, LANGS, setLang, getTheme, setTheme } from './i18n.js';
 
@@ -301,6 +302,9 @@ async function settingsView(box, part) {
   });
   showLogo(tenants.tenants.find((t) => t.id === currentTenant())?.logo || '');
 
+  const trash = h('section', { id: 'trash' });
+  await trashView(trash);
+
   const shares = h('section', { id: 'shares' });
   if (tenants.shares) await sharesView(shares);
 
@@ -314,6 +318,7 @@ async function settingsView(box, part) {
     h('p', { class: 'muted' }, t('Written into all generated recordings. You can change them for one recording in the editor. Placeholders:'), ' ',
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + tr(p.help) + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
     h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
+    trash,
     h('h2', {}, t('Waveform')),
     h('p', { class: 'muted' }, t('Saved in this browser only.')),
     h('div', { class: 'panel' }, h('label', { class: 'check' }, h('input', {
