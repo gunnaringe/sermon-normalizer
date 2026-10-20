@@ -26,6 +26,8 @@ async function openEditor(page, folder, { timeout = 60_000, keep = false } = {})
 }
 
 const editor = (page, fn, arg) => page.evaluate(fn, arg);
+const setFade = (page, key, seconds) => editor(page, ([k, v]) => window.__editor.setFade(k, v), [key, seconds]);
+const fadeKnob = (page, key) => page.getByRole('slider', { name: key === 'fadeIn' ? 'Fade in (s)' : 'Fade out (s)' });
 const currentTime = (page) => editor(page, () => window.__editor.ws.getCurrentTime());
 const sections = (page) => editor(page, () => window.__editor.sections);
 // selection is the only section, or null.
@@ -296,7 +298,7 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
 
   // Adjusting is kept as you go, but nothing is saved yet.
   await editor(page, () => { window.__editor.addSection(12, 88); window.__editor.addCut(30, 40); window.__editor.addCut(60, 66); });
-  await page.getByLabel('Fade in (s)').fill('2');
+  await setFade(page, 'fadeIn', 2);
   await expect(page.getByText('Changes kept.')).toBeVisible();
   await expect.poll(() => read().adjusted?.fadeIn).toBe(2);
   expect(read()).toMatchObject({
@@ -310,7 +312,7 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
   await page.waitForFunction(() => window.__editor && window.__editor.cuts.length === 2, null, { timeout: 30_000 });
   expect(await selection(page)).toEqual({ start: 12, end: 88 });
   await expect(page.getByLabel('Cut 2 to')).toHaveValue('1:06.00');
-  await expect(page.getByLabel('Fade in (s)')).toHaveValue('2');
+  await expect(fadeKnob(page, 'fadeIn')).toHaveAttribute('aria-valuenow', '2');
   await expect(page.getByText('Length 1:00.0 (2 cuts)')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled(); // nothing to go back to yet
 
@@ -326,7 +328,7 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
 
   // Adjust again: the saved version stays as it was, next to the adjustments.
   await page.locator('.cut').first().getByRole('button', { name: 'Remove' }).click();
-  await page.getByLabel('Fade in (s)').fill('0');
+  await setFade(page, 'fadeIn', 0);
   await expect.poll(() => read().adjusted?.cuts.length).toBe(1);
   expect(read().saved.cuts).toHaveLength(2);
   await expect(page.getByText('Adjusted, not saved:')).toBeVisible();
@@ -341,7 +343,7 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
   await page.getByRole('dialog').getByRole('button', { name: 'Revert' }).click();
   await expect(page.getByLabel('Cut 2 to')).toHaveValue('1:06.00');
   expect(await editor(page, () => window.__editor.cuts.length)).toBe(2);
-  await expect(page.getByLabel('Fade in (s)')).toHaveValue('2');
+  await expect(fadeKnob(page, 'fadeIn')).toHaveAttribute('aria-valuenow', '2');
   expect(read().adjusted).toBeNull();
   await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled();
 });
@@ -362,8 +364,7 @@ test('the page: Input file, Edit, Options, Output', async ({ page }) => {
   await expect(input).toContainText('1:40');
   await expect(input.getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /download=1/);
 
-  // Edit has the fades; Options the mono/stereo switch, which warns on this mono-in-effect recording.
-  await expect(page.locator('section.step').nth(1).getByLabel('Fade in (s)')).toBeVisible();
+  // Options has the mono/stereo switch, which warns on this mono-in-effect recording.
   const stereo = page.getByRole('switch', { name: 'Stereo' });
   await expect(stereo).not.toBeChecked();
   await expect(page.getByText(/stereo gives the same sound in bigger files/)).toBeHidden();
@@ -399,7 +400,7 @@ test('Save makes the chosen formats, and only what is missing or out of date', a
   await page.getByLabel('Sermon to').press('Enter');
   await pick(page, 'FLAC').click();
   await pick(page, 'Opus').click();
-  await page.getByLabel('Fade in (s)').fill('1');
+  await setFade(page, 'fadeIn', 1);
   // Save keeps the edit, then makes the files; it asks nothing when it deletes nothing.
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible({ timeout: 60_000 });
@@ -421,13 +422,13 @@ test('Save makes the chosen formats, and only what is missing or out of date', a
   expect(state.convertedFrom.name).toBe('2026-10-04_raw.wav');
 
   // A change to the edit makes the MP3 out of date; choosing Opus adds it.
-  await page.getByLabel('Fade in (s)').fill('2');
+  await setFade(page, 'fadeIn', 2);
   await expect(pill(page, 'MP3')).toContainText('out of date, will be made again');
   await pick(page, 'Opus').click();
   await expect(page.getByText('Save keeps the edit, makes: MP3, Opus.')).toBeVisible();
   await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-stale.png') });
   // Back as it was made: up to date again.
-  await page.getByLabel('Fade in (s)').fill('1');
+  await setFade(page, 'fadeIn', 1);
   await expect(pill(page, 'MP3')).toContainText('up to date');
   const stateFile = path.join(DATA, 'root/2026/2026-10-04/recording.json');
   await expect.poll(() => JSON.parse(fs.readFileSync(stateFile, 'utf8')).adjusted).toBeNull(); // kept: the same as saved
@@ -435,7 +436,7 @@ test('Save makes the chosen formats, and only what is missing or out of date', a
   // After a reload the recording's files decide what is chosen; the fade and the finished run stay.
   await page.reload();
   await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByLabel('Fade in (s)')).toHaveValue('1');
+  await expect(fadeKnob(page, 'fadeIn')).toHaveAttribute('aria-valuenow', '1');
   await expect(pill(page, 'MP3')).toHaveClass(/exists/);
   await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible();
 });
@@ -919,4 +920,55 @@ test('split a section, put in a pause, and choose what Play plays', async ({ pag
   expect(await playing()).toBe(true); // no pause
   await page.keyboard.press(' ');
   await page.evaluate(() => localStorage.removeItem('playMode'));
+});
+
+test('fades are set with the knobs on the waveform: drag, keys, kept', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await expect(fadeKnob(page, 'fadeIn')).toBeHidden(); // nothing to fade before there is a sermon
+  await editor(page, () => window.__editor.addSection(10, 90));
+  const inKnob = fadeKnob(page, 'fadeIn'), outKnob = fadeKnob(page, 'fadeOut');
+  await expect(inKnob).toBeVisible();
+  await expect(inKnob).toHaveAttribute('aria-valuenow', '0');
+
+  // Drag the fade-in knob to the right: the fade follows (a tenth of a second at a time), the sections stay.
+  const box = await inKnob.boundingBox();
+  const wave = await page.locator('#waveform').boundingBox();
+  const perSecond = wave.width / 100; // the recording is 100 s
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 3 * perSecond, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const fadeIn = Number(await inKnob.getAttribute('aria-valuenow'));
+  expect(fadeIn).toBeGreaterThan(2.5);
+  expect(fadeIn).toBeLessThan(3.5);
+  expect(await sections(page)).toEqual([{ start: 10, end: 90 }]);
+
+  // The keys move a knob by half a second (a tenth with shift); the fade out is dragged from the right.
+  await inKnob.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(inKnob).toHaveAttribute('aria-valuenow', String(Math.round((fadeIn + 0.5) * 10) / 10));
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect(inKnob).toHaveAttribute('aria-valuenow', String(Math.round((fadeIn + 0.4) * 10) / 10));
+  const outBox = await outKnob.boundingBox();
+  await page.mouse.move(outBox.x + outBox.width / 2, outBox.y + outBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(outBox.x + outBox.width / 2 - 5 * perSecond, outBox.y + outBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  expect(Number(await outKnob.getAttribute('aria-valuenow'))).toBeGreaterThan(4.5);
+  await page.screenshot({ path: path.join(shots, 'edit-fades.png') });
+
+  // Kept as you go, and back after a reload. A fade cannot be longer than half the sermon.
+  const want = await editor(page, () => window.__editor.fades);
+  await expect.poll(() => {
+    const st = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+    const set = st.adjusted || st.saved;
+    return set && [set.fadeIn, set.fadeOut];
+  }, { timeout: 15_000 }).toEqual([want.fadeIn, want.fadeOut]);
+  await setFade(page, 'fadeIn', 500);
+  expect((await editor(page, () => window.__editor.fades)).fadeIn).toBeLessThanOrEqual(40);
+  await setFade(page, 'fadeIn', want.fadeIn);
+  await page.reload();
+  await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });
+  await expect(fadeKnob(page, 'fadeIn')).toHaveAttribute('aria-valuenow', String(want.fadeIn));
+  await expect(fadeKnob(page, 'fadeOut')).toHaveAttribute('aria-valuenow', String(want.fadeOut));
 });

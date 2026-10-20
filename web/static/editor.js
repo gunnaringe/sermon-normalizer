@@ -101,12 +101,6 @@ export async function editorView(view, path, config) {
   const outputNote = h('p', { class: 'muted' });
   const checkOut = h('div', {});
   const saveButton = h('button', { class: 'primary', disabled: true, title: t('Make this the saved version and make the files'), onclick: save }, t('Save'));
-  // The fades are part of the edit; they sit with the sections and cuts.
-  const fadeInput = (key, label) => h('label', { class: 'fade' }, h('span', { class: 'name' }, label), h('input', {
-    type: 'number', name: key, value: opts[key], step: 0.5, min: 0,
-    oninput: (e) => { opts[key] = e.target.value === '' ? NaN : Number(e.target.value); changed(); },
-  }));
-  const fades = h('div', { class: 'toolbar' }, fadeInput('fadeIn', t('Fade in (s)')), fadeInput('fadeOut', t('Fade out (s)')));
   const saveNote = h('span', { class: 'muted' });
   const versionOut = h('div', {});
   const revertButton = h('button', { disabled: true, title: t('Throw away the adjustments and go back to the saved version'), onclick: revertVersion }, t('Revert…'));
@@ -309,9 +303,6 @@ export async function editorView(view, path, config) {
             addCutButton),
           cutHint,
           cutList),
-        h('div', { class: 'group' },
-          h('strong', {}, t('Fades')),
-          fades),
         h('div', { class: 'group wide' },
           h('strong', {}, t('Saved version')),
           versionOut,
@@ -392,6 +383,7 @@ export async function editorView(view, path, config) {
       if (initial) applySettings(initial);
       else renderSections();
     });
+    buildFades();
     // A drag on the waveform makes a region: it becomes a section. Sections
     // added by the page are created with their id, and are kept by addSection.
     regions.on('region-created', (r) => {
@@ -489,8 +481,85 @@ export async function editorView(view, path, config) {
     cleanups.push(() => document.removeEventListener('keydown', onKey));
 
     const spans = (list) => list.map((x) => ({ start: x.region.start, end: x.region.end }));
-    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut, splitHere }; // for tests and the console
+    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut, splitHere, setFade, get fades() { return { fadeIn: opts.fadeIn, fadeOut: opts.fadeOut }; } }; // for tests and the console
     cleanups.push(() => { delete window.__editor; });
+  }
+
+  // ---- fades: the sermon fades in from its start and out to its end; the knobs on the waveform set them ----
+
+  let fadeLayer = null;
+  const fadeKnobs = {};
+  const fadeMax = () => Math.max(0, Math.min(30, Math.floor((keptLength() / 2) * 10) / 10));
+
+  // setFade sets a fade (opts.fadeIn or opts.fadeOut) to seconds, to a tenth, from 0 to what the sermon allows.
+  function setFade(key, seconds) {
+    if (!sections.length) return;
+    const other = key === 'fadeIn' ? opts.fadeOut : opts.fadeIn;
+    const v = Math.max(0, Math.min(Math.round(seconds * 10) / 10, fadeMax(), Math.max(keptLength() - (other || 0), 0)));
+    if (!(v >= 0) || v === opts[key]) return;
+    opts[key] = v;
+    changed();
+    drawFades();
+  }
+
+  function buildFades() {
+    fadeLayer = h('div', { style: 'position:absolute;inset:0;pointer-events:none;z-index:5' });
+    ws.getWrapper().appendChild(fadeLayer);
+    for (const [key, label, side] of [['fadeIn', t('Fade in (s)'), 'in'], ['fadeOut', t('Fade out (s)'), 'out']]) {
+      const shade = h('div', { style: 'position:absolute;top:0;height:100%;background:linear-gradient(' + (side === 'in' ? '90deg' : '270deg') +
+        ', rgba(124,58,237,0.38), rgba(124,58,237,0.05));clip-path:polygon(' + (side === 'in' ? '0 0,100% 0,0 100%' : '0 0,100% 0,100% 100%') + ')' });
+      const text = h('span', { style: 'position:absolute;top:2px;font-size:11px;white-space:nowrap;color:var(--fg);background:var(--panel);border-radius:4px;padding:0 4px;opacity:0.9' });
+      const knob = h('div', { role: 'slider', tabindex: 0, 'aria-label': label, 'aria-valuemin': 0, title: side === 'in' ? t('Drag to fade in from the start of the sermon') : t('Drag to fade out to the end of the sermon'),
+        style: 'position:absolute;top:18px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:var(--grad);border:2px solid var(--panel);box-shadow:0 1px 4px rgba(0,0,0,0.4);cursor:ew-resize;pointer-events:auto;touch-action:none' });
+      const timeAt = (e) => {
+        const box = ws.getWrapper().getBoundingClientRect();
+        return ((e.clientX - box.left) / box.width) * duration;
+      };
+      knob.addEventListener('pointerdown', (down) => {
+        down.preventDefault();
+        down.stopPropagation();
+        knob.setPointerCapture(down.pointerId);
+        const move = (e) => setFade(key, side === 'in' ? timeAt(e) - first() : last() - timeAt(e));
+        knob.addEventListener('pointermove', move);
+        knob.addEventListener('pointerup', () => knob.removeEventListener('pointermove', move), { once: true });
+      });
+      knob.addEventListener('keydown', (e) => {
+        const step = e.shiftKey ? 0.1 : 0.5;
+        const dir = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key];
+        if (!dir) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setFade(key, (opts[key] || 0) + dir * step);
+      });
+      for (const el of [shade, text, knob]) fadeLayer.appendChild(el);
+      fadeKnobs[key] = { shade, text, knob, side };
+    }
+    drawFades();
+  }
+
+  // drawFades puts the shades and knobs where the fades are: from the start of the first section, and to the
+  // end of the last. Positions are in percent of the waveform, so zooming moves them along.
+  function drawFades() {
+    if (!fadeLayer) return;
+    fadeLayer.hidden = !sections.length;
+    if (!sections.length) return;
+    for (const key of ['fadeIn', 'fadeOut']) {
+      const { shade, text, knob, side } = fadeKnobs[key];
+      const v = Math.min(opts[key] || 0, fadeMax());
+      const pct = (time) => (time / duration) * 100;
+      const from = side === 'in' ? first() : last() - v, to = side === 'in' ? first() + v : last();
+      shade.style.left = pct(from) + '%';
+      shade.style.width = pct(to - from) + '%';
+      shade.hidden = v <= 0;
+      knob.style.left = pct(side === 'in' ? to : from) + '%';
+      knob.setAttribute('aria-valuenow', String(v));
+      knob.setAttribute('aria-valuemax', String(fadeMax()));
+      knob.setAttribute('aria-valuetext', t('{n} s', { n: v }));
+      text.textContent = v > 0 ? (side === 'in' ? t('fade in') : t('fade out')) + ' ' + t('{n} s', { n: v }) : '';
+      text.style.left = side === 'in' ? 'calc(' + pct(to) + '% + 12px)' : 'auto';
+      text.style.right = side === 'out' ? 'calc(' + (100 - pct(from)) + '% + 12px)' : 'auto';
+      text.hidden = v <= 0;
+    }
   }
 
   // ---- sections: the parts of the recording that make the sermon ----
@@ -769,6 +838,7 @@ export async function editorView(view, path, config) {
     const what = [parts, cuts.length ? tn(cuts.length, '{n} cut', '{n} cuts') : '', pauses.length ? tn(pauses.length, '{n} pause', '{n} pauses') : ''].filter(Boolean).join(' ' + t('and') + ' ');
     lengthOut.textContent = sections.length ? t('Length {time}', { time: formatTime(keptLength() + pauses.reduce((n, p) => n + p.seconds, 0), 1) }) + (what ? ` (${what})` : '') : '';
     drawPauseMarks(pauses);
+    drawFades();
   }
 
   // activePauses are the pauses that take effect: where a section ends (but the last), and where a cut
@@ -852,11 +922,7 @@ export async function editorView(view, path, config) {
         for (const c of set.cuts) addCut(c.start, c.end, c.label, c.pause);
         reveal(first());
       }
-      for (const key of ['fadeIn', 'fadeOut']) {
-        opts[key] = set[key];
-        const input = view.querySelector(`input[name=${key}]`);
-        if (input) input.value = set[key];
-      }
+      for (const key of ['fadeIn', 'fadeOut']) opts[key] = set[key];
     } finally {
       restoring = false;
     }

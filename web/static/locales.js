@@ -122,7 +122,6 @@ export const nb = {
   "Hear end": "Hør slutten",
   "Play the last 5 s of the sermon": "Spill de siste 5 s av prekenen",
   "Cut out": "Klipp ut",
-  "Fades": "Inn- og uttoning",
   "Saved version": "Lagret versjon",
   "Your changes are kept as you make them. Save, under Output, makes them the saved version and makes the files. Revert goes back to the saved version.": "Endringene dine beholdes mens du gjør dem. Lagre, under Resultat, gjør dem til den lagrede versjonen og lager filene. Tilbakestill går tilbake til den lagrede versjonen.",
   "Drag along the waveform to select the sermon. Drag on an empty part to add another section. Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.": "Dra langs bølgeformen for å velge prekenen. Dra på en tom del for å legge til en ny del. Dra i kantene for å justere. For å klippe ut en del, flytt avspillingsmarkøren dit og trykk Klipp ut her. Grått viser stillhet.",
@@ -493,6 +492,10 @@ export const nb = {
   "{n} pauses": "{n} pauser",
   "{n} s": "{n} s",
   "with pauses": "med pauser",
+  "Drag to fade in from the start of the sermon": "Dra for å tone inn fra starten av preken",
+  "Drag to fade out to the end of the sermon": "Dra for å tone ut mot slutten av preken",
+  "fade in": "tone inn",
+  "fade out": "tone ut",
 };
 
 export const nn = {
@@ -615,7 +618,6 @@ export const nn = {
   "Hear end": "Høyr slutten",
   "Play the last 5 s of the sermon": "Spel dei siste 5 s av preika",
   "Cut out": "Klipp ut",
-  "Fades": "Inn- og uttoning",
   "Saved version": "Lagra versjon",
   "Your changes are kept as you make them. Save, under Output, makes them the saved version and makes the files. Revert goes back to the saved version.": "Endringane dine blir haldne på medan du gjer dei. Lagre, under Resultat, gjer dei til den lagra versjonen og lagar filene. Tilbakestill går attende til den lagra versjonen.",
   "Drag along the waveform to select the sermon. Drag on an empty part to add another section. Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.": "Dra langs bølgjeforma for å velje preika. Dra på ein tom del for å leggje til ein ny del. Dra i kantane for å justere. For å klippe ut ein del, flytt avspelingsmarkøren dit og trykk Klipp ut her. Grått viser stille.",
@@ -986,4 +988,8 @@ export const nn = {
   "{n} pauses": "{n} pausar",
   "{n} s": "{n} s",
   "with pauses": "med pausar",
+  "Drag to fade in from the start of the sermon": "Dra for å tone inn frå starten av preika",
+  "Drag to fade out to the end of the sermon": "Dra for å tone ut mot slutten av preika",
+  "fade in": "tone inn",
+  "fade out": "tone ut",
 };
