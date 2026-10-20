@@ -136,7 +136,7 @@ test('scroll zooms at the mouse, sideways moves along; settings can make it need
 
   // With the setting, a plain scroll leaves the zoom alone; ctrl+scroll zooms.
   await page.goto('#/settings');
-  await page.getByLabel(/Hold Ctrl/).check();
+  await page.getByLabel(/holding Ctrl/).check();
   await openEditor(page, '2026/2026-10-04');
   await expect(page.getByText('+scroll zooms at the mouse')).toBeVisible();
   await page.mouse.move(mx, my);

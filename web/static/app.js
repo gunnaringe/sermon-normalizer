@@ -331,21 +331,20 @@ async function settingsView(box, part) {
   const view_ = h('div', {},
     h('h2', {}, 'Church'),
     h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, 'Name'), nameInput), h('div', {}, saveName, ' ', nameStatus),
-      h('p', { class: 'muted' }, 'Logo, shown in the header (PNG, JPEG, WebP or SVG, up to 1 MB). Make it as wide as it is tall, or wider.'), logoBox),
+      h('p', { class: 'muted' }, 'Logo, shown in the header. PNG, JPEG, WebP or SVG, up to 1 MB.'), logoBox),
     h('h2', {}, 'Default tags'),
-    h('p', { class: 'muted' }, 'Written into the FLAC, MP3 and Opus of every sermon of this church. You can change them for a single run on the sermon\'s page. Placeholders: ',
+    h('p', { class: 'muted' }, 'Written into all generated recordings. You can change them for one recording in the editor. Placeholders: ',
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + p.help + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
     h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
     h('h2', {}, 'Sermon names'),
-    h('p', { class: 'muted' }, 'A second sermon on a day gets a name. The names used are remembered and suggested next time, ' +
-      'so the same one is not typed in different ways. Remove one-off names from the list to tidy it.'),
+    h('p', { class: 'muted' }, 'A second sermon on the same day needs a name. Used names are suggested next time. Remove one-off names here.'),
     namesBox,
     h('h2', {}, 'Waveform'),
     h('p', { class: 'muted' }, 'Kept in this browser only, for every church.'),
     h('div', { class: 'panel' }, h('label', { class: 'check' }, h('input', {
       type: 'checkbox', name: 'wheel-zoom-key', checked: wheelZoomNeedsKey(),
       onchange: (e) => setWheelZoomNeedsKey(e.target.checked),
-    }), 'Hold Ctrl (Cmd on a Mac) to zoom with the scroll wheel; without it, scrolling moves the page')),
+    }), 'Zoom with the scroll wheel only while holding Ctrl (Cmd on a Mac)')),
     tenants.shares ? shares : '');
   box.replaceChildren(view_);
   if (part === 'shares') shares.scrollIntoView();
