@@ -459,3 +459,14 @@ button.delete:hover:not(:disabled) { border-color: var(--error); background: col
 .trash-item { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.5rem; padding: 0.45rem 0; border-top: 1px solid var(--line); }
 .trash-item:first-child { border-top: 0; }
 .trash-actions { margin-left: auto; display: inline-flex; gap: 0.4rem; }
+
+/* what Play plays, and the pause fields */
+.mode { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--panel); }
+.mode button.seg { border: 0; border-radius: 0; box-shadow: none; background: none; }
+.mode button.seg + button.seg { border-left: 1px solid var(--line); }
+.mode button.seg[aria-pressed=true] { background: var(--grad); color: #fff; font-weight: 600; }
+label.pause { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--muted); }
+input.pause { width: 4.5em; }
+@media (max-width: 640px) {
+  label.pause { grid-column: 1 / -1; }
+}

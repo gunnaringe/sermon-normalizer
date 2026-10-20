@@ -390,6 +390,38 @@ func TestKeep(t *testing.T) {
 	}
 }
 
+// Pauses fall where a part ends or inside one, which they split; one at the end of the sermon or
+// outside it has no effect.
+func TestParts(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		opt    Options
+		kept   []Span
+		after  []float64
+		length float64
+	}{
+		{"none", Options{Start: 10, End: 50}, []Span{{10, 50}}, []float64{0}, 40},
+		{"at the end of a part", Options{Start: 10, End: 50, Cuts: []Span{{20, 30}}, Pauses: []Pause{{20, 2}}}, []Span{{10, 20}, {30, 50}}, []float64{2, 0}, 32},
+		{"inside a part: it is split", Options{Start: 10, End: 50, Pauses: []Pause{{30, 3}}}, []Span{{10, 30}, {30, 50}}, []float64{3, 0}, 43},
+		{"two in one part", Options{Start: 10, End: 50, Pauses: []Pause{{40, 1}, {20, 2}}}, []Span{{10, 20}, {20, 40}, {40, 50}}, []float64{2, 1, 0}, 43},
+		{"added at one place", Options{Start: 10, End: 50, Cuts: []Span{{20, 30}}, Pauses: []Pause{{20, 2}, {20, 3}}}, []Span{{10, 20}, {30, 50}}, []float64{5, 0}, 35},
+		{"at the end of the sermon", Options{Start: 10, End: 50, Pauses: []Pause{{50, 4}}}, []Span{{10, 50}}, []float64{4}, 40},
+		{"at the start and outside", Options{Start: 10, End: 50, Pauses: []Pause{{10, 4}, {5, 1}, {70, 2}}}, []Span{{10, 50}}, []float64{0}, 40},
+		{"in a cut", Options{Start: 10, End: 50, Cuts: []Span{{20, 30}}, Pauses: []Pause{{25, 4}}}, []Span{{10, 20}, {30, 50}}, []float64{0, 0}, 30},
+		{"none for zero", Options{Start: 10, End: 50, Pauses: []Pause{{30, 0}}}, []Span{{10, 50}}, []float64{0}, 40},
+	} {
+		kept, after := c.opt.parts(100)
+		var length float64
+		for _, k := range kept {
+			length += k.End - k.Start
+		}
+		length += pauseTotal(after)
+		if !reflect.DeepEqual(kept, c.kept) || !reflect.DeepEqual(after, c.after) || length != c.length {
+			t.Errorf("%s: parts = %v %v (%v s), want %v %v (%v s)", c.name, kept, after, length, c.kept, c.after, c.length)
+		}
+	}
+}
+
 func TestValidateCuts(t *testing.T) {
 	ok := DefaultOptions()
 	ok.Start, ok.End = 10, 50

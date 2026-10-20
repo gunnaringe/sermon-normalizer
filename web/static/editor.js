@@ -77,7 +77,13 @@ export async function editorView(view, path, config) {
   let silenceEdges = [];
   let stopAt = null; // playback pauses here (hear start/end, play selection)
   let addCutButton = null; // disabled until there is a section
-  let skipNow = false; // this playback jumps over the cuts even with "play without the cuts" off
+  let skipNow = false; // this playback jumps over the cuts even when the whole recording is played
+  // What the Play button plays: what will be published (the sections without the cuts and the gaps, and the
+  // pauses kept), or the recording as it is. The choice is the browser's.
+  let playMode = localStorage.getItem('playMode') === 'recording' ? 'recording' : 'published';
+  let pausing = false; // playback is waiting out a pause
+  let lastTime = 0;
+  let markSignature = '';
   let lastCheck = { error: t('Checking…') };
   let events = null; // the job's event stream
   cleanups.push(() => events && events.close());
@@ -89,7 +95,6 @@ export async function editorView(view, path, config) {
   const sectionHint = h('p', { class: 'muted' });
   const cutList = h('div', { class: 'cuts' });
   const cutHint = h('p', { class: 'muted' });
-  const skipBox = h('input', { type: 'checkbox', checked: true });
   const inputPanel = h('div', { class: 'panel input-file' });
   const channelWarning = h('p', { class: 'notice', role: 'status' });
   const pills = h('div', { class: 'pills', role: 'group', 'aria-label': t('Formats') });
@@ -258,6 +263,12 @@ export async function editorView(view, path, config) {
     const clock = h('span', { class: 'clock' });
     const playButton = h('button', { onclick: () => ws.playPause(), title: t('Play / pause (space)') }, t('▶ Play'));
     const button = (label, title, fn) => h('button', { title, onclick: fn }, label);
+    const modeButton = (mode, label, title) => h('button', { type: 'button', class: 'seg', name: 'play-' + mode, title, 'aria-pressed': String(playMode === mode),
+      onclick: (e) => {
+        playMode = mode;
+        localStorage.setItem('playMode', mode);
+        for (const b of e.currentTarget.parentElement.children) b.setAttribute('aria-pressed', String(b === e.currentTarget));
+      } }, label);
     addCutButton = h('button', { title: t('Cut out a part of the sermon, starting at the playhead (c)'), onclick: addCutHere }, t('Cut out here'));
     waveSection.replaceChildren(
       minimapEl, waveEl,
@@ -266,8 +277,16 @@ export async function editorView(view, path, config) {
           h('strong', {}, t('Navigate')),
           h('div', { class: 'toolbar' },
             playButton,
+            h('span', { class: 'mode', role: 'group', 'aria-label': t('What Play plays') },
+              modeButton('published', t('The published parts'), t('Play what will be published: the sections, without the cuts and the parts between the sections')),
+              modeButton('recording', t('The recording'), t('Play the recording as it is, with the cuts and the parts between the sections'))),
+            h('span', { class: 'sep' }),
             button(t('◀ silence'), t('Previous silence edge ([)'), () => jump(-1)),
             button(t('silence ▶'), t('Next silence edge (])'), () => jump(1)),
+            h('span', { class: 'sep' }),
+            button(t('Hear start'), t('Play 5 s from the start of the sermon'), hearStart),
+            button(t('Hear end'), t('Play the last 5 s of the sermon'), hearEnd),
+            button(t('Hear the whole sermon'), t('Play all the sections as they will be published (p)'), playSelection),
             h('span', { class: 'sep' }),
             h('span', { class: 'zoom' },
               button('−', t('Zoom out (-)'), () => { zoom.value = Math.max(0, +zoom.value - 10); applyZoom(); }),
@@ -280,17 +299,14 @@ export async function editorView(view, path, config) {
             button(t('Set start'), t('The section at the playhead (or the next one) starts there (s)'), markStart),
             button(t('Set end'), t('The section at the playhead (or the one before) ends there (e)'), markEnd),
             h('span', { class: 'sep' }),
-            button(t('Hear start'), t('Play 5 s from the start of the sermon'), hearStart),
-            button(t('Hear end'), t('Play the last 5 s of the sermon'), hearEnd),
-            button(t('Play sermon'), t('Play all the sections (p)'), playSelection)),
+            button(t('Split here'), t('Split the section at the playhead into two (x)'), splitHere)),
           sectionHint,
           sectionList,
           lengthOut),
         h('div', { class: 'group' },
           h('strong', {}, t('Cut out')),
           h('div', { class: 'toolbar' },
-            addCutButton,
-            h('label', { class: 'check', title: t('Playback jumps over the parts that are cut out and the gaps between sections') }, skipBox, ' ' + t('Play without the cuts'))),
+            addCutButton),
           cutHint,
           cutList),
         h('div', { class: 'group' },
@@ -305,7 +321,7 @@ export async function editorView(view, path, config) {
         t('Drag along the waveform to select the sermon. Drag on an empty part to add another section. Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.')),
       h('p', { class: 'keys' },
         kbdText(t('Drag on the waveform to select the sermon. Drag on an empty part to add another section, or hold <kbd>shift</kbd> and drag to cut out a part. Drag the edges to adjust. Grey marks silence. Keys:')), ' ',
-        kbdText(t('<kbd>space</kbd> play · <kbd>s</kbd>/<kbd>e</kbd> start/end at the playhead · <kbd>c</kbd> cut out here · <kbd>[</kbd>/<kbd>]</kbd> silences · <kbd>←</kbd>/<kbd>→</kbd> 1 s (shift 0.1 s) · <kbd>+</kbd>/<kbd>-</kbd> zoom · <kbd>p</kbd> play sermon.')), ' ',
+        kbdText(t('<kbd>space</kbd> play · <kbd>s</kbd>/<kbd>e</kbd> start/end at the playhead · <kbd>c</kbd> cut out here · <kbd>x</kbd> split · <kbd>[</kbd>/<kbd>]</kbd> silences · <kbd>←</kbd>/<kbd>→</kbd> 1 s (shift 0.1 s) · <kbd>+</kbd>/<kbd>-</kbd> zoom · <kbd>p</kbd> play sermon.')), ' ',
         kbdText(wheelZoomNeedsKey()
           ? t('<kbd>ctrl</kbd>+scroll zooms at the mouse, <kbd>shift</kbd>+scroll moves along (Settings › Waveform).')
           : t('Scroll zooms at the mouse, <kbd>shift</kbd>+scroll moves along (Settings › Waveform).'))),
@@ -347,12 +363,23 @@ export async function editorView(view, path, config) {
         ws.pause();
         return;
       }
-      if ((skipBox.checked || skipNow) && ws.isPlaying()) {
+      if ((playMode === 'published' || skipNow) && ws.isPlaying()) {
+        // A pause is waited out where it falls, once.
+        const wait = activePauses().find((p) => lastTime < p.at && now >= p.at && now - p.at < 0.5);
+        lastTime = now;
+        if (wait && !pausing) {
+          pausing = true;
+          ws.pause();
+          setTimeout(() => { if (pausing && alive) { pausing = false; ws.play(); } }, wait.seconds * 1000);
+          return;
+        }
         const cut = skipped().find((c) => now >= c.start - 0.03 && now < c.end);
         if (cut) ws.setTime(cut.end);
       }
+      lastTime = now;
     });
-    ws.on('pause', () => { skipNow = false; });
+    ws.on('pause', () => { if (!pausing) skipNow = false; });
+    ws.on('play', () => { pausing = false; });
     clock.textContent = `0:00.0 / ${formatTime(duration, 0)}`;
 
     ws.once('ready', () => {
@@ -368,7 +395,7 @@ export async function editorView(view, path, config) {
     // A drag on the waveform makes a region: it becomes a section. Sections
     // added by the page are created with their id, and are kept by addSection.
     regions.on('region-created', (r) => {
-      if (/^(silence|cut|section)-/.test(r.id)) return;
+      if (/^(silence|cut|section|pause)-/.test(r.id)) return;
       r.setOptions({ id: 'section-' + (++sectionSeq) });
       sections.push({ region: r });
       tidySections();
@@ -441,7 +468,7 @@ export async function editorView(view, path, config) {
       const step = e.shiftKey ? 0.1 : 1;
       const keys = {
         ' ': () => ws.playPause(),
-        s: markStart, e: markEnd, p: playSelection, c: addCutHere,
+        s: markStart, e: markEnd, p: playSelection, c: addCutHere, x: splitHere,
         '[': () => jump(-1), ']': () => jump(1),
         '+': () => { zoom.value = Math.min(100, +zoom.value + 10); applyZoom(); },
         '=': () => { zoom.value = Math.min(100, +zoom.value + 10); applyZoom(); },
@@ -462,7 +489,7 @@ export async function editorView(view, path, config) {
     cleanups.push(() => document.removeEventListener('keydown', onKey));
 
     const spans = (list) => list.map((x) => ({ start: x.region.start, end: x.region.end }));
-    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut }; // for tests and the console
+    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut, splitHere }; // for tests and the console
     cleanups.push(() => { delete window.__editor; });
   }
 
@@ -483,29 +510,37 @@ export async function editorView(view, path, config) {
     oninput: (e) => { x.label = e.target.value; showLabel(x); changed(); },
   });
 
+  // pauseInput is the field for the silence (seconds) put in at the end of a section or the start of a cut.
+  const pauseInput = (x, name, title) => h('label', { class: 'pause', title }, t('Pause'), ' ', h('input', {
+    type: 'number', class: 'pause', min: 0, max: 30, step: 0.5, value: x.pause || 0, 'aria-label': t('{name} pause', { name }),
+    oninput: (e) => { x.pause = Math.min(30, Math.max(0, Number(e.target.value) || 0)); syncCuts(); changed(); },
+  }));
+
   const sectionOf = (r) => sections.find((x) => x.region === r);
   const first = () => sections[0].region.start;
   const last = () => sections[sections.length - 1].region.end;
 
-  // addSection adds a section between two times; it returns it, or null if empty.
-  function addSection(start, end, label = '') {
+  // addSection adds a section between two times; it returns it, or null if empty. pause is the silence put in
+  // where it ends (seconds).
+  function addSection(start, end, label = '', pause = 0) {
     start = Math.max(0, Math.min(start, duration));
     end = Math.max(0, Math.min(end, duration));
     if (end - start < 0.05) return null;
-    const section = { region: regions.addRegion({ id: 'section-' + (++sectionSeq), start, end, color: css('--selection'), drag: true, resize: true }), label };
+    const section = { region: regions.addRegion({ id: 'section-' + (++sectionSeq), start, end, color: css('--selection'), drag: true, resize: true }), label, pause };
     showLabel(section);
     sections.push(section);
     tidySections();
     return section;
   }
 
-  // tidySections sorts the sections and makes those that overlap or touch one
-  // (as the server does), then shows them.
+  // tidySections sorts the sections and makes those that overlap one (as the server does; ones that only
+  // touch stay two), then shows them.
   function tidySections() {
     sections.sort((a, b) => a.region.start - b.region.start);
     for (let i = 1; i < sections.length;) {
       const a = sections[i - 1].region, b = sections[i].region;
-      if (b.start > a.end) { i++; continue; }
+      if (b.start >= a.end) { i++; continue; }
+      if (b.end >= a.end) sections[i - 1].pause = sections[i].pause; // the pause is where the section ends
       if (b.end > a.end) a.setOptions({ end: b.end });
       if (!sections[i - 1].label) { sections[i - 1].label = sections[i].label; showLabel(sections[i - 1]); }
       b.remove();
@@ -513,6 +548,22 @@ export async function editorView(view, path, config) {
     }
     renderSections();
     changed();
+  }
+
+  // splitHere splits the section at the playhead into two, which touch. The pause (where the section
+  // ends) goes with the second.
+  function splitHere() {
+    if (!ws) return;
+    const now = ws.getCurrentTime();
+    const x = sections.find((y) => now > y.region.start + 0.05 && now < y.region.end - 0.05);
+    if (!x) return;
+    const end = x.region.end, pause = x.pause || 0;
+    x.pause = 0;
+    x.region.setOptions({ end: now });
+    const second = { region: regions.addRegion({ id: 'section-' + (++sectionSeq), start: now, end, color: css('--selection'), drag: true, resize: true }), label: '', pause };
+    showLabel(second);
+    sections.push(second);
+    tidySections();
   }
 
   function removeSection(x) {
@@ -581,6 +632,7 @@ export async function editorView(view, path, config) {
         h('strong', {}, name),
         h('label', {}, t('From'), ' ', x.startIn), h('label', {}, t('to'), ' ', x.endIn), x.info,
         labelInput(x, name),
+        x === sections[sections.length - 1] ? '' : pauseInput(x, name, t('Silence put in after this section, in seconds')),
         h('button', { title: t('Play this section'), onclick: () => playFor(r.start, r.end - r.start) }, t('Play')),
         h('button', { onclick: () => removeSection(x) }, t('Remove')));
       return x.row;
@@ -615,11 +667,11 @@ export async function editorView(view, path, config) {
   const sortCuts = () => cuts.sort((a, b) => a.region.start - b.region.start);
 
   // addCut adds a cut between two times; it returns the cut, or null if empty.
-  function addCut(start, end, label = '') {
+  function addCut(start, end, label = '', pause = 0) {
     start = Math.max(0, Math.min(start, duration));
     end = Math.max(0, Math.min(end, duration));
     if (end - start < 0.05) return null;
-    const cut = { region: regions.addRegion({ id: 'cut-' + (++cutSeq), start, end, color: css('--cut'), drag: true, resize: true }), label };
+    const cut = { region: regions.addRegion({ id: 'cut-' + (++cutSeq), start, end, color: css('--cut'), drag: true, resize: true }), label, pause };
     showLabel(cut);
     cuts.push(cut);
     sortCuts();
@@ -678,6 +730,7 @@ export async function editorView(view, path, config) {
         h('strong', {}, t('Cut {n}', { n: i + 1 })),
         h('label', {}, t('From'), ' ', c.startIn), h('label', {}, t('to'), ' ', c.endIn), c.info,
         labelInput(c, t('Cut {n}', { n: i + 1 })),
+        pauseInput(c, t('Cut {n}', { n: i + 1 }), t('Silence put in where the cut is, in seconds')),
         h('button', { title: t('The cut starts at the playhead'), onclick: here('start') }, t('Set start')),
         h('button', { title: t('The cut ends at the playhead'), onclick: here('end') }, t('Set end')),
         h('button', { title: t('Play 3 s before and after the cut, as it will sound'), onclick: () => {
@@ -712,8 +765,33 @@ export async function editorView(view, path, config) {
       : cuts.length ? '' : t('Nothing cut out. Use the button, press c, or shift-drag on the waveform.');
     if (addCutButton) addCutButton.disabled = !sections.length;
     const parts = sections.length > 1 ? tn(sections.length, '{n} section', '{n} sections') : '';
-    const what = [parts, cuts.length ? tn(cuts.length, '{n} cut', '{n} cuts') : ''].filter(Boolean).join(' ' + t('and') + ' ');
-    lengthOut.textContent = sections.length ? t('Length {time}', { time: formatTime(keptLength(), 1) }) + (what ? ` (${what})` : '') : '';
+    const pauses = activePauses();
+    const what = [parts, cuts.length ? tn(cuts.length, '{n} cut', '{n} cuts') : '', pauses.length ? tn(pauses.length, '{n} pause', '{n} pauses') : ''].filter(Boolean).join(' ' + t('and') + ' ');
+    lengthOut.textContent = sections.length ? t('Length {time}', { time: formatTime(keptLength() + pauses.reduce((n, p) => n + p.seconds, 0), 1) }) + (what ? ` (${what})` : '') : '';
+    drawPauseMarks(pauses);
+  }
+
+  // activePauses are the pauses that take effect: where a section ends (but the last), and where a cut
+  // starts inside the sermon.
+  function activePauses() {
+    if (!sections.length) return [];
+    const list = [];
+    sections.forEach((x, i) => { if (i < sections.length - 1 && x.pause > 0) list.push({ at: x.region.end, seconds: x.pause }); });
+    for (const c of cuts) if (c.pause > 0 && c.region.start > first() && c.region.start < last()) list.push({ at: c.region.start, seconds: c.pause });
+    return list.sort((a, b) => a.at - b.at);
+  }
+
+  // drawPauseMarks puts a marker on the waveform where each pause is.
+  function drawPauseMarks(pauses) {
+    if (!regions) return;
+    const signature = JSON.stringify(pauses);
+    if (signature === markSignature) return;
+    markSignature = signature;
+    for (const r of regions.getRegions()) if (r.id.startsWith('pause-')) r.remove();
+    pauses.forEach((p, i) => {
+      const r = regions.addRegion({ id: 'pause-' + i, start: p.at, content: h('span', { style: 'white-space: nowrap; padding: 0 0.3rem' }, '⏸ ' + t('{n} s', { n: p.seconds })), color: 'rgba(124, 58, 237, 0.9)', drag: false, resize: false });
+      if (r.element) r.element.style.pointerEvents = 'none';
+    });
   }
 
   // keptLength is the sections without the cuts: what the outputs will last.
@@ -734,7 +812,7 @@ export async function editorView(view, path, config) {
   let lastSent = JSON.stringify(sermon.adjusted || sermon.saved);
 
   // spanOf is a section or cut as it is kept: its times and its label, if any.
-  const spanOf = (x) => ({ start: x.region.start, end: x.region.end, ...(x.label ? { label: x.label } : {}) });
+  const spanOf = (x) => ({ start: x.region.start, end: x.region.end, ...(x.label ? { label: x.label } : {}), ...(x.pause > 0 ? { pause: x.pause } : {}) });
 
   // currentSettings is what is on the page, or null while there is nothing (valid) to keep.
   function currentSettings() {
@@ -769,9 +847,9 @@ export async function editorView(view, path, config) {
     try {
       for (const x of [...sections, ...cuts]) x.region.remove();
       sections.length = cuts.length = 0;
-      for (const x of set.sections) addSection(x.start, x.end, x.label);
+      for (const x of set.sections) addSection(x.start, x.end, x.label, x.pause);
       if (sections.length) {
-        for (const c of set.cuts) addCut(c.start, c.end, c.label);
+        for (const c of set.cuts) addCut(c.start, c.end, c.label, c.pause);
         reveal(first());
       }
       for (const key of ['fadeIn', 'fadeOut']) {
@@ -790,6 +868,7 @@ export async function editorView(view, path, config) {
   const describe = (set) => [
     set.sections.map((x) => t('{from} to {to}', { from: formatTime(x.start, 0), to: formatTime(x.end, 0) })).join(' ' + t('and') + ' '),
     tn(set.cuts.length, '{n} cut', '{n} cuts'),
+    ...(set.sections.some((x) => x.pause > 0) || set.cuts.some((x) => x.pause > 0) ? [t('with pauses')] : []),
     set.fadeIn || set.fadeOut ? t('fade {in} s in, {out} s out', { in: set.fadeIn, out: set.fadeOut }) : t('no fades'),
   ].join(', ');
 
@@ -872,7 +951,7 @@ export async function editorView(view, path, config) {
   }
 
   // playFor plays from a time and stops after some seconds; skipCuts makes it
-  // jump over the cuts even when "play without the cuts" is off.
+  // jump over the cuts even when the whole recording is the Play button's choice.
   function playFor(from, seconds, skipCuts = false) {
     ws.setTime(from);
     stopAt = from + seconds;
@@ -880,18 +959,18 @@ export async function editorView(view, path, config) {
     ws.play();
   }
 
-  // playSelection plays the sermon: all the sections, without the gaps
-  // between them (and without the cuts if "play without the cuts" is on).
+  // playSelection plays the sermon as it will be published: all the sections, without the gaps
+  // between them and the cuts, with the pauses.
   function playSelection() {
-    if (sections.length) playFor(first(), last() - first());
+    if (sections.length) playFor(first(), last() - first(), true);
   }
 
   function hearStart() {
-    if (sections.length) playFor(first(), Math.min(5, last() - first()));
+    if (sections.length) playFor(first(), Math.min(5, last() - first()), true);
   }
 
   function hearEnd() {
-    if (sections.length) playFor(Math.max(last() - 5, first()), Math.min(5, last() - first()));
+    if (sections.length) playFor(Math.max(last() - 5, first()), Math.min(5, last() - first()), true);
   }
 
   // ---- options ----

@@ -868,3 +868,55 @@ test('the recording keeps the name it arrived with: in the conversion note and i
   await expect(page.locator('.input-file').getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /R_20270101-101010\.flac/);
   expect(JSON.parse(fs.readFileSync(path.join(folder, 'recording.json'), 'utf8')).sourceName).toBe('R_20270101-101010.wav');
 });
+
+test('split a section, put in a pause, and choose what Play plays', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await editor(page, () => window.__editor.addSection(10, 90));
+  await editor(page, () => window.__editor.ws.setTime(50));
+  await page.getByRole('button', { name: 'Split here' }).click();
+  expect(await sections(page)).toEqual([{ start: 10, end: 50 }, { start: 50, end: 90 }]); // two that touch stay two
+  await expect(page.getByLabel('Section 1 to')).toHaveValue('0:50.00');
+  await expect(page.getByLabel('Section 2 from')).toHaveValue('0:50.00');
+  // Splitting where there is no section (or at its edge) does nothing.
+  await editor(page, () => window.__editor.ws.setTime(95));
+  await page.getByRole('button', { name: 'Split here' }).click();
+  expect((await sections(page)).length).toBe(2);
+
+  // A pause after the first section: in the length, on the waveform, and kept. The last section has none.
+  await expect(page.getByLabel('Section 2 pause')).toHaveCount(0);
+  await page.getByLabel('Section 1 pause').fill('2');
+  await expect(page.getByText('Length 1:22.0 (2 sections and 1 pause)')).toBeVisible();
+  await page.addStyleTag({ content: 'header { position: static !important; }' });
+  await page.locator('section.step').nth(1).screenshot({ path: path.join(shots, 'edit-split-pause.png') });
+  await expect.poll(() => editor(page, () => window.__editor.regions.getRegions().filter((r) => r.id.startsWith('pause-')).map((r) => r.start))).toEqual([50]);
+  await expect.poll(() => {
+    const st = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+    const set = st.adjusted || st.saved;
+    return set && JSON.stringify(set.sections.map((x) => [x.start, x.end, x.pause || 0]));
+  }, { timeout: 15_000 }).toBe(JSON.stringify([[10, 50, 2], [50, 90, 0]]));
+  await page.reload();
+  await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });
+  await expect(page.getByLabel('Section 1 pause')).toHaveValue('2');
+  expect((await sections(page)).length).toBe(2);
+
+  // What will be published is the default: playback waits out the pause. The recording plays on.
+  const playing = () => editor(page, () => window.__editor.ws.isPlaying());
+  await expect(page.getByRole('button', { name: 'The published parts' })).toHaveAttribute('aria-pressed', 'true');
+  await editor(page, () => window.__editor.ws.setTime(49.4));
+  await page.locator('h1').click();
+  await page.keyboard.press(' ');
+  await expect.poll(playing, { timeout: 5000 }).toBe(true);
+  await expect.poll(playing, { timeout: 5000 }).toBe(false); // the pause
+  await expect.poll(playing, { timeout: 5000 }).toBe(true); // and on
+  await page.keyboard.press(' ');
+
+  await page.getByRole('button', { name: 'The recording' }).click();
+  await expect(page.getByRole('button', { name: 'The recording' })).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('playMode'))).toBe('recording');
+  await editor(page, () => window.__editor.ws.setTime(49.4));
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => window.__editor.ws.getCurrentTime() > 51, null, { timeout: 8000 });
+  expect(await playing()).toBe(true); // no pause
+  await page.keyboard.press(' ');
+  await page.evaluate(() => localStorage.removeItem('playMode'));
+});
