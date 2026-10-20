@@ -52,7 +52,7 @@ done
 
 tree="$(git write-tree)"
 commit="$(git commit-tree "$tree" ${parent:+-p "$parent"} -m "Screenshots for $branch")"
-git push -q origin "$commit:refs/heads/$shots"
+if ! log="$(git push -q origin "$commit:refs/heads/$shots" 2>&1)"; then echo "$log" >&2; exit 1; fi
 
 out=""
 for entry in "${md[@]}"; do
