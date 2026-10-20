@@ -52,7 +52,8 @@ header {
   border-bottom: 1px solid var(--line);
   background: var(--panel);
 }
-header .brand { font-weight: 650; color: var(--fg); text-decoration: none; }
+header .brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 650; color: var(--fg); text-decoration: none; }
+header .brand img { border-radius: 6px; }
 header nav { display: flex; gap: 1.2rem; }
 header #logout { margin-left: auto; }
 header #logout[hidden] { display: none; }

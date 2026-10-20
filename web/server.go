@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,6 +25,8 @@ import (
 
 //go:embed static
 var static embed.FS
+
+func init() { mime.AddExtensionType(".webmanifest", "application/manifest+json") }
 
 // Config is how the server is set up.
 type Config struct {

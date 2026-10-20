@@ -1,5 +1,7 @@
 # sermon-studio
 
+<img src="web/static/icons/icon-512.png" alt="Sermon Studio logo" width="96">
+
 A web app that turns a recording of a church service into publish-ready sermon files:
 cut out the sermon on a waveform, then it mixes to mono (or keeps stereo), evens out the volume
 (speech and music are recorded at very different levels), normalises to podcast loudness and

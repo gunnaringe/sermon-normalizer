@@ -28,7 +28,8 @@ import (
 const shareChunk = 32 << 20
 
 // sharePage is what the public listener serves of the static files.
-var sharePage = map[string]string{"/": "share.html", "/share.js": "share.js", "/util.js": "util.js", "/style.css": "style.css"}
+var sharePage = map[string]string{"/": "share.html", "/share.js": "share.js", "/util.js": "util.js", "/style.css": "style.css",
+	"/icons/favicon-32.png": "icons/favicon-32.png", "/icons/logo-64.png": "icons/logo-64.png", "/icons/apple-touch-icon.png": "icons/apple-touch-icon.png"}
 
 // ShareHandler is the public upload page, or nil when shares are off.
 func (a *App) ShareHandler() http.Handler {

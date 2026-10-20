@@ -333,7 +333,12 @@ func TestSharePublicIsSeparate(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "share.js") || !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatalf("page: %d %v", w.Code, w.Header())
 	}
-	for _, path := range []string{"/index.html", "/app.js", "/editor.js", "/api/tenants", "/api/shares", "/api/config",
+	for _, path := range []string{"/icons/favicon-32.png", "/icons/logo-64.png", "/icons/apple-touch-icon.png"} {
+		if w := st.call("GET", path, "", "1.1.1.1", nil); w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
+			t.Errorf("GET %s on the public listener: %d %s", path, w.Code, w.Header().Get("Content-Type"))
+		}
+	}
+	for _, path := range []string{"/manifest.webmanifest", "/icons/icon-512.png", "/index.html", "/app.js", "/editor.js", "/api/tenants", "/api/shares", "/api/config",
 		"/api/folders", "/api/file?path=x", "/api/settings", "/vendor/wavesurfer/wavesurfer.esm.js"} {
 		if w := st.call("GET", path, "", "1.1.1.1", nil); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s on the public listener: %d", path, w.Code)
