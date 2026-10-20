@@ -1,5 +1,7 @@
-// The app: a hash router over three views (folders with the upload, a folder's editor, settings with the shares).
-import { api, q, h, formatSize, formatDate, formatDateTime, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
+// The app: a hash router. Every address starts with the church: #/<church> (the
+// recordings), #/<church>/folder/<path> (the editor), #/<church>/settings (the
+// settings over the recordings). Settings also opens as an overlay from the gear.
+import { api, q, h, href, formatSize, formatDate, formatDateTime, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
@@ -7,24 +9,53 @@ import { sermonDetail } from './sermons.js';
 
 const view = document.getElementById('view');
 let config = { inbox: false, defaults: {} };
+let churches = { tenants: [], default: '', canAdd: false, shares: false };
 let teardown = null; // cleanup of the current view (player, event stream, keys)
+let shown = '';      // the page in the view, so the settings overlay can open over it without redoing it
+let settingsDialog = null;
+
+// Addresses from before the church was in them: the first part names a page.
+const OLD = { folder: 'folder', folders: 'folders', settings: 'settings', shares: 'settings/shares', upload: '' };
 
 async function route() {
   if (teardown) teardown();
   teardown = null;
-  const hash = decodeURIComponent(location.hash.slice(1)) || '/';
-  const [, section, ...rest] = hash.split('/');
+  const segs = decodeURIComponent(location.hash.slice(1)).split('/').filter(Boolean);
+  if (!segs.length || segs[0] in OLD) {
+    const old = segs.length ? OLD[segs[0]] + (segs.length > 1 ? '/' + segs.slice(1).join('/') : '') : '';
+    return location.replace('#/' + currentTenant() + (old ? '/' + old.replace(/^\//, '') : ''));
+  }
+  const [church, section = '', ...rest] = segs;
   const path = rest.join('/');
-  // Old addresses: the upload is on the folder list now, the shares in the settings.
-  if (section === 'upload') return location.replace('#/');
-  if (section === 'shares') return location.replace('#/settings/shares');
-  const nav = section === 'settings' ? section : 'folders';
-  for (const a of document.querySelectorAll('header [data-nav]')) a.classList.toggle('active', a.dataset.nav === nav);
+  if (!churches.tenants.some((t) => t.id === church)) {
+    shown = '';
+    view.replaceChildren(h('p', { class: 'error' }, `No such church: ${church}. `, h('a', { href: '#/' }, 'Go to the recordings')));
+    return;
+  }
+  if (church !== currentTenant()) {
+    setTenant(church);
+    fillPicker();
+    config = await api('GET', 'api/config');
+  }
+  if (settingsDialog && section !== 'settings') settingsDialog.close();
   try {
-    if (section === 'folder') teardown = await editorView(view, path, config);
-    else if (section === 'settings') teardown = await settingsView(path);
-    else await foldersView(section === 'folders' ? path : '');
+    if (section === 'folder') {
+      shown = '';
+      teardown = await editorView(view, path, config);
+    } else if (section === '' || section === 'folders' || section === 'settings') {
+      const key = church + '/' + (section === 'folders' ? path : '');
+      if (shown !== key) {
+        shown = '';
+        await foldersView(section === 'folders' ? path : '');
+        shown = key;
+      }
+      if (section === 'settings') await openSettings(path);
+    } else {
+      shown = '';
+      view.replaceChildren(h('p', { class: 'error' }, 'No such page.'));
+    }
   } catch (err) {
+    shown = '';
     view.replaceChildren(h('p', { class: 'error' }, err.message));
   }
 }
@@ -55,7 +86,7 @@ function arrived(t) {
 function folderTable(entries, when = false) {
   const body = h('tbody');
   for (const e of entries) {
-    const href = (e.date ? '#/folder/' : '#/folders/') + e.path;
+    const link = href(e.date ? 'folder' : 'folders', e.path);
     let detail = null;
     const toggle = h('button', { class: 'twisty', 'aria-expanded': 'false', title: 'Show details', 'aria-label': 'Show details of ' + e.name }, '▸');
     const flip = () => {
@@ -72,8 +103,8 @@ function folderTable(entries, when = false) {
     toggle.addEventListener('click', (ev) => { ev.stopPropagation(); flip(); });
     const name = e.date
       ? h('button', { class: 'sermon-name' }, e.name) // its click reaches the row
-      : h('a', { href }, e.name + '/');
-    const row = h('tr', { class: 'row', onclick: e.date ? flip : () => { location.hash = href; } },
+      : h('a', { href: link }, e.name + '/');
+    const row = h('tr', { class: 'row', onclick: e.date ? flip : () => { location.hash = link; } },
       h('td', {}, e.date ? toggle : '', name),
       h('td', {}, badges(e), when && e.imported ? h('span', { class: 'muted arrived' }, arrived(e.imported)) : ''));
     body.append(row);
@@ -182,7 +213,7 @@ function uploadBox() {
       status.textContent = `Uploading ${file.name} (${formatSize(file.size)})…`;
       try {
         const path = await sendFile(file, date.value, sermon.value.trim(), (p) => { progress.value = p; });
-        location.hash = '#/folder/' + path;
+        location.hash = href('folder', path);
       } catch (e) {
         status.className = 'error';
         status.textContent = `${file.name}: ${e.message}`;
@@ -211,11 +242,41 @@ function uploadBox() {
   return h('div', { class: 'upload' }, drop, input, chosen, status, progress);
 }
 
+// openSettings shows the settings as an overlay on the page, closed with the
+// cross, Esc or a click outside. Opened from an address (#/<church>/settings), closing
+// it goes back to #/<church>.
+async function openSettings(part = '') {
+  if (settingsDialog) {
+    settingsDialog.querySelector('#shares')?.scrollIntoView();
+    return;
+  }
+  const dialog = h('dialog', { class: 'dialog settings-dialog', 'aria-label': 'Settings' });
+  const body = h('div', { class: 'settings' });
+  dialog.append(
+    h('div', { class: 'settings-head' }, h('h1', {}, 'Settings'),
+      h('button', { type: 'button', class: 'close', title: 'Close', 'aria-label': 'Close settings', onclick: () => dialog.close() }, '✕')),
+    body);
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // the backdrop
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    settingsDialog = null;
+    if (/\/settings(\/|$)/.test(decodeURIComponent(location.hash))) location.hash = href();
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+  settingsDialog = dialog;
+  try {
+    await settingsView(body, part);
+  } catch (err) {
+    body.replaceChildren(h('p', { class: 'error' }, err.message));
+  }
+}
+
 // settingsView edits the church: its name, default tags (templates with
 // placeholders, shown filled in for today, with and without a sermon name),
 // sermon names, and its shares when the public upload page is on.
-// #/settings/shares scrolls to the shares.
-async function settingsView(part) {
+// part 'shares' scrolls to the shares.
+async function settingsView(box, part) {
   const data = await api('GET', 'api/settings');
   const fields = [['title', 'Title'], ['artist', 'Artist'], ['album', 'Album']];
   const inputs = {};
@@ -326,7 +387,6 @@ async function settingsView(part) {
   if (tenants.shares) await sharesView(shares);
 
   const view_ = h('div', {},
-    h('h1', {}, 'Settings'),
     h('h2', {}, 'Church'),
     h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, 'Name'), nameInput), h('div', {}, saveName, ' ', nameStatus),
       h('p', { class: 'muted' }, 'Logo, shown in the header (PNG, JPEG, WebP or SVG, up to 1 MB). Make it as wide as it is tall, or wider.'), logoBox),
@@ -345,53 +405,62 @@ async function settingsView(part) {
       onchange: (e) => setWheelZoomNeedsKey(e.target.checked),
     }), 'Hold Ctrl (Cmd on a Mac) to zoom with the scroll wheel; without it, scrolling moves the page')),
     tenants.shares ? shares : '');
-  view.replaceChildren(view_);
+  box.replaceChildren(view_);
   if (part === 'shares') shares.scrollIntoView();
   preview();
-  return () => {};
 }
 
-// churchPicker fills the dropdown in the header and switches church.
-async function churchPicker() {
-  const select = document.getElementById('church');
-  let data = await api('GET', 'api/tenants');
-  if (!data.tenants.some((t) => t.id === currentTenant())) setTenant(data.default);
-  const brand = document.querySelector('header .brand img');
-  const nameText = document.getElementById('church-name');
-  const fill = () => {
-    const mine = data.tenants.find((t) => t.id === currentTenant());
-    brand.src = mine?.logo ? forTenant('api/logo') + '&v=' + mine.logo : 'icons/logo.svg';
-    // One church and no adding: just its name, no dropdown.
-    const single = data.tenants.length === 1 && !data.canAdd;
-    select.hidden = single;
-    nameText.hidden = !single;
-    nameText.textContent = mine?.name || '';
-    select.replaceChildren(...data.tenants.map((t) => h('option', { value: t.id, selected: t.id === currentTenant() }, t.name)),
-      data.canAdd ? h('option', { value: '+' }, '+ Add church…') : '');
-    select.value = currentTenant();
-  };
-  fill();
-  window.addEventListener('churches-changed', async () => { data = await api('GET', 'api/tenants'); fill(); });
-  select.addEventListener('change', async () => {
-    if (select.value === '+') {
-      const name = await promptDialog({ title: 'Add a church', label: 'Name of the new church', confirm: 'Add church' });
-      if (name && name.trim()) {
-        try {
-          const t = await api('POST', 'api/tenants', { name });
-          data.tenants.push(t);
-          setTenant(t.id);
-          if (t.group) alertDialog({ title: 'Church added', body: `Give people access by adding them to the group ${t.group} in Pocket ID.` });
-        } catch (err) { alertDialog({ body: err.message }); }
-      }
-    } else {
-      setTenant(select.value);
-    }
-    fill();
-    config = await api('GET', 'api/config');
-    if (location.hash && location.hash !== '#/') location.hash = '#/';
-    else route();
-  });
+// The church in the header: its name (one church, no adding), else a quiet dropdown.
+const select = document.getElementById('church');
+const brand = document.querySelector('header .brand');
+const nameText = document.getElementById('church-name');
+const gear = document.querySelector('[data-nav=settings]');
+
+function fillPicker() {
+  const cur = currentTenant();
+  const mine = churches.tenants.find((t) => t.id === cur);
+  brand.querySelector('img').src = mine?.logo ? forTenant('api/logo') + '&v=' + mine.logo : 'icons/logo.svg';
+  brand.href = href();
+  gear.href = href('settings');
+  const single = churches.tenants.length === 1 && !churches.canAdd;
+  select.hidden = single;
+  nameText.hidden = !single;
+  nameText.textContent = mine?.name || '';
+  select.replaceChildren(...churches.tenants.map((t) => h('option', { value: t.id, selected: t.id === cur }, t.name)),
+    churches.canAdd ? h('option', { value: '+' }, '+ Add church…') : '');
+  select.value = cur;
 }
+
+async function loadChurches() {
+  churches = await api('GET', 'api/tenants');
+  if (!churches.tenants.some((t) => t.id === currentTenant())) setTenant(churches.default);
+  fillPicker();
+}
+
+// Switching church is going to its address; adding one goes there too.
+select.addEventListener('change', async () => {
+  if (select.value !== '+') {
+    location.hash = '#/' + select.value;
+    return;
+  }
+  const name = await promptDialog({ title: 'Add a church', label: 'Name of the new church', confirm: 'Add church' });
+  if (name && name.trim()) {
+    try {
+      const t = await api('POST', 'api/tenants', { name });
+      churches.tenants.push(t);
+      location.hash = '#/' + t.id;
+      if (t.group) alertDialog({ title: 'Church added', body: `Give people access by adding them to the group ${t.group} in Pocket ID.` });
+    } catch (err) { alertDialog({ body: err.message }); }
+  }
+  fillPicker();
+});
+
+// The gear opens the settings over the page you are on (without leaving it).
+gear.addEventListener('click', (e) => {
+  if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return; // a new tab goes to the address
+  e.preventDefault();
+  openSettings();
+});
 
 // logoutButton shows Log out when the server knows the login proxy's logout.
 // The icon asks first: a click opens "Log out?", which logs out when clicked;
@@ -424,10 +493,10 @@ async function logoutButton() {
 
 async function start() {
   await logoutButton();
-  await churchPicker();
+  await loadChurches();
   config = await api('GET', 'api/config');
+  window.addEventListener('churches-changed', loadChurches);
   window.addEventListener('hashchange', route);
   route();
 }
-
 start().catch((err) => view.replaceChildren(h('p', { class: 'error' }, err.message)));

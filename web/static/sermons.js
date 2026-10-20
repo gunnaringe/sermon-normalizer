@@ -1,7 +1,7 @@
 // The details of a date folder in the folder list: what a sermon has (info,
 // play, download, make a missing format), or, for a recording that has not
 // been processed, only a way into the editor.
-import { api, q, h, formatSize, formatTime, forTenant } from './util.js';
+import { api, q, h, href, formatSize, formatTime, forTenant } from './util.js';
 
 const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
 const fileURL = (f, download) => forTenant('api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path));
@@ -21,7 +21,7 @@ const PLAY_ORDER = ['mp3', 'opus', 'flac'];
 // has been read, and again after a format was made.
 export function sermonDetail(entry) {
   const panel = h('div', { class: 'detail' }, h('p', { class: 'muted' }, 'Loading…'));
-  const editURL = '#/folder/' + entry.path;
+  const editURL = href('folder', entry.path);
 
   async function show() {
     const info = await api('GET', 'api/folder?path=' + q(entry.path));

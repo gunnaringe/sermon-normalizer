@@ -16,6 +16,11 @@ export function setWheelZoomNeedsKey(on) {
   else localStorage.removeItem('wheelZoom');
 }
 
+// href is the address of a page of the current church: '#/<church>/<section>/<path>'.
+export function href(section = '', path = '') {
+  return '#/' + tenant + (section ? '/' + section : '') + (path ? '/' + path : '');
+}
+
 // forTenant adds the church to a URL that is not fetched through api():
 // audio, downloads, event streams.
 export function forTenant(url) {
@@ -138,11 +143,11 @@ export function debounce(fn, ms) {
 // crumbs links each level of a slash path to its folder list.
 export function crumbs(path, last) {
   const parts = path ? path.split('/') : [];
-  const items = [h('a', { href: '#/' }, 'All')];
+  const items = [h('a', { href: href() }, 'All')];
   parts.forEach((p, i) => {
     items.push(' / ');
     const sub = parts.slice(0, i + 1).join('/');
-    items.push(i === parts.length - 1 && !last ? p : h('a', { href: '#/folders/' + sub }, p));
+    items.push(i === parts.length - 1 && !last ? p : h('a', { href: href('folders', sub) }, p));
   });
   if (last) items.push(' / ', last);
   return h('div', { class: 'crumbs' }, items);
