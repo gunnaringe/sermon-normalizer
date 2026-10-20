@@ -42,7 +42,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/namelist.go`: remembered sermon names per church (suggestions on/off + list, learned on
   upload/rename; `GET/PUT api/names`), stored in `church.json` like the tags.
 - `web/recording.go`: `<folder>/recording.json`, the one state file per recording: `recording` (format, metadata,
-  channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV), the sermon, and `outputs`
+  channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV), `imported` (when it arrived: `markImported`; `recentImports` lists the last `newFor` on top of the first page), the sermon, and `outputs`
   (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock).
 - `web/sermon.go`: the sermon part of it: `saved` (the version the user saved) + `adjusted`
   (what the editor keeps as you edit; null when equal to saved): sections, cuts, fades.

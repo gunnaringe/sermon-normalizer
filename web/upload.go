@@ -125,6 +125,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.markImported(folder)
 	s.learnName(sermon)
 	s.cfg.Logger.Printf("upload: received %s as %s", name, s.relPath(final))
 	s.analyses.state(final, true)

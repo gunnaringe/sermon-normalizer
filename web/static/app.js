@@ -1,5 +1,5 @@
 // The app: a hash router over three views (folders with the upload, a folder's editor, settings with the shares).
-import { api, q, h, formatSize, formatDate, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
+import { api, q, h, formatSize, formatDate, formatDateTime, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
@@ -39,13 +39,22 @@ function badges(e) {
   return out;
 }
 
-// A date folder opens its details in the list, anywhere on its row. A
-// recording that is not processed only offers the editor there. The upload
-// sits on top of every list: a recording goes into its date folder anyway.
-async function foldersView(path) {
-  const data = await api('GET', 'api/folders?path=' + q(path));
+// arrived says when a recording came: today/yesterday with the time, else the date.
+function arrived(t) {
+  const d = new Date(t);
+  const day = (x) => formatDate(x);
+  const time = formatDateTime(d).slice(11);
+  if (day(d) === day(Date.now())) return 'arrived today ' + time;
+  if (day(d) === day(Date.now() - 864e5)) return 'arrived yesterday ' + time;
+  return 'arrived ' + day(d);
+}
+
+// folderTable lists folders. A date folder opens its details in the list,
+// anywhere on its row; a recording that is not processed only offers the
+// editor there. With when, a row also says when its recording arrived.
+function folderTable(entries, when = false) {
   const body = h('tbody');
-  for (const e of data.entries) {
+  for (const e of entries) {
     const href = (e.date ? '#/folder/' : '#/folders/') + e.path;
     let detail = null;
     const toggle = h('button', { class: 'twisty', 'aria-expanded': 'false', title: 'Show details', 'aria-label': 'Show details of ' + e.name }, '▸');
@@ -66,15 +75,26 @@ async function foldersView(path) {
       : h('a', { href }, e.name + '/');
     const row = h('tr', { class: 'row', onclick: e.date ? flip : () => { location.hash = href; } },
       h('td', {}, e.date ? toggle : '', name),
-      h('td', {}, badges(e)));
+      h('td', {}, badges(e), when && e.imported ? h('span', { class: 'muted arrived' }, arrived(e.imported)) : ''));
     body.append(row);
   }
+  return h('table', { class: 'list' }, body);
+}
+
+// foldersView: the upload on top of every list (a recording goes into its
+// date folder anyway); on the first page, then the recordings that arrived
+// in the last days, before the years.
+async function foldersView(path) {
+  const data = await api('GET', 'api/folders?path=' + q(path));
+  const recent = data.recent || [];
   view.replaceChildren(
     data.path ? crumbs(data.path) : '',
     h('h1', {}, data.path ? data.path.split('/').pop() : 'Recordings'),
     uploadBox(),
+    recent.length ? h('section', { class: 'recent' }, h('h2', {}, 'Newly imported'), folderTable(recent, true)) : '',
+    recent.length && data.entries.length ? h('h2', {}, 'All') : '',
     data.entries.length
-      ? h('table', { class: 'list' }, body)
+      ? folderTable(data.entries)
       : h('p', { class: 'muted' }, 'No recordings here yet. Upload one above',
         config.inbox ? ', or put one in the inbox folder.' : '.'));
 }

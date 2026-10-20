@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"net/http"
 	"os"
@@ -26,7 +27,13 @@ type folderEntry struct {
 	Convert bool     `json:"converting"` // the raw WAV is being converted to FLAC
 	Prepare bool     `json:"preparing"`  // the waveform and preview are being made
 	Job     string   `json:"job,omitempty"`
+	// Imported is when the recording arrived, if that is known.
+	Imported *time.Time `json:"imported,omitempty"`
 }
+
+// newFor is how long a recording stays among the new ones, on top of the
+// folder list, after it arrived.
+const newFor = 7 * 24 * time.Hour
 
 type output struct {
 	format, path string
@@ -58,7 +65,46 @@ func (s *Server) entry(abs string) folderEntry {
 	if j := s.jobs.active(e.Path); j != nil {
 		e.Job = j.ID
 	}
+	if e.Date {
+		e.Imported = readState(abs).Imported
+	}
 	return e
+}
+
+// recentImports are the date folders whose recording arrived in the last
+// newFor, newest first: every folder under the root with a recording.json
+// (not in original/ or hidden ones).
+func (s *Server) recentImports() []folderEntry {
+	since := time.Now().Add(-newFor)
+	out := []folderEntry{}
+	filepath.WalkDir(s.root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if path != s.root && (strings.HasPrefix(d.Name(), ".") || d.Name() == "original") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() != stateName {
+			return nil
+		}
+		folder := filepath.Dir(path)
+		if t := readState(folder).Imported; t != nil && t.After(since) {
+			if e := s.entry(folder); e.Date {
+				out = append(out, e)
+			}
+		}
+		return nil
+	})
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].Imported.Equal(*out[j].Imported) {
+			return out[i].Imported.After(*out[j].Imported)
+		}
+		return out[i].Path > out[j].Path
+	})
+	return out
 }
 
 func (s *Server) handleFolders(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +133,8 @@ func (s *Server) handleFolders(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{"path": s.relPath(abs), "entries": entries}
 	if abs != s.root {
 		resp["parent"] = s.relPath(filepath.Dir(abs))
+	} else {
+		resp["recent"] = s.recentImports()
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
