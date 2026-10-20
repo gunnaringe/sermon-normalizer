@@ -71,9 +71,9 @@ Each can have a label, which shows on the waveform.
 - **On a phone:** every page fits the screen. Drag a finger along the waveform to select (up and
   down still scrolls the page); the section edges are wider to grab; cut with *Cut out here* and
   zoom with the buttons.
-- **The page** has four parts: **Input file** (the recording: name, format, how it came, its
+- **The page** has five parts: **Input file** (the recording: name, format, how it came, its
   metadata, whether it is stereo or mono in effect, and *Download original*), **Edit** (the
-  waveform, sections, cuts and fades), **Options** (mono ↔ stereo, tags, sound) and **Output**.
+  waveform, sections, cuts and fades), **Metadata added to the file** (title, artist, album), **Processing** and **Output**.
 - **Saved version:** the sections, the cuts and the fades are kept in `recording.json` in the date
   folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
   the next time the sermon is opened. **Save** (under Output) makes them the *saved version*,
@@ -100,9 +100,15 @@ Each can have a label, which shows on the waveform.
   or **The recording** (as it is, so the parts in between can be heard too). The outputs are made from
   what is left, joined with a 15 ms fade on each side so the join does not click; the length
   shown is that of the sections after the cuts.
-- **Options:** checked as you change them; your choices carry over to the next folder. Mono or
-  stereo is a switch; choosing stereo for a recording that is mono in effect (one channel,
-  identical channels, or one side silent) shows a warning.
+- **Metadata added to the file:** title, artist and album, from the church's defaults (Settings), for this recording; a field you
+  empty is left out of the files.
+- **Processing:** how the sermon is made into files, kept with the sermon (*Saved version*; *Revert* brings them back too).
+  *Channels* (mono ↔ stereo; stereo for a recording that is mono in effect shows a warning). *Noise*: reduction in dB, and
+  **Keep room sound** (how much of the room's own sound, such as its reverb, is kept: less reduction or more room sound sounds more natural).
+  *Levels*: **Leveling** (off, gentle, normal, strong) and **Compression** (off, light, normal, strong). *Loudness*: the target
+  (LUFS) and the true-peak ceiling. *Encoding*: the MP3 and Opus bitrates. **Hear a sample** makes 30 seconds from the playhead with
+  the settings, to listen to before the whole sermon is made (cuts, pauses and fades are not applied). A new sermon starts with
+  what you last used.
 - **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,
   green when the file is there (play and download it from the recordings list). `recording.json` keeps what each file was made from (sections, cuts,
   fades, sound, tags, bitrate), so a file made from other settings than the page shows says

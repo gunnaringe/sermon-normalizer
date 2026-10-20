@@ -12,12 +12,22 @@
 |---|---|---|
 | Outputs | FLAC, MP3, Opus | which files to make |
 | Stereo | off (mono) | stereo moves the defaults to -16 LUFS, MP3 128k, Opus 96k |
-| Fade in / out | 0 | seconds of fade at the cut points, 0 = off |
-| Noise reduction | 12 dB | 0 = off |
+| Fade in / out | 0 | seconds of fade at the start and end of the sermon, 0 = off |
+| Pause | 0 | seconds of silence put in where a section ends or a cut is |
+| Noise reduction | 6 dB | 0 = off |
+| Room sound kept | 0 % | raises the floor the noise reduction works down to (0 to 100) |
+| Leveling | normal | off, gentle, normal, strong (`dynaudnorm`) |
+| Compression | off | off, light, normal, strong (`acompressor`, after the gain) |
 | Target loudness | -19 LUFS | |
 | Max true peak | -1.5 dBTP | for the master |
 | MP3 / Opus bitrate | 96k / 48k | |
 
+- **The master is made in steps.** First the cut, the channels, the noise reduction and the leveling go into a temporary
+  file (the slow part). Its loudness is measured (EBU R128), and the gain that brings it to the target is worked out; with
+  compression on, the gain is applied, the compressor runs, and the loudness is measured again. Then the gain, a peak limiter
+  (half a dB under the true-peak ceiling) and the fades are applied to make the master, which is measured once more: if the
+  limiter took some of the gain back, the gain is corrected, up to two times. So the master lands within 0.3 LU of the target
+  unless the peaks of the recording keep it from getting louder (the run then warns: try compression).
 - The fades are applied last, after the loudness processing, so they stay intact in every output.
 - MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or
   the loudness is off. They are always made from the master; without FLAC it is a temporary

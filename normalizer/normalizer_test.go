@@ -119,29 +119,53 @@ func TestFirstExisting(t *testing.T) {
 	}
 }
 
-func TestMasterFilter(t *testing.T) {
+func TestTidyFilter(t *testing.T) {
 	p := &Pipeline{Opt: DefaultOptions()}
-	f := p.masterFilter(0)
-	for _, want := range []string{"aformat=channel_layouts=mono", "afftdn=nr=12", "dynaudnorm", "loudnorm=I=-19:TP=-1.5", "aresample=48000"} {
+	f := p.tidyFilter()
+	for _, want := range []string{"aformat=channel_layouts=mono", "afftdn=nr=6", "dynaudnorm"} {
 		if !strings.Contains(f, want) {
 			t.Errorf("%q missing from %q", want, f)
 		}
 	}
-	if strings.Contains(f, "afade") {
-		t.Error("no fades by default")
+	for _, not := range []string{"loudnorm", "afade", "rf=", "acompressor"} {
+		if strings.Contains(f, not) {
+			t.Errorf("%q should not be in %q", not, f)
+		}
 	}
 	p.Opt.NoiseReduction = 0
-	if strings.Contains(p.masterFilter(0), "afftdn") {
+	if strings.Contains(p.tidyFilter(), "afftdn") {
 		t.Error("afftdn should be off")
+	}
+	// Room sound raises the floor the noise reduction works down to; leveling can be off or stronger.
+	p.Opt.NoiseReduction, p.Opt.RoomSound = 12, 50
+	if f := p.tidyFilter(); !strings.Contains(f, "afftdn=nr=12:rf=-29.0") {
+		t.Errorf("room sound: %q", f)
+	}
+	p.Opt.Leveling = "off"
+	if strings.Contains(p.tidyFilter(), "dynaudnorm") {
+		t.Error("leveling should be off")
+	}
+	p.Opt.Leveling = "strong"
+	if !strings.Contains(p.tidyFilter(), "dynaudnorm=f=150") {
+		t.Errorf("strong leveling: %q", p.tidyFilter())
+	}
+	// A record from before these settings has none: the old ones.
+	p.Opt.Leveling, p.Opt.RoomSound = "", 0
+	if !strings.Contains(p.tidyFilter(), EvenLevels) {
+		t.Errorf("default leveling: %q", p.tidyFilter())
 	}
 }
 
-func TestMasterFilterFades(t *testing.T) {
+func TestFinalFilter(t *testing.T) {
 	p := &Pipeline{Opt: DefaultOptions()}
+	f := p.finalFilter(18.5, 0)
+	// a peak limit half a dB under the ceiling: -2 dB is 0.7943
+	if f != "volume=18.50dB,alimiter=limit=0.7943:attack=5:release=50:level=0,aresample=48000" {
+		t.Errorf("filter %q", f)
+	}
 	p.Opt.FadeIn, p.Opt.FadeOut = 2, 3.5
-	f := p.masterFilter(600)
-	if !strings.HasSuffix(f, ",aresample=48000,afade=t=in:d=2,afade=t=out:st=596.500:d=3.5") {
-		t.Errorf("fades should come last, after loudnorm: %q", f)
+	if f := p.finalFilter(0, 600); !strings.HasSuffix(f, ",aresample=48000,afade=t=in:d=2,afade=t=out:st=596.500:d=3.5") {
+		t.Errorf("fades should come last: %q", f)
 	}
 }
 
@@ -254,11 +278,11 @@ func TestSetStereo(t *testing.T) {
 	}
 }
 
-func TestMasterFilterStereo(t *testing.T) {
+func TestTidyFilterStereo(t *testing.T) {
 	p := &Pipeline{Opt: DefaultOptions()}
 	p.Opt.SetStereo(true)
-	if f := p.masterFilter(0); !strings.HasPrefix(f, "aformat=channel_layouts=stereo,") || !strings.Contains(f, "loudnorm=I=-16:") {
-		t.Errorf("filter %q", f)
+	if f := p.tidyFilter(); !strings.HasPrefix(f, "aformat=channel_layouts=stereo,") || p.Opt.TargetLUFS != -16 {
+		t.Errorf("filter %q, target %g", f, p.Opt.TargetLUFS)
 	}
 }
 
@@ -356,6 +380,9 @@ func TestValidate(t *testing.T) {
 		"end <= start":  func(o *Options) { o.Start, o.End = 60, 30 },
 		"negative fade": func(o *Options) { o.FadeOut = -1 },
 		"noise":         func(o *Options) { o.NoiseReduction = 98 },
+		"room sound":    func(o *Options) { o.RoomSound = 101 },
+		"leveling":      func(o *Options) { o.Leveling = "loud" },
+		"compression":   func(o *Options) { o.Compression = "heavy" },
 		"lufs":          func(o *Options) { o.TargetLUFS = 3 },
 		"peak":          func(o *Options) { o.TruePeak = 1 },
 		"bitrate":       func(o *Options) { o.Mp3Bitrate = " " },

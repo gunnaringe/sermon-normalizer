@@ -11,11 +11,36 @@ import (
 )
 
 // sermonSettings are what the editor keeps of a sermon: its sections of the
-// recording, the parts cut out of them, and its fades.
+// recording, the parts cut out of them, its fades and its sound.
 type sermonSettings struct {
 	cutting
 	FadeIn  float64 `json:"fadeIn"`
 	FadeOut float64 `json:"fadeOut"`
+	// Sound is how the files are made from it; nil for one saved before the studio kept it (the defaults).
+	Sound *soundSettings `json:"sound,omitempty"`
+}
+
+// soundSettings are the processing of a sermon: channels, noise, levels, loudness and bitrates.
+// They are kept with the sermon, so the files can be made again the same way.
+type soundSettings struct {
+	Stereo         bool    `json:"stereo"`
+	NoiseReduction int     `json:"noiseReduction"`
+	RoomSound      int     `json:"roomSound"`
+	Leveling       string  `json:"leveling"`
+	Compression    string  `json:"compression"`
+	TargetLUFS     float64 `json:"targetLufs"`
+	TruePeak       float64 `json:"truePeak"`
+	Mp3Bitrate     string  `json:"mp3Bitrate"`
+	OpusBitrate    string  `json:"opusBitrate"`
+}
+
+// applyTo puts the sound in a run request.
+func (s *soundSettings) applyTo(q *runRequest) {
+	if s == nil {
+		return
+	}
+	q.Stereo, q.NoiseReduction, q.RoomSound, q.Leveling, q.Compression = s.Stereo, s.NoiseReduction, s.RoomSound, s.Leveling, s.Compression
+	q.TargetLUFS, q.TruePeak, q.Mp3Bitrate, q.OpusBitrate = s.TargetLUFS, s.TruePeak, s.Mp3Bitrate, s.OpusBitrate
 }
 
 // sermonFile is the sermon's part of recording.json: the editor keeps the
@@ -32,7 +57,12 @@ func (c sermonSettings) Validate() error {
 	if len(c.Sections) == 0 {
 		return errors.New("select the sermon: drag on the waveform")
 	}
-	o := normalizer.DefaultOptions()
+	q := requestFrom(normalizer.DefaultOptions())
+	c.Sound.applyTo(&q)
+	o, err := q.options()
+	if err != nil {
+		return err
+	}
 	o.FadeIn, o.FadeOut = c.FadeIn, c.FadeOut
 	if err := c.apply(&o); err != nil {
 		return err

@@ -33,6 +33,9 @@ function describeFormat(fmt) {
   ].filter(Boolean).join(' · ');
 }
 
+// SOUND_KEYS are the processing choices that are kept with a sermon.
+const SOUND_KEYS = ['stereo', 'noiseReduction', 'roomSound', 'leveling', 'compression', 'targetLufs', 'truePeak', 'mp3Bitrate', 'opusBitrate'];
+
 // FORMAT_KEYS are chosen per recording, so they are never carried over.
 const FORMAT_KEYS = ['flac', 'mp3', 'opus'];
 
@@ -62,6 +65,9 @@ export async function editorView(view, path, config) {
   };
 
   const opts = savedOptions(config);
+  // The processing the sermon was kept with comes before what was last used on another one.
+  const keptSound = info.sermon && (info.sermon.adjusted || info.sermon.saved)?.sound;
+  if (keptSound) Object.assign(opts, keptSound);
   // The formats are this recording's own: those it has, or the defaults when it
   // has none. Choosing here changes nothing elsewhere.
   if (info.outputs.length) for (const f of FORMAT_KEYS) opts[f] = info.outputs.some((o) => o.format === f);
@@ -126,13 +132,15 @@ export async function editorView(view, path, config) {
     renamePanel.hidden = false;
   } }, t('Rename…'));
 
+  let processingEl = processingPanel();
   view.replaceChildren(
     h('div', { class: 'crumbs' }, h('a', { href: href('recording', path) }, t('← Recordings'))),
     h('h1', {}, info.date, ' ', renameButton),
     renamePanel,
     h('section', { class: 'step', 'aria-labelledby': 'step-input' }, h('h2', { id: 'step-input' }, t('Input file')), inputPanel),
     h('section', { class: 'step', 'aria-labelledby': 'step-edit' }, h('h2', { id: 'step-edit' }, t('Edit')), waveSection),
-    h('section', { class: 'step', 'aria-labelledby': 'step-options' }, h('h2', { id: 'step-options' }, t('Options')), optionsForm()),
+    h('section', { class: 'step', 'aria-labelledby': 'step-metadata' }, h('h2', { id: 'step-metadata' }, t('Metadata added to the file')), metadataPanel()),
+    h('section', { class: 'step', 'aria-labelledby': 'step-processing' }, h('h2', { id: 'step-processing' }, t('Processing')), processingEl),
     h('section', { class: 'step', 'aria-labelledby': 'step-output' }, h('h2', { id: 'step-output' }, t('Output')),
       h('div', { class: 'panel' },
         pills, outputNote, checkOut,
@@ -892,7 +900,8 @@ export async function editorView(view, path, config) {
     if (secs.some((x) => x.end - x.start < 0.05)) return null;
     if (list.some((c) => c.end - c.start < 0.05)) return null; // one outside the sermon is fine
     if (!(opts.fadeIn >= 0) || !(opts.fadeOut >= 0)) return null;
-    return { sections: secs, cuts: list, fadeIn: opts.fadeIn, fadeOut: opts.fadeOut };
+    if ([opts.noiseReduction, opts.roomSound, opts.targetLufs, opts.truePeak].some(Number.isNaN)) return null;
+    return { sections: secs, cuts: list, fadeIn: opts.fadeIn, fadeOut: opts.fadeOut, sound: Object.fromEntries(SOUND_KEYS.map((k) => [k, opts[k]])) };
   }
 
   // persistAdjusted keeps what is on the page as the adjustments.
@@ -923,6 +932,10 @@ export async function editorView(view, path, config) {
         reveal(first());
       }
       for (const key of ['fadeIn', 'fadeOut']) opts[key] = set[key];
+      if (set.sound) {
+        Object.assign(opts, set.sound);
+        redrawProcessing();
+      }
     } finally {
       restoring = false;
     }
@@ -1039,21 +1052,45 @@ export async function editorView(view, path, config) {
     if (sections.length) playFor(Math.max(last() - 5, first()), Math.min(5, last() - first()), true);
   }
 
-  // ---- options ----
-  function optionsForm() {
-    const field = (key, label, input) => h('label', {}, h('span', { class: 'name' }, label), input);
-    const num = (key, label, step) => field(key, label, h('input', {
-      type: 'number', name: key, value: opts[key], step,
-      oninput: (e) => { opts[key] = e.target.value === '' ? NaN : Number(e.target.value); changed(); },
-    }));
-    const text = (key, label, placeholder) => field(key, label, h('input', {
-      type: 'text', name: key, value: opts[key], placeholder,
-      oninput: (e) => { opts[key] = e.target.value; changed(); },
-    }));
+  // ---- the metadata written into the files, and the processing that makes them ----
+
+  // metadataPanel is the tags: title, artist and album, in every file.
+  function metadataPanel() {
     const tag = (key, label) => h('label', { class: 'tag' }, h('span', { class: 'name' }, label), h('input', {
       type: 'text', name: key, value: tags[key], maxlength: 200,
       oninput: (e) => { tags[key] = e.target.value; changed(); },
     }));
+    return h('div', { class: 'panel' },
+      info.tags
+        ? h('div', { class: 'options' }, tag('title', t('Title')), tag('artist', t('Artist')), tag('album', t('Album')))
+        : h('span', { class: 'muted' }, info.tagsError ? tr(info.tagsError) : t('No tags')),
+      h('p', { class: 'muted' }, t('Written into the FLAC, MP3 and Opus files. A field left empty is left out.')));
+  }
+
+  // redrawProcessing shows the processing choices again, after they were set from outside (a revert).
+  function redrawProcessing() {
+    const next = processingPanel();
+    processingEl.replaceWith(next);
+    processingEl = next;
+    showChannelWarning();
+  }
+
+  // processingPanel is how the sermon is made into files: channels, noise, levels, loudness and bitrates.
+  // The choices are kept with the sermon.
+  function processingPanel() {
+    const field = (label, input) => h('label', {}, h('span', { class: 'name' }, label), input);
+    const num = (key, label, step, min, max) => field(label, h('input', {
+      type: 'number', name: key, value: opts[key], step, min, max,
+      oninput: (e) => { opts[key] = e.target.value === '' ? NaN : Number(e.target.value); changed(); },
+    }));
+    const text = (key, label) => field(label, h('input', {
+      type: 'text', name: key, value: opts[key],
+      oninput: (e) => { opts[key] = e.target.value; changed(); },
+    }));
+    const choice = (key, label, values) => field(label, h('select', { name: key, onchange: (e) => { opts[key] = e.target.value; changed(); } },
+      values.map(([value, text]) => h('option', { value, selected: opts[key] === value }, text))));
+    const group = (title, ...children) => h('div', { class: 'pgroup' }, h('strong', {}, title), ...children);
+    const hint = (text) => h('p', { class: 'muted hint' }, text);
     // Mono or stereo: a switch between the two, not a box to tick.
     const stereo = h('input', {
       type: 'checkbox', role: 'switch', name: 'stereo', checked: opts.stereo, 'aria-label': t('Stereo'),
@@ -1065,17 +1102,59 @@ export async function editorView(view, path, config) {
       },
     });
     const channels = h('div', { class: 'channels' },
-      h('span', { class: 'name' }, t('Channels')),
       h('label', { class: 'switch' }, h('span', { class: 'side off' }, t('Mono')), stereo, h('span', { class: 'track', 'aria-hidden': 'true' }), h('span', { class: 'side on' }, t('Stereo'))));
-    return h('div', { class: 'panel' },
-      h('div', { class: 'options' },
-        h('div', {}, h('strong', {}, t('Sound')), channels, channelWarning),
-        info.tags ? h('div', {}, h('strong', {}, t('Tags')), tag('title', t('Title')), tag('artist', t('Artist')), tag('album', t('Album')))
-          : h('div', {}, h('strong', {}, t('Tags')), h('span', { class: 'muted' }, info.tagsError ? tr(info.tagsError) : t('No tags')))),
-      h('details', {}, h('summary', {}, t('More sound options')),
-        h('div', { class: 'options' },
-          num('noiseReduction', t('Noise reduction (dB)'), 1), num('targetLufs', t('Target loudness (LUFS)'), 0.5),
-          num('truePeak', t('Max true peak (dBTP)'), 0.1), text('mp3Bitrate', t('MP3 bitrate')), text('opusBitrate', t('Opus bitrate')))));
+    const roomValue = h('output', { class: 'muted' }, `${opts.roomSound}%`);
+    const room = field(t('Keep room sound'), h('span', { class: 'range' }, h('input', {
+      type: 'range', name: 'roomSound', min: 0, max: 100, step: 5, value: opts.roomSound,
+      oninput: (e) => { opts.roomSound = Number(e.target.value); roomValue.textContent = `${opts.roomSound}%`; changed(); },
+    }), roomValue));
+    const strengths = (off, a, b, c) => [['off', off], ['gentle', a], ['normal', b], ['strong', c]];
+
+    const sample = h('audio', { class: 'player', controls: true, hidden: true, 'aria-label': t('The sample') });
+    const sampleStatus = h('span', { class: 'muted', role: 'status' });
+    const sampleButton = h('button', { type: 'button', name: 'sample', onclick: async () => {
+      sampleButton.disabled = true;
+      sample.hidden = true;
+      sampleStatus.className = 'muted';
+      sampleStatus.textContent = t('Making the sample…');
+      try {
+        const body = Object.fromEntries(SOUND_KEYS.map((k) => [k, opts[k]]));
+        const resp = await fetch(forTenant('api/sample?path=' + q(path) + '&at=' + (ws ? ws.getCurrentTime() : 0)), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        if (!resp.ok) throw new Error(tr((await resp.json().catch(() => ({}))).error || `${resp.status} ${resp.statusText}`));
+        URL.revokeObjectURL(sample.src);
+        sample.src = URL.createObjectURL(await resp.blob());
+        sample.hidden = false;
+        sampleStatus.textContent = '';
+        sample.play().catch(() => {});
+      } catch (e) {
+        sampleStatus.className = 'error';
+        sampleStatus.textContent = t('Could not make the sample: {error}', { error: e.message });
+      } finally {
+        sampleButton.disabled = false;
+      }
+    } }, t('Hear a sample'));
+
+    return h('div', { class: 'panel processing' },
+      group(t('Channels'), channels, channelWarning),
+      group(t('Noise'),
+        num('noiseReduction', t('Noise reduction (dB)'), 1, 0, 40),
+        room,
+        hint(t('Taking out noise also takes out some of the room\'s own sound, such as its reverb. Less reduction, or more room sound kept, sounds more natural; more sounds cleaner.'))),
+      group(t('Levels'),
+        choice('leveling', t('Leveling'), strengths(t('Off'), t('Gentle'), t('Normal'), t('Strong'))),
+        choice('compression', t('Compression'), [['off', t('Off')], ['light', t('Light')], ['normal', t('Normal')], ['strong', t('Strong')]]),
+        hint(t('Leveling brings quiet speech and loud parts closer. Compression narrows the loudness range further: light is usually enough.'))),
+      group(t('Loudness'),
+        num('targetLufs', t('Target loudness (LUFS)'), 0.5, -70, -5),
+        num('truePeak', t('Max true peak (dBTP)'), 0.1, -20, 0),
+        hint(t('Podcasts are usually -19 LUFS in mono and -16 in stereo. The peaks are kept under the true peak.'))),
+      group(t('Encoding'), text('mp3Bitrate', t('MP3 bitrate')), text('opusBitrate', t('Opus bitrate'))),
+      group(t('Try the settings'),
+        h('p', {}, sampleButton, ' ', sampleStatus),
+        sample,
+        hint(t('Makes 30 seconds from the playhead with these settings, to listen to. The cuts, pauses and fades are not applied.'))));
   }
 
   // followChannels moves the loudness and bitrates to the new defaults when
