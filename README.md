@@ -1,315 +1,133 @@
-# sermon-studio
+<p align="center">
+  <img src="web/static/icons/logo.svg" alt="Sermon Studio" width="88">
+</p>
 
-<img src="web/static/icons/logo.svg" alt="Sermon Studio logo" width="96">
+<h1 align="center">Sermon Studio</h1>
 
-A web app that turns a recording of a church service into publish-ready sermon files:
-cut out the sermon on a waveform, then it mixes to mono (or keeps stereo), evens out the volume
-(speech and music are recorded at very different levels), normalises to podcast loudness and
-encodes FLAC, MP3 and Opus for SoundCloud, Spotify and other podcast services.
-See `PLAN.md` for background and design decisions.
+<p align="center">
+  <strong>Turn a recording of a church service into publish-ready sermon files.</strong><br>
+  Cut the sermon out on a waveform. Get evenly loud FLAC, MP3 and Opus, ready for podcast services.
+</p>
 
-## Requirements
+<p align="center">
+  <a href="https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml"><img src="https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml/badge.svg" alt="Build"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/go-stdlib%20only-00ADD8" alt="Go, standard library only">
+  <img src="https://img.shields.io/badge/UI-English%20%C2%B7%20bokm%C3%A5l%20%C2%B7%20nynorsk-lightgrey" alt="English, Norwegian bokmål and nynorsk">
+</p>
 
-- `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`), or use the Docker image
-- Go 1.25+ to build
+<p align="center">
+  <img src="docs/img/hero.png" alt="The editor: a 14-minute speech as a waveform, two sections kept, a cough cut out" width="900">
+</p>
 
-## Build and test
+## The problem
 
-```bash
-go build -o sermon-studio ./cmd/sermon-studio
-scripts/test.sh            # unit tests, seconds
-scripts/test.sh all        # vet + all tests with real ffmpeg (container)
-scripts/test.sh e2e        # browser tests (Playwright, container)
+A church service is recorded in one piece: welcome, songs, prayers, the sermon, more songs. What
+you want to publish is the sermon, at a volume people can listen to in the car, in a format every
+podcast service accepts. Doing that by hand means an audio editor, a loudness meter and a handful of
+ffmpeg commands, every week.
+
+Sermon Studio does it in the browser. Drop in the recording, mark what to keep, press Save.
+
+## What it does
+
+**Cut on a waveform.** See the whole service, jump between silences, drag out the parts to keep.
+Keep one section or several, cut out a cough or a song in the middle, and label them. Hear the
+join before you commit. Nothing is ever cut from the original.
+
+<p align="center"><img src="docs/img/05-sections-list.png" alt="Sections and cuts, with labels and exact times" width="760"></p>
+
+**Even, standard loudness.** Speech and music are recorded at very different levels. The output is
+mixed to mono (or kept stereo), noise-reduced, and normalised to podcast loudness (-19 LUFS, measured
+with EBU R128, true peak limited), then encoded to **FLAC, MP3 and Opus**.
+
+**Recordings arrive however they arrive.** Upload from the browser (large files in chunks, resumable),
+let a recorder drop files in a church's inbox folder, or hand a sound technician a **share code** for a
+public upload page that needs no login. WAV, AIFF, FLAC, MP3, M4A, Ogg, Opus, WMA and video files
+(the sound is copied out unchanged) all work.
+
+<p align="center">
+  <img src="docs/img/01-recordings.png" alt="The recordings page: years, status, labels, search" width="48%">
+  <img src="docs/img/16-public-uploaded.png" alt="The public upload page, used with a share code and no login" width="48%">
+</p>
+
+**Safe by design.** The original recording is kept, whole, next to the results. A file is deleted
+only after its copy is verified identical. Outputs are written to a temporary name and renamed when
+complete, so a crash never leaves a half-written file. Everything about a recording lives in one
+`recording.json` next to its files.
+
+**Made for several churches and for phones.** One folder per church, each with its own default tags,
+names, logo and users. The interface is in English, Norwegian bokmål and nynorsk, in a light or dark
+theme, and the editor works with a finger on a phone.
+
+<p align="center">
+  <img src="docs/img/18-phone-editor.png" alt="The editor on a phone" width="26%">
+  &nbsp;&nbsp;
+  <img src="docs/img/19-dark-editor.png" alt="The editor in the dark theme" width="68%">
+</p>
+
+## How it works
+
+```
+ recording ──► upload / inbox folder / share code
+                      │
+                      ▼
+           converted (WAV → FLAC, video → audio), checked identical
+                      │
+                      ▼
+      cut on the waveform: sections, cuts, labels, fades
+                      │  Save
+                      ▼
+   mono · noise reduction · loudness · FLAC, MP3, Opus   (original kept)
 ```
 
-The integration tests run the whole pipeline with real ffmpeg on synthetic recordings;
-`docker build .` runs them too.
+A recording is a folder named after its date:
 
-## Docker (ffmpeg included)
+```
+2026-10-18/
+  2026-10-18.flac   2026-10-18.mp3   2026-10-18.opus     the finished files
+  recording.json                                           what it is, the cuts, how each file was made
+  original/2026-10-18_raw.flac                             the whole recording, untouched
+```
 
-ffmpeg is a separate C program and cannot be built into the Go binary, so the image packages both.
+## Under the hood
+
+One Go binary, **standard library only**, with ffmpeg run as a command. The frontend is plain
+JavaScript with [wavesurfer.js](https://wavesurfer.xyz/) for the waveform: no framework and no build
+step. State is plain files in the data folder, so there is no database to run or back up. The
+studio has no login of its own: put it behind your login proxy, or on a trusted network. The
+public upload page is a separate listener that can reach nothing but itself. See
+[SECURITY.md](SECURITY.md).
+
+## Documentation
+
+| | |
+|---|---|
+| [User guide](docs/guide.md) | Uploading, cutting, saving, sharing: with pictures |
+| [Running it](docs/running.md) | Docker, the data folder, all flags |
+| [Access control](docs/access.md) | Which user sees which church |
+| [What a run makes](docs/outputs.md) | The files, loudness targets and options |
+| [Design](docs/design.md) | Background and decisions |
+| [Contributing](CONTRIBUTING.md) | Build, test and pull requests |
+
+## Run it yourself
+
+You need Docker (or Go 1.25 and ffmpeg). The image includes ffmpeg.
 
 ```bash
+git clone https://github.com/gunnaringe/sermon-studio && cd sermon-studio
 docker build -t sermon-studio .
+mkdir -p data/my-church/Taler data/my-church/Innboks cache
 docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
-  -v /path/to/data:/data -v /path/to/cache:/cache \
+  -v "$PWD/data:/data" -v "$PWD/cache:/cache" \
   sermon-studio --data-dir /data --cache-dir /cache
 ```
 
-`-u` makes the created files owned by your user, not root.
-The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and libmp3lame.
+Open <http://localhost:8080>. Each folder in `data/` is a church; add more from the app. All options
+and the public upload page are in [docs/running.md](docs/running.md).
 
-## Running
+## License
 
-```bash
-sermon-studio --data-dir /path/to/data --listen :8080
-```
-
-The data dir has a folder per church (a church is a folder with a `Taler` folder in it):
-
-```
-data/norkirken-melhus/
-  Taler/<year>/<date>[ <name>]/   the sermons
-  Innboks/                        the inbox
-  church.json                     optional: name, default tags, remembered names (written by the app)
-```
-
-The folder name is the church's id and, until it is renamed on the Settings page, its name. Add a
-church in the app ("+ Add church…") or just make the folder. The church is the first part of every address
-(`#/<church>` the recordings, `#/<church>/folder/<path>` the editor, `#/<church>/settings` the settings), so a link opens
-that church whatever the browser used last. The ids `folder`, `folders`, `recording`, `recordings`, `settings`, `upload` and
-`shares` are reserved for that. A `church.json` that cannot be read stops
-the server from starting rather than being overwritten.
-
-**Logo:** *Settings → Church → Upload logo…* (PNG, JPEG, WebP or SVG, up to 1 MB) puts the church's own
-logo in the header instead of the app's; it is kept as `logo.<ext>` in the church folder. A user with one
-church and no right to add more sees just its name in the header; otherwise a quiet dropdown switches church.
-
-| Flag | Default | |
-|---|---|---|
-| `--data-dir` | | the folder with a folder per church (see above) |
-| `--root`, `--inbox` | | one church without a church folder, instead of `--data-dir`: its date folders and the inbox where new recordings arrive. Settings are not saved. |
-| `--groups-header` | | request header in which the login proxy sends the user's groups; turns on access control (below) |
-| `--logout-url` | | the login proxy's logout address; shows a Log out button in the header (posts to it) |
-| `--listen` | `:8080` | address to listen on |
-| `--cache-dir` | user cache folder | waveform data and listening previews |
-| `--cache-days` | 30 | remove cached analyses not used for this long |
-| `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
-| `--ffmpeg` | `ffmpeg` | path to ffmpeg |
-| `--share-listen` | | address of the public upload page (see [Shares](#shares)); unset = no shares |
-| `--share-url` | | the upload page's public address, so the studio can show share links |
-| `--share-ip-header` | | header with the client's address, for the rate limits (Cloudflare: `CF-Connecting-IP`) |
-| `--share-fails-per-ip`, `--share-fails-total` | 5, 30 | wrong codes in 10 minutes before an address is blocked for an hour / codes are refused for everyone for 10 minutes |
-| `--share-requests-per-ip`, `--share-requests-total` | 120, 1200 | requests per minute to the upload page |
-| `--share-uploads-per-ip`, `--share-uploads-total` | 3, 10 | chunks received at the same time |
-
-Churches: the dropdown in the header switches church. A request names its church with
-`?tenant=<id>` or `X-Tenant`; without one it is the first church the user sees.
-
-### Access (which churches a user sees)
-
-Without `--groups-header` there is no access control: everyone sees every church and can add
-churches. With `--groups-header X-Forwarded-Groups` the app reads the user's groups (space-separated)
-from that header, which the login proxy must set, and nothing else:
-
-- a church `<id>` is for the members of the group **`sermon_studio_<id>`**, with underscores for the hyphens in the id
-  (`norkirken-melhus` → `sermon_studio_norkirken_melhus`, like Pocket ID names groups); two churches
-  that would get the same group (`a-b`, `a_b`) are refused
-- members of **`sermon_studio_admin`** see every church and are the only ones who can add churches
-  (the app tells them the group to create)
-- users in no matching group get a 403 page; a church they do not see answers as if it did not exist
-- **`admin`** (and `default`) cannot be a church id, so no church's group can ever be the
-  administrators' group: the name is refused when adding, and a church folder with that name stops
-  the server from starting
-
-The header is only trustworthy when every request comes through the proxy and the proxy replaces it
-(Traefik removes the headers named in `authResponseHeaders` before copying the auth response's).
-Clients that reach the app directly have no groups and get nothing.
-
-The server has no login of its own: run it on the LAN, or behind a proxy that handles login.
-It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
-inside `--root`, and has no read/write timeouts (long uploads and live updates). On SIGTERM it
-cancels running jobs and waits for them to clean up.
-
-## Using it
-
-- **Recordings** (the one page, `#/<church>`): the upload, a search field, **Newly imported** (arrived in the last 7 days, newest
-  first, with when), then the years, each folded open on its own (the newest at first; the browser remembers). A row opens the
-  recording's details in place. **Labels** are your own tags on a recording ("Easter", "guest speaker": up to 10, 30 characters; added with the + button, Enter or a comma, or picked from the labels already in use;
-  removed with the × on the pill, kept as `labels` in `recording.json`, not written into the files). The search matches name, date and labels
-  in every year at once (all words must match); a label on a row searches for it. **Copy link** gives the address of one recording,
-  `#/<church>/recording/<path>`, which opens the page with its year and row open and scrolled to.
-- **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
-  ocenaudio. The controls are in three groups. **Navigate:** play, jump between silences
-  (grey on the waveform), zoom (slider, `+`/`-`, or scroll over the waveform: zooms at the
-  mouse; shift+scroll moves along; *Settings › Waveform* can make it need ctrl/cmd). **Sermon:** drag on the waveform
-  to select the sermon and drag the edges to adjust, or set the start and end at the playhead;
-  *Hear start*, *Hear end* and *Play sermon* check the cut. The from/to fields follow the
-  selection and can be typed in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed).
-  The sermon can be **several sections** (below). **Cut out:** parts of the sermon that should
-  go, such as a song in the middle (below).
-  Keys: `space` play, `s`/`e` start/end at the playhead (of the section there, or the next/previous one), `c` cut out here, `[`/`]` previous/next
-  silence, ←/→ 1 s (shift 0.1 s), `p` play the sermon.
-- **On a phone:** every page fits the screen. Drag a finger along the waveform to select (up and
-  down still scrolls the page); the section edges are wider to grab; cut with *Cut out here* and
-  zoom with the buttons.
-- **The page** has four parts: **Input file** (the recording: name, format, how it came, its
-  metadata, whether it is stereo or mono in effect, and *Download original*), **Edit** (the
-  waveform, sections, cuts and fades), **Options** (mono ↔ stereo, tags, sound) and **Output**.
-- **Saved version:** the sections, the cuts and the fades are kept in `recording.json` in the date
-  folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
-  the next time the sermon is opened. **Save** (under Output) makes them the *saved version*,
-  which stays as it is while you adjust further, and makes the files; **Revert…** (after a
-  confirmation) throws the adjustments away and goes back to it. Both versions are in the file.
-- **Several sections:** drag on an empty part of the waveform to add another section; the parts
-  between sections are left out, as if cut. Use whichever feels natural: one section with cuts,
-  or several sections (or both). Sections that come to overlap become one; *Remove* drops one.
-- **Cutting parts out:** with the sermon selected, *Cut out here* (or `c`) marks 10 s from the
-  playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
-  dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut outside
-  the sections is allowed (what is outside is left out anyway) but does nothing, and a warning by it says so (also when it is only
-  partly in a section). Every section and cut can have a **label** ("Intro", "Song"), shown on the waveform and kept
-  with the edit; labels change nothing in the files. *Hear join* plays 3 s either side of a cut as it will sound, and with
-  *Play without the cuts* (on by default) playback jumps over the cuts and the gaps between sections. The outputs are made from
-  what is left, joined with a 15 ms fade on each side so the join does not click; the length
-  shown is that of the sections after the cuts.
-- **Options:** checked as you change them; your choices carry over to the next folder. Mono or
-  stereo is a switch; choosing stereo for a recording that is mono in effect (one channel,
-  identical channels, or one side silent) shows a warning.
-- **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,
-  green when the file is there (play and download it from the recordings list). `recording.json` keeps what each file was made from (sections, cuts,
-  fades, sound, tags, bitrate), so a file made from other settings than the page shows says
-  *out of date*; files made from the recordings list count too. The choice is the recording's own (not
-  carried over): it starts with the formats it has, or the defaults when it has none; a file whose format is no longer chosen says *will be deleted*.
-  **Save** saves the edit, then makes the chosen formats that are missing or out of date and
-  deletes the files of those not chosen (never the recording), asking first when it deletes a
-  file. The edit is saved even if the files cannot be made right then. The run is followed live and
-  keeps going if the browser is closed. Cancelling leaves nothing half-written.
-- **Status** on the recordings page, worked out from what is there: *to do* (not cut yet), *done*
-  (a saved version, or files made), and next to it *no files* or *files out of date* (made from
-  another cut than the saved one) when Save has more to do; *converting*, *preparing* and
-  *processing* while the server works on it.
-- **Newly imported:** a recording that arrived (upload, inbox, share) in the last 7 days is also listed
-  on top of the first page, with when it came; the import time is kept in its `recording.json`.
-- **Upload** (at the top of the recordings page): drop or pick the recording and its date (suggested from the file name or the file's
-  date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
-  Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
-  and continue after a dropped connection. No inbox needed.
-- **Names:** a recording can have a name (upload form, optional), e.g. for two sermons a day. Its folder is
-  `<year>/<date> <name>` and its files `<date> <name>_raw.flac`, `<date> <name>.mp3`... Without a name
-  a date can hold one sermon. **Rename…** on a sermon's page changes its date or name (the folder and
-  the files named after it, also in `original/`; files already made keep their tags). A recording
-  from the inbox that finds its date taken lands in `<date> 2`; rename it. Names you use are
-  remembered per church and suggested next time; **Settings → Sermon names** turns that off and
-  lists them, so a one-off can be removed.
-- **Inbox** (with `--inbox`): recordings that arrive by other means go into their date folder
-  by themselves (see below); there is no inbox page. The recordings list shows a "converting" or
-  "preparing" tag while a recording is made ready.
-
-**Recordings may be any common audio or video file**: WAV, AIFF, FLAC, MP3, M4A/AAC, Ogg, Opus,
-WMA, or a video (MP4, MOV, MKV, WebM). As soon as one arrives (upload, inbox, share, or opening a
-folder that has one):
-- **WAV and AIFF are converted to FLAC**, verified identical by MD5 of the audio, and then the
-  original is removed;
-- **a video's sound is copied out**, unchanged, into `.mka` (Matroska audio), verified packet for
-  packet, and then the video is removed;
-- **FLAC and compressed audio are kept as they are**: FLAC would only make an MP3 bigger.
-
-Right after, the server prepares the waveform and the listening preview, so cutting can start
-at once.
-
-### Shares
-
-With `--share-listen`, people without a login can send recordings to a church's inbox on a
-separate, public upload page, with a code. **Settings → Shares** in the studio makes one: a name, the file
-types (all supported audio, or some of them), the max file size, and optionally how many files, how much
-in all and an expiry. The code (`XXXX-XXXX-XXXX-XXXX`, 80 bits) and a link with it (`<share-url>#code=...`)
-are shown once, with a Share button for the link (hold the code to copy it); the church keeps only a hash,
-in `<church>/shares.json`, with the uploads made (name, size, address, time). A share can be revoked:
-refused at once, also mid-upload (after a confirmation); it stays in the list with what came in. A share
-that no longer takes uploads (revoked, expired, used up, full) can be removed from the list, one by one or
-all at once; the files it brought stay.
-
-The upload page asks for the code, or takes it from the link and removes it from the address bar
-(it is in the fragment, so it never reaches the server's or a proxy's logs). Files go in 16 MB
-chunks, so they pass Cloudflare, and continue after a dropped connection, a reload or a restart.
-They are written as `Innboks/.share-<id>.partial`, checked to be the type they claim, and renamed
-when complete (never over a file: `name (2).wav`); then they are ingested like any inbox file.
-Half-written files (stopped uploads, here or in the studio, and encodes cut off by a crash) are
-removed once they have sat untouched for a day; the server looks every hour.
-
-Run the upload page on its own host, **not** behind the login proxy, and keep the studio behind
-it. The page serves only itself and `api/share/*`: nothing of the studio, nothing to list or
-download. Every request carries the code; wrong codes and requests are limited per address and in
-all (flags above), and an upload is refused when the disk would get within 1 GB of full.
-
-### Tags
-
-Every output (FLAC, MP3, Opus) gets title, artist, album and date tags. The **Settings** overlay (the gear in the header; closes with ✕, Esc or a click outside) sets
-the defaults of the selected church, as templates: the title starts as `{yyyy}-{mm}-{dd}`. Placeholders:
-`{yyyy}` `{yy}` `{mm}` `{dd}` `{date}` (2026-10-04) `{weekday}` and `{name}` (the sermon's name, empty
-if it has none); an unknown one is refused. They are filled in from the date folder's name
-(`2026-10-04` or `2026-10-04 Name`). The sermon's page shows the result and lets you change it for
-one run; a field you empty is left out. Saved in the church's `church.json` (with
-`--root` alone the settings last until restart).
-
-### Inbox
-
-- **The inbox is any folder**: a synced folder or a file share. A recording (any of the types
-  above) that has stopped changing for 30 s is moved into its date folder as `<date>_raw.*`
-  (and converted and prepared there), without anyone opening it. The date is taken from the
-  file name, else the recording's tags, else its modification time. If that date already has a
-  raw recording, the new one goes in `<date> 2`, `<date> 3`... Hidden files and `*.partial*`
-  are ignored, so write under such a name and rename when done if you can.
-
-When a recording is opened the first time, the server prepares its waveform and a small MP3
-preview for listening (about 35 s for 90 minutes), kept in `--cache-dir` and kept
-when a recording is moved. The preview is
-normalized (up to 40 dB of dynamic gain), so even a very quiet recording can be heard while
-cutting; the waveform keeps the original levels, where loud music and quieter speech stand
-apart. The browser only streams the preview; the cut is always made from the original.
-
-### Language and theme
-
-The interface is in English, Norwegian bokmål and Norwegian nynorsk. It follows the browser's language (Norwegian
-`no` is bokmål; anything else is English) until you choose one in **Settings → Appearance**, where the theme is also set:
-automatic (the device's light or dark), light or dark. Both are kept in the browser. The public upload page follows the
-browser too and has a language choice in its header. Messages from the server are translated where they are known
-(`web/static/locales.js`); the tags written into files (like the `{weekday}` name) are not translated. The footer links to
-the source on GitHub.
-
-## What a run makes
-
-```
-2026-10-04/
-  2026-10-04_raw.flac  the whole recording, untouched by runs
-  2026-10-04.flac      master: mono, 48 kHz / 24-bit, -19 LUFS
-  2026-10-04.mp3       mono, 96 kbps
-  2026-10-04.opus      mono, 48 kbps
-```
-
-| Option | Default | |
-|---|---|---|
-| Outputs | FLAC, MP3, Opus | which files to make |
-| Stereo | off (mono) | stereo moves the defaults to -16 LUFS, MP3 128k, Opus 96k |
-| Fade in / out | 0 | seconds of fade at the cut points, 0 = off |
-| Noise reduction | 12 dB | 0 = off |
-| Target loudness | -19 LUFS | |
-| Max true peak | -1.5 dBTP | for the master |
-| MP3 / Opus bitrate | 96k / 48k | |
-
-- The fades are applied last, after the loudness processing, so they stay intact in every output.
-- MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or
-  the loudness is off. They are always made from the master; without FLAC it is a temporary
-  hidden file in the date folder, removed when the run ends.
-- Up-to-date outputs are kept; Save redoes those that are out of date (and cuts again). Output is written to a `.partial` file and
-  renamed when done, so an interrupted run never leaves a half-written file behind.
-- Mono is the usual choice for speech, and mono and stereo recordings both work either way.
-  With stereo, the run warns if the source is mono or its two channels are identical or nearly
-  so (difference 30 dB or more below the signal, common when a mixer sends one signal to both
-  sides): stereo output would sound the same as mono in bigger files. It also warns if one
-  channel is silent or 20 dB or more quieter than the other: stereo output would have the
-  sermon on one side only, while mono mixes both channels. It only warns.
-
-### The original recording
-
-A run moves the whole recording into `original/` in the date folder, as FLAC, so the date folder
-ends up with the finished files, the saved cuts and that one folder. No cut file is made: the
-outputs are made straight from the original, using the sections and cuts (`recording.json`),
-so there is nothing else to keep in step.
-
-```
-2026-10-04/
-  2026-10-04.flac
-  2026-10-04.mp3
-  2026-10-04.opus
-  recording.json                what the recording is, the saved and adjusted sections, cuts
-                                and fades, and how each file was made
-  original/
-    2026-10-04_raw.flac         the whole recording
-```
-
-- The recording is moved into `original/` as it is (`_raw.flac`, `_raw.mp3`, `_raw.mka`...); a
-  WAV or video not converted yet is converted there first, and **deleted only if the audio is
-  identical**. Across disks a file is copied, verified and only then deleted.
-- A recording already in `original/` is never replaced by a run that only adds files; one that redoes files replaces it.
+[Apache 2.0](LICENSE). The documentation's example recording is President Kennedy's inaugural address
+(1961), a US government work in the public domain
+([source](https://commons.wikimedia.org/wiki/File:JFK_inaugural_address.ogg)).

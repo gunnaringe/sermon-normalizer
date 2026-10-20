@@ -1,0 +1,79 @@
+# Running it
+
+The full reference: build, Docker, the data folder, flags. The short version is at the bottom of the [README](../README.md).
+
+## Requirements
+
+- `ffmpeg` in PATH (Linux: `sudo apt install ffmpeg`), or use the Docker image
+- Go 1.25+ to build
+
+## Build
+
+```bash
+go build -o sermon-studio ./cmd/sermon-studio
+```
+
+Checks and tests are in [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+# Docker (ffmpeg included)
+
+ffmpeg is a separate C program and cannot be built into the Go binary, so the image packages both.
+
+```bash
+docker build -t sermon-studio .
+docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
+  -v /path/to/data:/data -v /path/to/cache:/cache \
+  sermon-studio --data-dir /data --cache-dir /cache
+```
+
+`-u` makes the created files owned by your user, not root.
+The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and libmp3lame.
+
+# Running
+
+```bash
+sermon-studio --data-dir /path/to/data --listen :8080
+```
+
+The data dir has a folder per church (a church is a folder with a `Taler` folder in it):
+
+```
+data/norkirken-melhus/
+  Taler/<year>/<date>[ <name>]/   the sermons
+  Innboks/                        the inbox
+  church.json                     optional: name, default tags, remembered names (written by the app)
+```
+
+The folder name is the church's id and, until it is renamed on the Settings page, its name. Add a
+church in the app ("+ Add church…") or just make the folder. The church is the first part of every address
+(`#/<church>` the recordings, `#/<church>/folder/<path>` the editor, `#/<church>/settings` the settings), so a link opens
+that church whatever the browser used last. The ids `folder`, `folders`, `recording`, `recordings`, `settings`, `upload` and
+`shares` are reserved for that. A `church.json` that cannot be read stops
+the server from starting rather than being overwritten.
+
+**Logo:** *Settings → Church → Upload logo…* (PNG, JPEG, WebP or SVG, up to 1 MB) puts the church's own
+logo in the header instead of the app's; it is kept as `logo.<ext>` in the church folder. A user with one
+church and no right to add more sees just its name in the header; otherwise a quiet dropdown switches church.
+
+| Flag | Default | |
+|---|---|---|
+| `--data-dir` | | the folder with a folder per church (see above) |
+| `--root`, `--inbox` | | one church without a church folder, instead of `--data-dir`: its date folders and the inbox where new recordings arrive. Settings are not saved. |
+| `--groups-header` | | request header in which the login proxy sends the user's groups; turns on access control (below) |
+| `--logout-url` | | the login proxy's logout address; shows a Log out button in the header (posts to it) |
+| `--listen` | `:8080` | address to listen on |
+| `--cache-dir` | user cache folder | waveform data and listening previews |
+| `--cache-days` | 30 | remove cached analyses not used for this long |
+| `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
+| `--ffmpeg` | `ffmpeg` | path to ffmpeg |
+| `--share-listen` | | address of the public upload page (see [Shares](guide.md#shares)); unset = no shares |
+| `--share-url` | | the upload page's public address, so the studio can show share links |
+| `--share-ip-header` | | header with the client's address, for the rate limits (Cloudflare: `CF-Connecting-IP`) |
+| `--share-fails-per-ip`, `--share-fails-total` | 5, 30 | wrong codes in 10 minutes before an address is blocked for an hour / codes are refused for everyone for 10 minutes |
+| `--share-requests-per-ip`, `--share-requests-total` | 120, 1200 | requests per minute to the upload page |
+| `--share-uploads-per-ip`, `--share-uploads-total` | 3, 10 | chunks received at the same time |
+
+Churches: the dropdown in the header switches church. A request names its church with
+`?tenant=<id>` or `X-Tenant`; without one it is the first church the user sees.
+
+Access control, for several users: [access.md](access.md).
