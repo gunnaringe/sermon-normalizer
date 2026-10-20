@@ -51,13 +51,14 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `cutting` (`folders.go`) turns sections + cuts into the pipeline's Start/End/Cuts (gaps become cuts).
   `PUT api/sermon` (adjust), `POST api/sermon/save`, `POST api/sermon/revert`; returned as
   `sermon` in the folder info.
-- `web/folders.go`: folder list/info, run options, `check` (validates a run).
+- `web/folders.go`: `api/recordings` (every date folder of the church, flat: the page groups/searches it), `api/labels` (a
+  recording's labels, `cleanLabels`), folder info, run options, `check` (validates a run).
 - `web/make.go`: `POST api/make?path&format`: one missing format from the saved version (a normal run, no Force).
   `POST api/outputs/remove?path&format=…`: deletes outputs (only those) and their records; not during a run.
 - `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
 - `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3
   preview, cached by path+size+mtime; `carry` moves the cache on import.
-- `web/upload.go`: chunked upload straight to a date folder (the form is on top of every folder list, `uploadBox` in `app.js`).
+- `web/upload.go`: chunked upload straight to a date folder (the form is on top of the recordings page, `uploadBox` in `app.js`).
 - `web/inbox.go`: inbox file names, date suggestion, `newRawFolder`.
 - `web/inboxwatch.go`: `ingest` moves settled inbox files straight to their date
   folder (convert + prepare happen there).
@@ -66,7 +67,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
 - `web/static/`: plain JS, no build. `app.js` = the hash router (`#/<church>/…`, old addresses without a church are moved; the
-  church comes from the address) and the Settings overlay (`openSettings`, over whichever page is shown). `sermons.js` = a sermon's details inside the folder list (play, download,
+  church comes from the address) and the Settings overlay (`openSettings`, over whichever page is shown). `recordings.js` = the one recordings page (years, search, Newly imported, rows, `open(path)` for links); `sermons.js` = a sermon's details inside it (labels, copy link, play, download,
   make a format); clicking anywhere on a date row expands it; an unprocessed recording only offers the editor there. `icons/` = the logo: `logo.svg` is the one source (header, favicon,
   `manifest.webmanifest`); the PNGs (home screen, favicon fallback) come from it via `scripts/make-icons.sh`;
   the public page serves only the ones listed in `sharePage`. `dialog.js` = confirm/alert/prompt in the app's look

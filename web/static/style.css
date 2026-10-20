@@ -186,6 +186,27 @@ pre.log { max-height: 14rem; overflow: auto; background: var(--bg); border: 1px 
 /* Newly imported recordings, above the years. */
 .recent { margin-bottom: 1.5rem; }
 .recent .arrived { margin-left: 0.6rem; font-size: 0.9em; white-space: nowrap; }
+/* The recordings page: search, years, labels. */
+.searchbar { margin: 0 0 1rem; }
+.search { width: 100%; box-sizing: border-box; font: inherit; padding: 0.55rem 0.8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--fg); }
+.results { margin: 0 0 0.4rem; }
+.year { margin: 0 0 0.3rem; }
+button.year-head { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.5rem 0.2rem; border: 0; border-bottom: 1px solid var(--line);
+  background: none; font: inherit; font-size: 1.1rem; font-weight: 600; color: var(--fg); cursor: pointer; text-align: left; }
+button.year-head .tw { color: var(--muted); width: 1rem; }
+button.year-head .muted { font-weight: 400; font-size: 0.9rem; }
+.chips { display: inline; }
+.chip { display: inline-flex; align-items: center; gap: 0.2rem; margin: 0 0.25rem 0.15rem 0; padding: 0.05rem 0.55rem; border: 1px solid var(--line);
+  border-radius: 999px; background: var(--bg); color: var(--muted); font: inherit; font-size: 0.82rem; line-height: 1.5; cursor: pointer; }
+button.chip:hover { color: var(--fg); border-color: var(--muted); }
+.chip.own { cursor: default; color: var(--fg); }
+.chip .x { border: 0; background: none; padding: 0 0.1rem; font: inherit; color: var(--muted); cursor: pointer; }
+.chip .x:hover { color: var(--error); }
+.labels { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0; margin: 0.4rem 0; }
+.label-input { font: inherit; font-size: 0.85rem; padding: 0.15rem 0.6rem; width: 9rem; border: 1px dashed var(--line); border-radius: 999px; background: none; color: var(--fg); }
+.label-input:focus { border-style: solid; }
+tr.row.target { animation: target 2.5s ease-out; }
+@keyframes target { from { background: var(--selection); } to { background: transparent; } }
 /* On the folder list: one line above the list, out of the way of listening. */
 .upload { margin: 0 0 1rem; }
 .upload .drop { padding: 0.6rem 0.8rem; text-align: left; }

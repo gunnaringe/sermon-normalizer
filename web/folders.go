@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gunnaringe/sermon-studio/normalizer"
 )
@@ -29,10 +31,11 @@ type folderEntry struct {
 	Job     string   `json:"job,omitempty"`
 	// Imported is when the recording arrived, if that is known.
 	Imported *time.Time `json:"imported,omitempty"`
+	Labels   []string   `json:"labels"`
 }
 
 // newFor is how long a recording stays among the new ones, on top of the
-// folder list, after it arrived.
+// recordings page, after it arrived (the page does the filtering).
 const newFor = 7 * 24 * time.Hour
 
 type output struct {
@@ -44,7 +47,7 @@ func outputsOf(p normalizer.Paths) []output {
 }
 
 func (s *Server) entry(abs string) folderEntry {
-	e := folderEntry{Name: filepath.Base(abs), Path: s.relPath(abs), Outputs: []string{}}
+	e := folderEntry{Name: filepath.Base(abs), Path: s.relPath(abs), Outputs: []string{}, Labels: []string{}}
 	paths, err := normalizer.NewPaths(abs)
 	if err != nil {
 		return e
@@ -66,45 +69,95 @@ func (s *Server) entry(abs string) folderEntry {
 		e.Job = j.ID
 	}
 	if e.Date {
-		e.Imported = readState(abs).Imported
+		st := readState(abs)
+		e.Imported = st.Imported
+		e.Labels = append(e.Labels, st.Labels...)
 	}
 	return e
 }
 
-// recentImports are the date folders whose recording arrived in the last
-// newFor, newest first: every folder under the root with a recording.json
-// (not in original/ or hidden ones).
-func (s *Server) recentImports() []folderEntry {
-	since := time.Now().Add(-newFor)
+// allRecordings are all the date folders under the root (not in original/ or
+// hidden ones), newest first by name: every recording of the church, for the
+// recordings page to group, search and filter.
+func (s *Server) allRecordings() []folderEntry {
 	out := []folderEntry{}
 	filepath.WalkDir(s.root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
+		if err != nil || !d.IsDir() {
 			return nil
 		}
-		if d.IsDir() {
-			if path != s.root && (strings.HasPrefix(d.Name(), ".") || d.Name() == "original") {
-				return filepath.SkipDir
-			}
-			return nil
+		if path != s.root && (strings.HasPrefix(d.Name(), ".") || d.Name() == "original") {
+			return filepath.SkipDir
 		}
-		if d.Name() != stateName {
-			return nil
-		}
-		folder := filepath.Dir(path)
-		if t := readState(folder).Imported; t != nil && t.After(since) {
-			if e := s.entry(folder); e.Date {
-				out = append(out, e)
-			}
+		if e := s.entry(path); e.Date {
+			out = append(out, e)
+			return filepath.SkipDir // a recording folder holds no other recordings
 		}
 		return nil
 	})
-	sort.Slice(out, func(i, j int) bool {
-		if !out[i].Imported.Equal(*out[j].Imported) {
-			return out[i].Imported.After(*out[j].Imported)
-		}
-		return out[i].Path > out[j].Path
-	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Name > out[j].Name })
 	return out
+}
+
+func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"recordings": s.allRecordings(), "newFor": int(newFor.Seconds())})
+}
+
+const (
+	maxLabels      = 10
+	maxLabelLength = 30
+)
+
+// cleanLabels tidies a recording's labels: spaces collapsed, empty ones and
+// repeats (any case) dropped; too many or too long ones are refused.
+func cleanLabels(in []string) ([]string, error) {
+	out := []string{}
+	for _, l := range in {
+		l = strings.Join(strings.Fields(l), " ")
+		switch {
+		case l == "":
+			continue
+		case strings.ContainsFunc(l, func(r rune) bool { return r < ' ' }):
+			return nil, errors.New("a label cannot hold control characters")
+		case utf8.RuneCountInString(l) > maxLabelLength:
+			return nil, fmt.Errorf("a label can be at most %d characters", maxLabelLength)
+		case slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, l) }):
+			continue
+		}
+		out = append(out, l)
+	}
+	if len(out) > maxLabels {
+		return nil, fmt.Errorf("a recording can have at most %d labels", maxLabels)
+	}
+	return out, nil
+}
+
+// handleLabelsPut sets a recording's labels: PUT api/labels?path=<date folder>, {"labels": [...]}.
+func (s *Server) handleLabelsPut(w http.ResponseWriter, r *http.Request) {
+	abs, ok := s.pathParam(w, r)
+	if !ok {
+		return
+	}
+	if !s.entry(abs).Date {
+		writeError(w, http.StatusNotFound, errors.New("no recording there"))
+		return
+	}
+	var q struct {
+		Labels []string `json:"labels"`
+	}
+	if err := decodeRequest(r, &q); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	labels, err := cleanLabels(q.Labels)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := s.updateState(abs, func(st *folderState) error { st.Labels = labels; return nil }); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.entry(abs))
 }
 
 func (s *Server) handleFolders(w http.ResponseWriter, r *http.Request) {
@@ -133,8 +186,6 @@ func (s *Server) handleFolders(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{"path": s.relPath(abs), "entries": entries}
 	if abs != s.root {
 		resp["parent"] = s.relPath(filepath.Dir(abs))
-	} else {
-		resp["recent"] = s.recentImports()
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

@@ -35,11 +35,10 @@ const selection = async (page) => {
   return list[0] || null;
 };
 
-test('folder list shows the date folders with their status', async ({ page }) => {
+test('the recordings page shows the years and the recordings with their status', async ({ page }) => {
   await page.goto('');
-  await page.getByRole('link', { name: '2026/' }).click();
-  await expect(page.getByRole('heading', { name: '2026' })).toBeVisible();
-  const row = page.locator('tr', { hasText: '2026-10-04' });
+  await expect(page.locator('button.year-head', { hasText: '2026' })).toHaveAttribute('aria-expanded', 'true'); // the newest year is open
+  const row = page.locator('.year tr', { hasText: '2026-10-04' });
   await expect(row).toContainText('not processed');
   await row.click();
   await expect(row.locator('xpath=following-sibling::tr[1]').getByRole('link', { name: 'Open in the editor' })).toBeVisible();
@@ -509,13 +508,12 @@ test('inbox: a recording lands in its date folder by itself', async ({ page }) =
   await page.goto('#/');
   await expect(page.getByRole('link', { name: 'Inbox' })).toHaveCount(0);
   fs.copyFileSync(path.join(DATA, 'upload.flac'), path.join(DATA, 'inbox', 'Gudstjeneste 2026-09-20.flac'));
-  await page.goto('#/folders/2026');
   // The server takes it once it has been quiet for a while; the list is read on load.
   await expect(async () => {
     await page.reload();
-    await expect(page.getByRole('button', { name: '2026-09-20', exact: true })).toBeVisible({ timeout: 2_000 });
+    await expect(page.locator('.year').getByRole('button', { name: '2026-09-20', exact: true })).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 60_000 });
-  await page.getByRole('button', { name: '2026-09-20', exact: true }).click();
+  await page.locator('.year').getByRole('button', { name: '2026-09-20', exact: true }).click();
   await page.getByRole('link', { name: 'Open in the editor' }).click();
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
   expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-09-20')).filter((f) => f !== 'recording.json')).toEqual(['2026-09-20_raw.flac']);
@@ -563,7 +561,7 @@ test('a 90-minute recording stays responsive', async ({ page }) => {
 test('churches: add one, folders are separate, the choice is remembered', async ({ page }) => {
   await page.goto('#/');
   await expect(page.locator('#church')).toHaveValue('first-church');
-  await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
+  await expect(page.locator('button.year-head', { hasText: '2026' })).toBeVisible();
   await page.locator('#church').selectOption('+');
   await page.getByRole('dialog').getByLabel('Name of the new church').fill('Second church');
   await page.getByRole('dialog').getByRole('button', { name: 'Add church' }).click();
@@ -574,7 +572,7 @@ test('churches: add one, folders are separate, the choice is remembered', async 
   await expect(page).toHaveURL(/#\/second-church$/);
   await page.locator('#church').selectOption('first-church');
   await expect(page).toHaveURL(/#\/first-church$/);
-  await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
+  await expect(page.locator('button.year-head', { hasText: '2026' })).toBeVisible();
   // A link names its church: it opens that church, whatever this browser used last.
   await page.goto('#/second-church');
   await expect(page.locator('#church')).toHaveValue('second-church');
@@ -654,12 +652,12 @@ test('names: remembered, suggested, and tidied in settings', async ({ page }) =>
 });
 
 test('settings: an overlay over the page, closed by the cross, Esc or a click outside', async ({ page }) => {
-  await page.goto('#/first-church/folders/2026');
-  await expect(page.getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
+  await page.goto('#/first-church');
+  await expect(page.locator('.year').getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(dialog.getByRole('heading', { name: 'Default tags' })).toBeVisible();
-  await expect(page).toHaveURL(/#\/first-church\/folders\/2026$/); // still on the page it was opened over
+  await expect(page).toHaveURL(/#\/first-church$/); // still on the page it was opened over
   await page.screenshot({ path: path.join(shots, 'settings-overlay.png') });
   await dialog.getByRole('button', { name: 'Close settings' }).click();
   await expect(dialog).toBeHidden();
@@ -669,7 +667,7 @@ test('settings: an overlay over the page, closed by the cross, Esc or a click ou
   await page.getByRole('link', { name: 'Settings' }).click();
   await page.mouse.click(5, 300); // the backdrop
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
+  await expect(page.locator('.year').getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
 
   // The address opens it over the recordings; closing goes back to them.
   await page.goto('#/first-church/settings/shares');
@@ -683,7 +681,7 @@ test('addresses: the church comes first; old ones are moved', async ({ page }) =
   await page.goto('');
   await expect(page).toHaveURL(/#\/first-church$/);
   await page.goto('#/folders/2026');
-  await expect(page).toHaveURL(/#\/first-church\/folders\/2026$/);
+  await expect(page).toHaveURL(/#\/first-church$/);
   await page.goto('#/folder/2026/2026-10-04');
   await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-10-04$/);
   await expect(page.getByRole('heading', { name: '2026-10-04' })).toBeVisible();

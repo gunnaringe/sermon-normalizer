@@ -27,12 +27,12 @@ test.beforeAll(async ({ request }) => {
 });
 
 test('a sermon opens its details in the list: play, download, make a missing format', async ({ page }) => {
-  await page.goto('#/folders/2026');
-  const row = page.locator('tr.row', { hasText: '2026-07-05' });
+  await page.goto('');
+  const row = page.locator('.year tr.row', { hasText: '2026-07-05' });
   await expect(row).not.toContainText('not processed');
   await expect(row).toContainText('ready');
   await row.click();
-  await expect(page).toHaveURL(/#\/first-church\/folders\/2026$/);
+  await expect(page).toHaveURL(/#\/first-church$/);
   const detail = page.locator('tr.detail-row');
   await expect(detail.locator('audio')).toHaveCount(1); // one player, never the whole service
   await expect(detail.locator('audio')).toHaveAttribute('src', /opus|flac/); // no MP3 yet
@@ -64,14 +64,14 @@ test('a sermon opens its details in the list: play, download, make a missing for
 });
 
 test('a recording that is not processed has the tag and an edit button, and still opens the editor', async ({ page }) => {
-  await page.goto('#/folders/2026');
-  const row = page.locator('tr.row', { hasText: '2026-08-30' });
+  await page.goto('');
+  const row = page.locator('.year tr.row', { hasText: '2026-08-30' });
   await expect(row).toContainText('not processed');
   await row.click(); // anywhere on the row
   await expect(page.getByRole('link', { name: 'Open in the editor' })).toBeVisible();
   await expect(page.locator('tr.detail-row audio')).toHaveCount(0);
   await expect(page.locator('tr.detail-row')).not.toContainText('Download'); // nothing to download yet
-  await expect(page).toHaveURL(/#\/first-church\/folders\/2026$/);
+  await expect(page).toHaveURL(/#\/first-church$/);
   await page.screenshot({ path: path.join(shots, 'sermon-list-unprocessed.png') });
   await page.getByRole('link', { name: 'Open in the editor' }).click();
   await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-08-30$/);
@@ -80,8 +80,8 @@ test('a recording that is not processed has the tag and an edit button, and stil
 test('sermon details fit a phone', async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, baseURL: process.env.BASE_URL || 'http://localhost:8080/' });
   const page = await ctx.newPage();
-  await page.goto('#/folders/2026');
-  await page.locator('tr.row', { hasText: '2026-07-05' }).click();
+  await page.goto('');
+  await page.locator('.year tr.row', { hasText: '2026-07-05' }).click();
   await expect(page.locator('tr.detail-row audio')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: path.join(shots, 'phone-sermon-list.png') });
