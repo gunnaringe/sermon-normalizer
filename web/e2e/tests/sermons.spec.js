@@ -33,15 +33,20 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await row.click();
   await expect(page).toHaveURL(/#\/folders\/2026$/);
   const detail = page.locator('tr.detail-row');
-  await expect(detail.locator('audio')).toHaveCount(3); // FLAC, Opus, the original
+  await expect(detail.locator('audio')).toHaveCount(1); // one player, never the whole service
+  await expect(detail.locator('audio')).toHaveAttribute('src', /opus|flac/); // no MP3 yet
   await expect(detail).toContainText('Length 0:20');
-  await expect(detail.getByRole('link', { name: 'Download' }).first()).toHaveAttribute('href', /download=1/);
-  await expect(detail.getByText('Not made')).toBeVisible();
+  await expect(detail.getByRole('link', { name: 'Download FLAC' })).toHaveAttribute('href', /download=1/);
+  await expect(detail.getByRole('link', { name: 'Download Opus' })).toHaveClass(/on/);
+  const mp3 = detail.getByRole('button', { name: 'Download MP3' });
+  await expect(mp3).not.toHaveClass(/on/);
   await page.screenshot({ path: path.join(shots, 'sermon-list-open.png') });
 
-  await detail.getByRole('button', { name: 'Make MP3' }).click();
-  await expect(detail.locator('audio')).toHaveCount(4, { timeout: 60_000 });
-  await expect(detail.getByRole('button', { name: /Make/ })).toHaveCount(0);
+  await mp3.click();
+  await expect(mp3).toHaveClass(/busy/);
+  await expect(detail.getByText(/conversion is running/)).toBeVisible();
+  await page.screenshot({ path: path.join(shots, 'sermon-list-making.png') });
+  await expect(detail.getByRole('link', { name: 'Download MP3' })).toHaveClass(/on/, { timeout: 60_000 });
   expect(fs.readdirSync(path.join(DATA, 'root', folder)).some((f) => f.endsWith('.mp3'))).toBe(true);
 
   await row.click(); // closes again
@@ -57,6 +62,7 @@ test('a recording that is not processed warns, and still opens the editor', asyn
   await row.getByRole('button', { name: /Show details/ }).click();
   const warning = page.getByRole('alert');
   await expect(warning).toContainText('full, unedited raw recording');
+  await expect(page.locator('tr.detail-row audio')).toHaveCount(0);
   await expect(page).toHaveURL(/#\/folders\/2026$/);
   await page.screenshot({ path: path.join(shots, 'sermon-list-unprocessed.png') });
   await row.getByRole('link', { name: '2026-08-30' }).click();
@@ -68,7 +74,7 @@ test('sermon details fit a phone', async ({ browser }) => {
   const page = await ctx.newPage();
   await page.goto('#/folders/2026');
   await page.locator('tr.row', { hasText: '2026-07-05' }).click();
-  await expect(page.locator('tr.detail-row audio').first()).toBeVisible();
+  await expect(page.locator('tr.detail-row audio')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: path.join(shots, 'phone-sermon-list.png') });
   await ctx.close();

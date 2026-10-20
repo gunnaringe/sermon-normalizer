@@ -14,13 +14,12 @@ function keptSeconds(s) {
   return s.sections.reduce((n, x) => n + len(x), 0) - s.cuts.reduce((n, c) => n + inside(c), 0);
 }
 
-function raw(info, label) {
-  if (!info.raw) return '';
-  return h('div', { class: 'out' },
-    h('strong', {}, label), h('span', { class: 'muted' }, info.raw.name + ', ' + formatSize(info.raw.size)),
-    h('audio', { controls: true, preload: 'none', src: fileURL(info.raw) }),
-    h('a', { href: fileURL(info.raw, true) }, 'Download'));
-}
+// the format the one player plays: what every browser handles first
+const PLAY_ORDER = ['mp3', 'opus', 'flac'];
+
+const original = (info) => info.raw
+  ? h('a', { class: 'button', href: fileURL(info.raw, true), title: info.raw.name + ', ' + formatSize(info.raw.size) }, 'Download the original recording')
+  : '';
 
 // sermonDetail returns the panel for a folder; it fills in when the folder
 // has been read, and again after a format was made.
@@ -39,8 +38,7 @@ export function sermonDetail(entry) {
         h('strong', {}, 'Not processed. '),
         'This is the full, unedited raw recording of the whole service, not the sermon. ',
         'Open it in the editor to select the sermon and make the files.'),
-      h('div', { class: 'outputs' }, raw(info, 'Raw recording')),
-      h('p', {}, h('a', { class: 'button', href: editURL }, 'Open in the editor')),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Open in the editor'), original(info)),
     ];
   }
 
@@ -55,45 +53,45 @@ export function sermonDetail(entry) {
       tags.artist && 'Artist: ' + tags.artist,
       tags.album && 'Album: ' + tags.album,
     ].filter(Boolean);
-    const status = h('p', { class: 'muted', 'aria-live': 'polite' });
+    const status = h('p', { class: 'muted making', 'aria-live': 'polite' });
     const buttons = [];
-    const rows = FORMATS.map(([format, label]) => {
+    const downloads = FORMATS.map(([format, label]) => {
       const o = info.outputs.find((x) => x.format === format);
-      if (o) {
-        return h('div', { class: 'out' },
-          h('strong', {}, label), h('span', { class: 'muted' }, formatSize(o.size)),
-          h('audio', { controls: true, preload: 'none', src: fileURL(o) }),
-          h('a', { href: fileURL(o, true) }, 'Download'));
-      }
+      if (o) return h('a', { class: 'button dl on', href: fileURL(o, true), title: formatSize(o.size) }, 'Download ' + label);
       const b = h('button', {
+        class: 'dl',
         disabled: !saved,
-        title: saved ? '' : 'Save the sermon in the editor first',
-        onclick: () => make(format, label, status, buttons),
-      }, 'Make ' + label);
+        title: saved ? `Not made yet: make ${label}` : 'Save the sermon in the editor first',
+        onclick: () => make(format, label, b, status, buttons),
+      }, 'Download ' + label);
       buttons.push(b);
-      return h('div', { class: 'out' }, h('strong', {}, label), h('span', { class: 'muted' }, 'Not made'), b);
+      return b;
     });
+    const best = PLAY_ORDER.map((f) => info.outputs.find((x) => x.format === f)).find(Boolean);
     return [
       h('p', { class: 'facts' }, facts.join(' · ')),
-      h('div', { class: 'outputs' }, rows, raw(info, 'Original (the whole service, unedited)')),
+      h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': 'The sermon' }),
+      h('p', { class: 'actions' }, downloads),
       status,
-      h('p', {}, h('a', { href: editURL }, 'Edit cuts')),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Edit cuts'), original(info)),
     ];
   }
 
-  async function make(format, label, status, buttons) {
+  async function make(format, label, button, status, buttons) {
     for (const b of buttons) b.disabled = true;
-    status.textContent = `Making ${label}…`;
+    button.classList.add('busy');
+    status.textContent = `Making ${label}: the conversion is running…`;
     try {
       let job = await api('POST', 'api/make?path=' + q(entry.path) + '&format=' + format);
       while (job.state === 'queued' || job.state === 'running') {
         await sleep(1000);
-        status.textContent = `Making ${label}… ${Math.round((job.progress || 0) * 100)}%`;
+        status.textContent = `Making ${label}: the conversion is running… ${Math.round((job.progress || 0) * 100)}%`;
         job = await api('GET', 'api/jobs/' + job.id);
       }
       if (job.state !== 'done') throw new Error(job.error || `${label} was not made (${job.state})`);
       await show();
     } catch (err) {
+      button.classList.remove('busy');
       status.replaceChildren(h('span', { class: 'error' }, err.message));
       for (const b of buttons) b.disabled = false;
     }
