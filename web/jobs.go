@@ -211,8 +211,10 @@ func (js *jobs) run(ctx context.Context, j *job, pl plan) {
 	if raw := pl.paths.Source(); raw != "" {
 		oldKey, _ = cacheKey(raw)
 	}
+	began := time.Now()
 	err := p.Run(ctx)
 	lw.flush()
+	js.s.recordOutputs(pl, began)
 	if oldKey != "" {
 		if raw := pl.paths.Source(); raw != "" {
 			js.s.analyses.carry(oldKey, raw)

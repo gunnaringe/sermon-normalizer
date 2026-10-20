@@ -133,3 +133,34 @@ func (f FFmpeg) CheckChannels(ctx context.Context, path string, pre ...string) (
 	}
 	return checkFromLevels(levels)
 }
+
+// ChannelVerdict is what the channels of a recording are, in short, for
+// people: "stereo", "mono" (one channel), "one-sided" (two channels with the
+// sound on Side only; the other is silent or OneSided dB quieter),
+// "identical" (two channels carrying the same signal) or "more" (more than two).
+type ChannelVerdict struct {
+	Kind  string  `json:"kind"`
+	Quiet string  `json:"quiet,omitempty"`   // one-sided: the silent or quieter channel, "left" or "right"
+	By    float64 `json:"quietBy,omitempty"` // one-sided: how much quieter in dB; 0 = silent
+}
+
+// Verdict sums up the check.
+func (c ChannelCheck) Verdict() ChannelVerdict {
+	switch {
+	case c.Channels == 1:
+		return ChannelVerdict{Kind: "mono"}
+	case c.Channels > 2:
+		return ChannelVerdict{Kind: "more"}
+	}
+	if side, by := c.Quieter(); side != "" {
+		v := ChannelVerdict{Kind: "one-sided", Quiet: side}
+		if !math.IsInf(by, 1) {
+			v.By = math.Round(by)
+		}
+		return v
+	}
+	if c.EffectivelyMono() {
+		return ChannelVerdict{Kind: "identical"}
+	}
+	return ChannelVerdict{Kind: "stereo"}
+}

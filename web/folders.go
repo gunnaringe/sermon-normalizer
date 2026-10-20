@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gunnaringe/sermon-studio/normalizer"
 )
@@ -100,6 +101,10 @@ type folderInfo struct {
 	Tags      *Meta            `json:"tags"` // the church's defaults filled in for this folder
 	TagsError string           `json:"tagsError,omitempty"`
 	Sermon    *sermonFile      `json:"sermon"` // the saved and adjusted settings of this sermon
+	// Recording is what the recording is (format, metadata, channels), once
+	// it has been looked at; nil while that is still to come.
+	Recording     *recordingFacts `json:"recording"`
+	ConvertedFrom *sourceFile     `json:"convertedFrom"`
 }
 
 type outputFileInfo struct {
@@ -113,8 +118,13 @@ func (s *Server) folderInfo(abs string) (folderInfo, error) {
 		return folderInfo{}, err
 	}
 	info := folderInfo{Path: s.relPath(abs), Date: paths.Date, Outputs: []outputFileInfo{}, Sermon: readSermon(abs)}
+	st := readState(abs)
+	info.ConvertedFrom = st.ConvertedFrom
 	if raw := paths.Source(); raw != "" {
 		info.Raw = s.fileInfo(raw)
+		if factsFresh(st, raw) {
+			info.Recording = st.Recording
+		}
 	}
 	for _, o := range outputsOf(paths) {
 		if fi := s.fileInfo(o.path); fi != nil {
@@ -283,8 +293,9 @@ func (q runRequest) options() (normalizer.Options, error) {
 
 // plan is a checked run: the options, or why it cannot run, plus notices.
 type plan struct {
-	Error   string   `json:"error,omitempty"`
-	Notices []string `json:"notices"`
+	Outputs map[string]outputState `json:"outputs,omitempty"` // when it can run
+	Error   string                 `json:"error,omitempty"`
+	Notices []string               `json:"notices"`
 
 	opt   normalizer.Options
 	paths normalizer.Paths
@@ -325,19 +336,55 @@ func (s *Server) check(abs string, q runRequest) plan {
 	case s.analyses.converting(raw):
 		return fail(errors.New("the recording is still being converted to FLAC"))
 	}
-	if !pl.opt.Force {
-		var existing []string
-		on := map[string]bool{"flac": q.Flac, "mp3": q.Mp3, "opus": q.Opus}
-		for _, o := range outputsOf(paths) {
-			if _, err := os.Stat(o.path); on[o.format] && err == nil {
-				existing = append(existing, filepath.Base(o.path))
-			}
+	pl.Outputs = s.outputStatus(paths, pl.opt)
+	return pl
+}
+
+// outputState is an output as the page sees it: whether it is there, and
+// whether a run with the page's settings would make it differently. Known is
+// false for a file made before the studio kept track (or by hand).
+type outputState struct {
+	Exists bool `json:"exists"`
+	Known  bool `json:"known"`
+	Stale  bool `json:"stale"`
+}
+
+func (s *Server) outputStatus(paths normalizer.Paths, o normalizer.Options) map[string]outputState {
+	made := readState(paths.Folder).Outputs
+	out := map[string]outputState{}
+	for _, x := range outputsOf(paths) {
+		var st outputState
+		if _, err := os.Stat(x.path); err == nil {
+			m, ok := made[x.format]
+			st = outputState{Exists: true, Known: ok, Stale: ok && m.From != madeFrom(o, x.format)}
 		}
-		if len(existing) > 0 {
-			pl.Notices = append(pl.Notices, "Already there, kept: "+strings.Join(existing, ", ")+". Save and generate makes them again.")
+		out[x.format] = st
+	}
+	return out
+}
+
+// recordOutputs keeps in recording.json how the outputs a run wrote (those
+// changed since it began) were made, also when it failed half-way.
+func (s *Server) recordOutputs(pl plan, began time.Time) {
+	on := map[string]bool{"flac": pl.opt.Outputs.Flac, "mp3": pl.opt.Outputs.Mp3, "opus": pl.opt.Outputs.Opus}
+	made := map[string]outputMade{}
+	for _, x := range outputsOf(pl.paths) {
+		if st, err := os.Stat(x.path); err == nil && on[x.format] && !st.ModTime().Before(began.Add(-time.Second)) {
+			made[x.format] = outputMade{MadeAt: st.ModTime().UTC(), From: madeFrom(pl.opt, x.format),
+				Stereo: pl.opt.Stereo, Bitrate: bitrateFor(pl.opt, x.format)}
 		}
 	}
-	return pl
+	if len(made) == 0 {
+		return
+	}
+	if _, err := s.updateState(pl.paths.Folder, func(st *folderState) error {
+		for f, m := range made {
+			st.Outputs[f] = m
+		}
+		return nil
+	}); err != nil {
+		s.cfg.Logger.Printf("%s: %v", s.display(pl.paths.Folder), err)
+	}
 }
 
 func decodeRequest(r *http.Request, v any) error {

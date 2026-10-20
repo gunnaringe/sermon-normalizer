@@ -172,9 +172,33 @@ func TestCheck(t *testing.T) {
 	if parsed := ts.check(filepath.Join(ts.root, "d/2026-10-04"), q).opt; parsed.Start != 21 || parsed.End != 79 || parsed.FadeIn != 1 {
 		t.Errorf("parsed options %+v", parsed)
 	}
-	if pl.Error != "" ||
-		len(pl.Notices) != 1 || !strings.Contains(pl.Notices[0], "2026-10-04.mp3") {
+	if pl.Error != "" || len(pl.Notices) != 0 ||
+		pl.Outputs["mp3"] != (outputState{Exists: true}) || pl.Outputs["flac"].Exists {
 		t.Errorf("plan %+v", pl)
+	}
+
+	// A file made by a run is known; it is out of date once the page would
+	// make it differently, and up to date again when it would not.
+	ts.recordOutputs(ts.check(filepath.Join(ts.root, "d/2026-10-04"), q), time.Now().Add(-time.Hour))
+	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Outputs["mp3"] != (outputState{Exists: true, Known: true}) {
+		t.Errorf("just made: %+v", pl.Outputs)
+	}
+	for name, change := range map[string]func(*runRequest){
+		"a cut":     func(r *runRequest) { r.Cuts = []span{{40, 45}} },
+		"stereo":    func(r *runRequest) { r.Stereo = true },
+		"a tag":     func(r *runRequest) { r.Title = ptr("Another") },
+		"a bitrate": func(r *runRequest) { r.Mp3Bitrate = "192k" },
+	} {
+		r := q
+		change(&r)
+		if pl := decode[plan](t, ts.do(t, "POST", url, r)); !pl.Outputs["mp3"].Stale {
+			t.Errorf("%s: want out of date, got %+v", name, pl.Outputs)
+		}
+	}
+	r := q
+	r.Flac, r.OpusBitrate, r.Force = true, "32k", true // other outputs and Force do not matter to the MP3
+	if pl := decode[plan](t, ts.do(t, "POST", url, r)); pl.Outputs["mp3"].Stale {
+		t.Errorf("unrelated changes: %+v", pl.Outputs)
 	}
 	q.Flac, q.Mp3, q.Opus = false, false, false
 	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "at least one output") {
@@ -473,7 +497,7 @@ func TestMakeFormat(t *testing.T) {
 		t.Errorf("nothing saved: %d %s", rec.Code, rec.Body)
 	}
 	saved := sermonSettings{cutting: cutting{Sections: []span{{30, 3600}}, Cuts: []span{}}}
-	if err := writeSermon(filepath.Join(ts.root, "2026-10-04"), &sermonFile{Saved: &saved}); err != nil {
+	if _, err := ts.updateState(filepath.Join(ts.root, "2026-10-04"), func(st *folderState) error { st.Saved = &saved; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	ts.jobs.sem <- struct{}{} // another encode is running: this one stays queued
@@ -488,3 +512,5 @@ func TestMakeFormat(t *testing.T) {
 	}
 	ts.do(t, "POST", "/api/jobs/"+snap.ID+"/cancel", nil)
 }
+
+func ptr[T any](v T) *T { return &v }

@@ -74,7 +74,7 @@ type Server struct {
 	meta     metaStore
 	names    nameStore
 	ingestMu sync.Mutex // one inbox file moves at a time
-	sermonMu sync.Mutex // sermon.json is read, changed and written as one step
+	stateMu  sync.Mutex // recording.json is read, changed and written as one step
 
 	tagsMu   sync.Mutex
 	tagDates map[string]string // recording date from tags, by cacheKey ("" = none)

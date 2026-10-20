@@ -40,11 +40,12 @@ type analyses struct {
 	mu      sync.Mutex
 	current map[string]*analysisState // running or failed, by key
 	pending map[string]*analysisState // by the path of a FLAC being made from a WAV
+	looking map[string]bool           // keys being looked at by lookLater
 	sem     chan struct{}             // one full decode at a time
 }
 
 func newAnalyses(s *Server) *analyses {
-	return &analyses{s: s, current: map[string]*analysisState{}, pending: map[string]*analysisState{}, sem: s.limits.decode}
+	return &analyses{s: s, current: map[string]*analysisState{}, pending: map[string]*analysisState{}, looking: map[string]bool{}, sem: s.limits.decode}
 }
 
 // cacheVersion changes when the analysis changes, so old caches are redone
@@ -77,6 +78,9 @@ func (a *analyses) state(raw string, start bool) analysisState {
 	if a.done(key) {
 		now := time.Now()
 		os.Chtimes(a.dir(key), now, now) // in use: keep it in the cache
+		if start && !factsFresh(readState(folderOfRecording(raw)), raw) {
+			a.lookLater(raw, key)
+		}
 		return analysisState{State: "done", Progress: 1, Key: key}
 	}
 	a.mu.Lock()
@@ -180,11 +184,22 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 			delete(a.pending, flac)
 			a.mu.Unlock()
 		}()
+		wav := sourceFile{Name: filepath.Base(raw)}
+		if st, err := os.Stat(raw); err == nil {
+			wav.Size = st.Size()
+		}
+		wav.Format, _ = ff.ProbeFile(ctx, raw) // only shown: a WAV ffmpeg can read has a header
 		if err := ff.ToFlac(ctx, raw, ".wav", flac, progress); err != nil {
 			return err
 		}
 		if err := os.Remove(raw); err != nil {
 			return err
+		}
+		if _, err := a.s.updateState(folderOfRecording(flac), func(st *folderState) error {
+			st.ConvertedFrom = &wav
+			return nil
+		}); err != nil {
+			a.s.cfg.Logger.Printf("%s: %v", a.s.display(flac), err)
 		}
 		a.s.cfg.Logger.Printf("converted %s to FLAC (verified identical) and removed the WAV", a.s.display(raw))
 		newKey, err := cacheKey(flac)
@@ -207,7 +222,50 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 		os.RemoveAll(dir)
 		return err
 	}
-	return writePeaks(filepath.Join(dir, "peaks.json.gz"), data)
+	if err := writePeaks(filepath.Join(dir, "peaks.json.gz"), data); err != nil {
+		return err
+	}
+	a.lookAt(ctx, raw)
+	return nil
+}
+
+// lookAt keeps what raw is in recording.json (lookAt on the server), unless
+// that is known already. A failure is logged: the waveform works without it.
+func (a *analyses) lookAt(ctx context.Context, raw string) {
+	if factsFresh(readState(folderOfRecording(raw)), raw) {
+		return
+	}
+	if err := a.s.lookAt(ctx, raw); err != nil && ctx.Err() == nil {
+		a.s.cfg.Logger.Printf("looking at %s: %v", a.s.display(raw), err)
+	}
+}
+
+// lookLater looks at a recording that was analysed before recording.json
+// knew about it, in the background and one decode at a time; once per key.
+func (a *analyses) lookLater(raw, key string) {
+	a.mu.Lock()
+	if a.looking[key] {
+		a.mu.Unlock()
+		return
+	}
+	a.looking[key] = true
+	a.mu.Unlock()
+	a.s.wg.Add(1)
+	go func() {
+		defer a.s.wg.Done()
+		defer func() {
+			a.mu.Lock()
+			delete(a.looking, key)
+			a.mu.Unlock()
+		}()
+		select {
+		case a.sem <- struct{}{}:
+			defer func() { <-a.sem }()
+		case <-a.s.ctx.Done():
+			return
+		}
+		a.lookAt(a.s.ctx, raw)
+	}()
 }
 
 // analyze decodes raw once: levels for the waveform from one output, and a
