@@ -1,6 +1,6 @@
 // The details of a date folder in the folder list: what a sermon has (info,
-// play, download, make a missing format), or, for a recording that
-// has not been processed.
+// play, download, make a missing format), or, for a recording that has not
+// been processed, only a way into the editor.
 import { api, q, h, formatSize, formatTime, forTenant } from './util.js';
 
 const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
