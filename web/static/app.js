@@ -3,6 +3,7 @@ import { api, q, h, formatSize, formatDate, dateInput, crumbs, forTenant, curren
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
+import { sermonDetail } from './sermons.js';
 
 const view = document.getElementById('view');
 let config = { inbox: false, defaults: {} };
@@ -32,25 +33,45 @@ function badges(e) {
   if (e.job) out.push(h('span', { class: 'badge busy' }, 'processing'));
   if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
   if (e.preparing) out.push(h('span', { class: 'badge busy' }, 'preparing'));
-  if (e.raw) out.push(h('span', { class: 'badge' }, 'raw'));
-  for (const f of ['flac', 'mp3', 'opus']) {
-    if (e.outputs.includes(f)) out.push(h('span', { class: 'badge on' }, '✓ ' + f));
-  }
+  if (e.raw && e.outputs.length === 0) out.push(h('span', { class: 'badge warn', title: 'Only the full, unedited recording of the service exists' }, 'not processed'));
+  if (e.outputs.length) out.push(h('span', { class: 'badge on', title: 'Ready to play and download' }, 'ready'));
   return out;
 }
 
+// A date folder opens its details in the list, anywhere on its row. A
+// recording that is not processed only offers the editor there.
 async function foldersView(path) {
   const data = await api('GET', 'api/folders?path=' + q(path));
-  const open = (e) => { location.hash = (e.date ? '#/folder/' : '#/folders/') + e.path; };
-  const rows = data.entries.map((e) =>
-    h('tr', { class: 'row', onclick: () => open(e) },
-      h('td', {}, h('a', { href: (e.date ? '#/folder/' : '#/folders/') + e.path }, e.name + (e.date ? '' : '/'))),
-      h('td', {}, badges(e))));
+  const body = h('tbody');
+  for (const e of data.entries) {
+    const href = (e.date ? '#/folder/' : '#/folders/') + e.path;
+    let detail = null;
+    const toggle = h('button', { class: 'twisty', 'aria-expanded': 'false', title: 'Show details', 'aria-label': 'Show details of ' + e.name }, '▸');
+    const flip = () => {
+      if (detail) {
+        detail.remove();
+        detail = null;
+      } else {
+        detail = h('tr', { class: 'detail-row' }, h('td', { colspan: 2 }, sermonDetail(e)));
+        row.after(detail);
+      }
+      toggle.setAttribute('aria-expanded', String(!!detail));
+      toggle.textContent = detail ? '▾' : '▸';
+    };
+    toggle.addEventListener('click', (ev) => { ev.stopPropagation(); flip(); });
+    const name = e.date
+      ? h('button', { class: 'sermon-name' }, e.name) // its click reaches the row
+      : h('a', { href }, e.name + '/');
+    const row = h('tr', { class: 'row', onclick: e.date ? flip : () => { location.hash = href; } },
+      h('td', {}, e.date ? toggle : '', name),
+      h('td', {}, badges(e)));
+    body.append(row);
+  }
   view.replaceChildren(
     data.path ? crumbs(data.path) : '',
     h('h1', {}, data.path ? data.path.split('/').pop() : 'Folders'),
-    rows.length
-      ? h('table', { class: 'list' }, h('tbody', {}, rows))
+    data.entries.length
+      ? h('table', { class: 'list' }, body)
       : h('p', { class: 'muted' }, 'No folders here yet. ', h('a', { href: '#/upload' }, 'Upload a recording'),
         config.inbox ? ', or put one in the inbox folder.' : '.'));
 }

@@ -31,9 +31,11 @@ test('folder list shows the date folders with their status', async ({ page }) =>
   await page.getByRole('link', { name: '2026/' }).click();
   await expect(page.getByRole('heading', { name: '2026' })).toBeVisible();
   const row = page.locator('tr', { hasText: '2026-10-04' });
-  await expect(row).toContainText('raw');
+  await expect(row).toContainText('not processed');
   await row.click();
-  await expect(page).toHaveURL(/#\/folder\/2026\/2026-10-04$/);
+  await expect(row.locator('xpath=following-sibling::tr[1]').getByRole('link', { name: 'Open in the editor' })).toBeVisible();
+  await row.getByRole('button', { name: 'Show details' }).click();
+  await expect(page.locator('tr.detail-row')).toHaveCount(0);
 });
 
 test('cut on the waveform: drag, fields, keys, playback', async ({ page }) => {
