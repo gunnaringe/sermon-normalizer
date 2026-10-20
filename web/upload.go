@@ -112,10 +112,6 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ms, err := strconv.ParseInt(q.Get("modified"), 10, 64); err == nil && ms > 0 {
-		t := time.UnixMilli(ms)
-		os.Chtimes(tmp, t, t)
-	}
 	if fileExists(final) {
 		os.Remove(tmp)
 		writeError(w, http.StatusConflict, fmt.Errorf("%s appeared meanwhile", filepath.Base(final)))
@@ -124,6 +120,11 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if err := os.Rename(tmp, final); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+	// The file's own time, once it is no longer a half-written one the sweep could take.
+	if ms, err := strconv.ParseInt(q.Get("modified"), 10, 64); err == nil && ms > 0 {
+		t := time.UnixMilli(ms)
+		os.Chtimes(final, t, t)
 	}
 	s.markImported(folder)
 	s.learnName(sermon)

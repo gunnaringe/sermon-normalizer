@@ -54,7 +54,8 @@ type Share struct {
 	MaxUploads  int        `json:"maxUploads,omitempty"` // 0 = no limit
 	MaxFileSize int64      `json:"maxFileSize"`
 	MaxTotal    int64      `json:"maxTotal,omitempty"` // bytes over all uploads; 0 = no limit
-	Types       []string   `json:"types"`
+	Types       []string   `json:"types,omitempty"`    // the ones it takes, if not AllTypes
+	AllTypes    bool       `json:"allTypes,omitempty"` // every type the inbox takes, also ones added later
 	Revoked     bool       `json:"revoked,omitempty"`
 
 	Count   int                       `json:"count"` // finished uploads
@@ -95,6 +96,14 @@ func (sh *Share) state(now time.Time) string {
 		return "full"
 	}
 	return ""
+}
+
+// types are the file types the share takes.
+func (sh *Share) types() []string {
+	if sh.AllTypes {
+		return shareTypes
+	}
+	return sh.Types
 }
 
 // reserved is what started uploads hold of the share's limits.
@@ -229,6 +238,7 @@ type shareView struct {
 	MaxFileSize int64         `json:"maxFileSize"`
 	MaxTotal    int64         `json:"maxTotal"`
 	Types       []string      `json:"types"`
+	AllTypes    bool          `json:"allTypes"`
 	State       string        `json:"state"` // "" = open
 	Count       int           `json:"count"`
 	Bytes       int64         `json:"bytes"`
@@ -244,7 +254,7 @@ func (sh *Share) view(now time.Time) shareView {
 		log = []ShareUpload{}
 	}
 	return shareView{sh.ID, sh.Hint, sh.Label, sh.Created, sh.Expires, sh.MaxUploads, sh.MaxFileSize,
-		sh.MaxTotal, sh.Types, sh.state(now), sh.Count, sh.Bytes, n, log}
+		sh.MaxTotal, sh.types(), sh.AllTypes, sh.state(now), sh.Count, sh.Bytes, n, log}
 }
 
 // adminTenant is the church of a request to the studio's share API.
@@ -294,6 +304,7 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 		MaxFileSize int64      `json:"maxFileSize"`
 		MaxTotal    int64      `json:"maxTotal"`
 		Types       []string   `json:"types"`
+		AllTypes    bool       `json:"allTypes"`
 	}
 	if err := decodeRequest(r, &q); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -314,10 +325,10 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case label == "" || len(label) > 80 || strings.ContainsFunc(label, func(r rune) bool { return r < ' ' }):
 		err = errors.New("give the share a name (up to 80 characters)")
-	case len(types) == 0 || len(types) != len(q.Types):
+	case !q.AllTypes && (len(types) == 0 || len(types) != len(q.Types)):
 		err = fmt.Errorf("choose file types from %s", strings.Join(shareTypes, ", "))
 	case q.MaxFileSize < 1<<20 || q.MaxFileSize > maxShareFileSize:
-		err = fmt.Errorf("the largest file must be between 1 MB and %s", sizeText(maxShareFileSize))
+		err = fmt.Errorf("the max file size must be between 1 MB and %s", sizeText(maxShareFileSize))
 	case q.MaxUploads < 0 || q.MaxTotal < 0:
 		err = errors.New("limits cannot be negative")
 	case q.Expires != nil && !q.Expires.After(now):
@@ -329,7 +340,10 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	code := newCode()
 	sh := &Share{ID: randomID(6), Hash: hashCode(code), Hint: code[len(code)-4:], Label: label, Created: now.UTC(),
-		MaxUploads: q.MaxUploads, MaxFileSize: q.MaxFileSize, MaxTotal: q.MaxTotal, Types: types}
+		MaxUploads: q.MaxUploads, MaxFileSize: q.MaxFileSize, MaxTotal: q.MaxTotal, Types: types, AllTypes: q.AllTypes}
+	if q.AllTypes {
+		sh.Types = nil
+	}
 	if q.Expires != nil {
 		e := q.Expires.UTC()
 		sh.Expires = &e
@@ -350,19 +364,14 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"share": view, "code": code})
 }
 
-// handleShareChange revokes or deletes a share:
-// POST api/shares/{id}/revoke, POST api/shares/{id}/delete. Deleting also
-// drops the uploads in progress.
-func (a *App) handleShareChange(w http.ResponseWriter, r *http.Request) {
+// handleShareRevoke stops a share for good: POST api/shares/{id}/revoke. It
+// stays in the list, with what came in; uploads in progress are dropped.
+func (a *App) handleShareRevoke(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.adminTenant(w, r)
 	if !ok {
 		return
 	}
-	id, action := r.PathValue("id"), r.PathValue("action")
-	if action != "revoke" && action != "delete" {
-		writeError(w, http.StatusNotFound, errors.New("no such action"))
-		return
-	}
+	id := r.PathValue("id")
 	a.shareMu.Lock()
 	defer a.shareMu.Unlock()
 	i := slices.IndexFunc(t.shares, func(sh *Share) bool { return sh.ID == id })
@@ -371,23 +380,18 @@ func (a *App) handleShareChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sh := t.shares[i]
-	before, wasRevoked := slices.Clone(t.shares), sh.Revoked
-	if action == "revoke" {
-		sh.Revoked = true
-	} else {
-		t.shares = slices.Delete(t.shares, i, i+1)
-	}
+	wasRevoked, pending := sh.Revoked, sh.Pending
+	sh.Revoked, sh.Pending = true, nil
 	if err := a.saveShares(t); err != nil {
-		sh.Revoked = wasRevoked
-		t.shares = before
+		sh.Revoked, sh.Pending = wasRevoked, pending
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if action == "delete" {
-		for uid := range sh.Pending {
+	for uid := range pending {
+		if !a.share.busy[uid] {
 			os.Remove(partialPath(t, uid))
 		}
 	}
-	a.cfg.Base.Logger.Printf("share: %s %sd share %s (%q)", t.id, action, sh.ID, sh.Label)
+	a.cfg.Base.Logger.Printf("share: %s revoked share %s (%q)", t.id, sh.ID, sh.Label)
 	writeJSON(w, http.StatusOK, map[string]string{"id": id})
 }

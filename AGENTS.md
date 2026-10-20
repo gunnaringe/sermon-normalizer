@@ -60,6 +60,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   preview, cached by path+size+mtime; `carry` moves the cache on import.
 - `web/upload.go`: chunked upload straight to a date folder (the form is on top of the recordings page, `uploadBox` in `app.js`).
 - `web/inbox.go`: inbox file names, date suggestion, `newRawFolder`.
+- `web/cleanup.go`: removes half-written files (`.partial`, hidden `.upload`) untouched for a day, at start and hourly.
 - `web/inboxwatch.go`: `ingest` moves settled inbox files straight to their date
   folder (convert + prepare happen there).
 - `web/share.go`: shares (codes for the public upload page), `<church>/shares.json`, the studio's

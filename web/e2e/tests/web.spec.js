@@ -767,6 +767,18 @@ test('shares: make a code in the studio, send a recording with the link', async 
   const link = await dialog.locator('.share-link').textContent();
   expect(link).toMatch(/^http:\/\/localhost:8081\/#code=[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
   await page.screenshot({ path: path.join(shots, 'share-made.png') });
+  // Holding the code copies it; Share (no share menu in this browser) copies the link.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const code = dialog.locator('.share-code');
+  await code.hover();
+  await page.mouse.down();
+  await page.waitForTimeout(600);
+  await page.mouse.up();
+  await expect(dialog.getByText('Code copied.')).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await code.textContent());
+  await dialog.getByRole('button', { name: 'Share', exact: true }).click();
+  await expect(dialog.getByText('Link copied.')).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
   await dialog.getByRole('button', { name: 'OK' }).click();
   await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('open');
   await page.locator('#shares').screenshot({ path: path.join(shots, 'settings-shares.png') });

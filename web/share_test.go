@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -203,23 +204,26 @@ func TestShareRefusesWhatItShould(t *testing.T) {
 	if w := st.call("PUT", "/api/share/uploads/"+id+"?offset=0", other, "1.1.1.1", wav(2000)); w.Code != http.StatusNotFound {
 		t.Errorf("upload of another share: %d", w.Code)
 	}
-	// Revoked: refused at once, also mid-upload.
+	// Revoked: refused at once, also mid-upload; the uploads in progress go
+	// with their files, and the share stays in the list.
+	os.WriteFile(filepath.Join(st.church, "Innboks", ".share-"+id+".partial"), []byte("x"), 0o644)
 	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/revoke", ""); w.Code != 200 {
 		t.Fatalf("revoke: %d %s", w.Code, w.Body)
 	}
 	if w := st.call("PUT", "/api/share/uploads/"+id+"?offset=0", code, "1.1.1.1", wav(2000)); w.Code != http.StatusForbidden {
 		t.Errorf("chunk after revoke: %d", w.Code)
 	}
-	// Deleting drops the uploads in progress with their files.
-	os.WriteFile(filepath.Join(st.church, "Innboks", ".share-"+id+".partial"), []byte("x"), 0o644)
-	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/delete", ""); w.Code != 200 {
-		t.Fatalf("delete: %d", w.Code)
-	}
 	if fileExists(filepath.Join(st.church, "Innboks", ".share-"+id+".partial")) {
-		t.Error("partial left after delete")
+		t.Error("partial left after revoke")
 	}
 	if w := st.call("GET", "/api/share", code, "1.1.1.1", nil); w.Code != http.StatusForbidden {
-		t.Errorf("deleted share: %d", w.Code)
+		t.Errorf("revoked share: %d", w.Code)
+	}
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/delete", ""); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("delete is gone: %d", w.Code)
+	}
+	if !strings.Contains(do(st.studio, "GET", "/api/shares", "").Body.String(), `"revoked"`) {
+		t.Error("revoked share not listed")
 	}
 }
 
@@ -388,5 +392,29 @@ func TestShareSurvivesRestartAndSweep(t *testing.T) {
 	}
 	if fileExists(filepath.Join(st.church, "Innboks", ".share-"+id+".partial")) {
 		t.Error("stale partial kept")
+	}
+}
+
+// A share for all types takes every type the inbox takes, also ones added
+// later: it stores no list.
+func TestShareAllTypes(t *testing.T) {
+	st := newShareTest(t, RateLimits{})
+	code, sh := st.makeShare(`{"label":"S","allTypes":true}`)
+	if !sh.AllTypes || !slices.Equal(sh.Types, shareTypes) {
+		t.Errorf("view: %v %v", sh.AllTypes, sh.Types)
+	}
+	for _, ext := range shareTypes {
+		if w := st.start(code, "1.1.1.1", "a"+ext, 2000); w.Code != http.StatusCreated {
+			t.Errorf("%s: %d %s", ext, w.Code, w.Body)
+		}
+	}
+	if w := st.start(code, "1.1.1.1", "a.txt", 2000); w.Code != http.StatusBadRequest {
+		t.Errorf("a.txt: %d", w.Code)
+	}
+	if b, _ := os.ReadFile(filepath.Join(st.church, sharesFile)); strings.Contains(string(b), `"types"`) {
+		t.Errorf("a list was stored: %s", b)
+	}
+	if w := do(st.studio, "POST", "/api/shares", `{"label":"S"}`); w.Code != http.StatusBadRequest {
+		t.Errorf("no types at all: %d", w.Code)
 	}
 }

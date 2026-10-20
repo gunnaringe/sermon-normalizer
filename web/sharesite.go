@@ -134,7 +134,7 @@ func (a *App) handleShareInfo(w http.ResponseWriter, r *http.Request) {
 	defer a.shareMu.Unlock()
 	n, bytes := sh.reserved()
 	info := map[string]any{
-		"label": sh.Label, "church": t.info().Name, "types": sh.Types, "maxFileSize": sh.MaxFileSize,
+		"label": sh.Label, "church": t.info().Name, "types": sh.types(), "maxFileSize": sh.MaxFileSize,
 		"expires": sh.Expires, "state": sh.state(time.Now()), "chunk": 16 << 20,
 	}
 	if sh.MaxUploads > 0 {
@@ -189,8 +189,8 @@ func (a *App) handleShareStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name, err := shareFileName(q.Name)
-	if err == nil && !containsExt(sh.Types, name) {
-		err = fmt.Errorf("this code takes %s files", strings.Join(sh.Types, " and "))
+	if err == nil && !containsExt(sh.types(), name) {
+		err = fmt.Errorf("this code takes %s files", strings.Join(sh.types(), " and "))
 	}
 	if err == nil && q.Size < 1024 {
 		err = errors.New("the file is empty or too small to be a recording")
@@ -423,10 +423,6 @@ func (a *App) handleShareCancel(w http.ResponseWriter, r *http.Request) {
 // finishShareUpload puts a complete upload in the inbox under a free name,
 // counts it, and starts its ingest.
 func (a *App) finishShareUpload(t *tenant, sh *Share, id string, p pendingUpload, tmp string) (string, error) {
-	if p.Modified > 0 {
-		mt := time.UnixMilli(p.Modified)
-		os.Chtimes(tmp, mt, mt)
-	}
 	ext := filepath.Ext(p.Name)
 	base := strings.TrimSuffix(p.Name, ext)
 	var name string
@@ -439,6 +435,10 @@ func (a *App) finishShareUpload(t *tenant, sh *Share, id string, p pendingUpload
 		err := os.Link(tmp, filepath.Join(t.srv.cfg.Inbox, name))
 		if err == nil {
 			os.Remove(tmp)
+			if p.Modified > 0 { // the file's own time, now that the sweep cannot take it for a stopped upload
+				mt := time.UnixMilli(p.Modified)
+				os.Chtimes(filepath.Join(t.srv.cfg.Inbox, name), mt, mt)
+			}
 			break
 		}
 		if !errors.Is(err, fs.ErrExist) || i == 100 {

@@ -13,7 +13,7 @@ function stateText(s) {
 }
 
 function limits(s) {
-  const out = [`up to ${formatSize(s.maxFileSize)} per file`, s.types.join(' ')];
+  const out = [`up to ${formatSize(s.maxFileSize)} per file`, s.allTypes ? 'all audio' : s.types.join(' ')];
   if (s.maxUploads) out.push(`${s.maxUploads} files`);
   if (s.maxTotal) out.push(`${formatSize(s.maxTotal)} in all`);
   out.push(s.expires ? 'until ' + formatDateTime(s.expires) : 'no expiry');
@@ -39,15 +39,39 @@ function linkFor(url, code) {
   return url ? url.replace(/\/?$/, '/') + '#code=' + code : '';
 }
 
+// holdToCopy copies text when el is held down half a second (a long press on
+// a phone). The copy happens as it is let go, inside the gesture, which is
+// what browsers allow; the phone's own selection menu is kept away.
+function holdToCopy(el, text, done) {
+  let since = 0;
+  el.addEventListener('pointerdown', () => { since = Date.now(); });
+  el.addEventListener('pointerup', () => {
+    if (since && Date.now() - since >= 500) navigator.clipboard.writeText(text).then(done);
+    since = 0;
+  });
+  el.addEventListener('pointerleave', () => { since = 0; });
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
 async function showCode(url, code) {
   const link = linkFor(url, code);
-  const copy = (text) => h('button', { class: 'link', type: 'button', onclick: (e) => {
-    navigator.clipboard.writeText(text).then(() => { e.target.textContent = 'copied'; });
-  } }, 'copy');
+  const note = h('span', { class: 'muted', role: 'status' });
+  const codeEl = h('span', { class: 'share-code', title: 'Hold to copy' }, code);
+  holdToCopy(codeEl, code, () => { note.textContent = 'Code copied.'; });
+  const share = h('button', { type: 'button', name: 'share', onclick: async () => {
+    const what = link ? { url: link } : { text: code };
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Send recordings', ...what }); } catch { /* closed */ }
+      return;
+    }
+    await navigator.clipboard.writeText(link || code);
+    note.textContent = link ? 'Link copied.' : 'Code copied.';
+  } }, 'Share');
   await alertDialog({ title: 'Share made', body: [
-    'The code is shown only once. Copy it, or the link, before you close this.', h('br'), h('br'),
-    h('span', { class: 'share-code' }, code), ' ', copy(code),
-    ...(link ? [h('br'), h('br'), h('span', { class: 'share-link' }, link), ' ', copy(link)] : []),
+    'The code is shown only once. Share it before you close this.', h('br'), h('br'),
+    codeEl, h('br'), h('span', { class: 'muted' }, 'Hold the code to copy it.'),
+    ...(link ? [h('br'), h('br'), h('span', { class: 'share-link' }, link)] : []),
+    h('br'), h('br'), share, ' ', note,
   ] });
 }
 
@@ -56,6 +80,9 @@ export async function sharesView(box) {
   const num = (name, attrs = {}) => h('input', { type: 'number', name, min: 0, step: 'any', ...attrs });
   const label = h('input', { type: 'text', name: 'label', maxlength: 80, placeholder: 'e.g. Recordings from the sound desk' });
   const types = data.types.map((t) => h('input', { type: 'checkbox', name: 'type', value: t, checked: true }));
+  const typeList = h('span', { hidden: true }, types.map((c) => h('label', { class: 'check' }, c, ' ' + c.value + ' ')));
+  const allTypes = h('input', { type: 'checkbox', name: 'allTypes', checked: true,
+    onchange: () => { typeList.hidden = allTypes.checked; } });
   const fileSize = num('maxFileSize', { value: data.defaultFileSize / GB, min: 0.01 });
   const uploads = num('maxUploads', { step: 1, placeholder: 'no limit' });
   const total = num('maxTotal', { placeholder: 'no limit' });
@@ -67,7 +94,8 @@ export async function sharesView(box) {
     try {
       const made = await api('POST', 'api/shares', {
         label: label.value,
-        types: types.filter((c) => c.checked).map((c) => c.value),
+        allTypes: allTypes.checked,
+        types: allTypes.checked ? [] : types.filter((c) => c.checked).map((c) => c.value),
         maxFileSize: Math.round(Number(fileSize.value) * GB),
         maxUploads: Number(uploads.value) || 0,
         maxTotal: Math.round(Number(total.value) * GB) || 0,
@@ -78,13 +106,12 @@ export async function sharesView(box) {
     } catch (err) { status.textContent = err.message; }
   } }, 'Make share');
 
-  const act = (s, action) => async () => {
-    const ok = await confirmDialog(action === 'revoke'
-      ? { title: 'Revoke share', body: `Nobody can upload with the code of "${s.label}" any more. Files already sent stay.`, confirm: 'Revoke', danger: true }
-      : { title: 'Delete share', body: `"${s.label}" and its list of uploads go. Files already sent stay; uploads in progress are dropped.`, confirm: 'Delete', danger: true });
+  const revoke = (s) => async () => {
+    const ok = await confirmDialog({ title: 'Revoke share', confirm: 'Revoke', danger: true,
+      body: `Nobody can upload with the code of "${s.label}" any more. Files already sent stay; uploads in progress stop.` });
     if (!ok) return;
     try {
-      await api('POST', `api/shares/${encodeURIComponent(s.id)}/${action}`);
+      await api('POST', `api/shares/${encodeURIComponent(s.id)}/revoke`);
       await sharesView(box);
     } catch (err) { alertDialog({ body: err.message }); }
   };
@@ -93,12 +120,11 @@ export async function sharesView(box) {
     h('p', {}, h('strong', {}, s.label), ' ', stateText(s), ' ',
       h('span', { class: 'muted mono' }, '…' + s.hint)),
     h('p', { class: 'muted' }, limits(s)),
-    h('p', {}, `${s.count} file${s.count === 1 ? '' : 's'} received (${formatSize(s.bytes)}) · made ${formatDate(s.created)}`),
+    h('p', {}, `${s.count ? `${s.count} file${s.count === 1 ? '' : 's'} received (${formatSize(s.bytes)})` : 'Nothing received yet'} · made ${formatDate(s.created)}`),
     s.log.length ? h('details', {}, h('summary', {}, 'Uploads'),
       h('table', { class: 'list' }, s.log.map((u) => h('tr', {},
         h('td', {}, formatDateTime(u.time)), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
-    h('p', {}, s.state !== 'revoked' ? h('button', { name: 'revoke', onclick: act(s, 'revoke') }, 'Revoke') : '', ' ',
-      h('button', { name: 'delete', onclick: act(s, 'delete') }, 'Delete'))));
+    s.state !== 'revoked' ? h('p', {}, h('button', { name: 'revoke', onclick: revoke(s) }, 'Revoke')) : ''));
 
   box.replaceChildren(
     h('h2', {}, 'Shares'),
@@ -107,10 +133,10 @@ export async function sharesView(box) {
       'The code is shown only once, when you make the share.'),
     data.inbox ? h('div', { class: 'panel share-form' },
       h('label', { for: 'share-label' }, 'Name'), Object.assign(label, { id: 'share-label' }),
-      h('span', {}, 'File types'), h('span', {}, types.map((c) => h('label', { class: 'check' }, c, ' ' + c.value + ' '))),
-      h('label', {}, 'Largest file (GB)'), fileSize,
-      h('label', {}, 'Number of files'), uploads,
-      h('label', {}, 'In all (GB)'), total,
+      h('span', {}, 'File types'), h('span', {}, h('label', { class: 'check' }, allTypes, ' All supported audio'), h('br'), typeList),
+      h('label', {}, 'Max file size (GB)'), fileSize,
+      h('label', {}, 'Max number of files'), uploads,
+      h('label', {}, 'Max total size (GB)'), total,
       h('label', {}, 'Expires'), expires,
       h('div', { class: 'wide' }, create, ' ', status))
       : h('p', { class: 'error' }, 'Shares need an inbox folder, and this church has none.'),

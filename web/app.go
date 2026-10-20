@@ -325,7 +325,7 @@ func (a *App) Handler() http.Handler {
 	if a.share != nil {
 		mux.HandleFunc("GET /api/shares", a.handleShares)
 		mux.HandleFunc("POST /api/shares", a.handleShareCreate)
-		mux.HandleFunc("POST /api/shares/{id}/{action}", a.handleShareChange)
+		mux.HandleFunc("POST /api/shares/{id}/revoke", a.handleShareRevoke)
 	}
 	toChurch := func(w http.ResponseWriter, r *http.Request) {
 		t, ok := a.tenantFor(r)

@@ -189,16 +189,19 @@ server prepares the waveform and the listening preview, so cutting can start at 
 
 With `--share-listen`, people without a login can send recordings to a church's inbox on a
 separate, public upload page, with a code. **Settings → Shares** in the studio makes one: a name, the file
-types (`.wav`, `.flac`), the largest file, and optionally how many files, how much in all and an
-expiry. The code (`XXXX-XXXX-XXXX-XXXX`, 80 bits) and a link with it (`<share-url>#code=...`) are
-shown once; the church keeps only a hash, in `<church>/shares.json`, with the uploads made (name,
-size, address, time). A share can be revoked (refused at once, also mid-upload) or deleted.
+types (all supported audio, or some of them), the max file size, and optionally how many files, how much
+in all and an expiry. The code (`XXXX-XXXX-XXXX-XXXX`, 80 bits) and a link with it (`<share-url>#code=...`)
+are shown once, with a Share button for the link (hold the code to copy it); the church keeps only a hash,
+in `<church>/shares.json`, with the uploads made (name, size, address, time). A share can be revoked:
+refused at once, also mid-upload; it stays in the list with what came in.
 
 The upload page asks for the code, or takes it from the link and removes it from the address bar
 (it is in the fragment, so it never reaches the server's or a proxy's logs). Files go in 16 MB
 chunks, so they pass Cloudflare, and continue after a dropped connection, a reload or a restart.
 They are written as `Innboks/.share-<id>.partial`, checked to be the type they claim, and renamed
 when complete (never over a file: `name (2).wav`); then they are ingested like any inbox file.
+Half-written files (stopped uploads, here or in the studio, and encodes cut off by a crash) are
+removed once they have sat untouched for a day; the server looks every hour.
 
 Run the upload page on its own host, **not** behind the login proxy, and keep the studio behind
 it. The page serves only itself and `api/share/*`: nothing of the studio, nothing to list or

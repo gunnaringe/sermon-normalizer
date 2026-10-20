@@ -120,6 +120,8 @@ func New(cfg Config) (*Server, error) {
 		s.wg.Add(1)
 		go s.inbox.watch()
 	}
+	s.wg.Add(1)
+	go s.keepSweeping()
 	return s, nil
 }
 
