@@ -7,6 +7,8 @@
 #                              scripts/test.sh all ./web/ -run Inbox
 #   scripts/test.sh e2e [args] browser tests (Playwright); args go to playwright,
 #                              e.g. scripts/test.sh e2e -g upload
+#   scripts/test.sh guide      the pictures of the documentation (docs/img), from a real speech;
+#                              fetch it first with scripts/fetch-sample.sh
 #   scripts/test.sh image      the Docker image (vet + all tests inside)
 #
 # Go modules and build cache live in named volumes, so repeat runs are fast.
@@ -42,11 +44,17 @@ e2e)
 	"$run" run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -w /work "$playwright" sh run.sh "$@" 2>&1 |
 		grep -v -e '^debconf' -e '^$'
 	;;
+guide)
+	mkdir -p docs/img
+	incontainer 'go build -o web/e2e/bin/sermon-studio ./cmd/sermon-studio'
+	"$run" run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -v "$PWD/docs/img":/out:Z -w /work "$playwright" sh guide.sh "$@" 2>&1 |
+		grep -v -e '^debconf' -e '^$'
+	;;
 image)
 	"$run" build -q -t sermon-studio .
 	;;
 *)
-	sed -n '2,13p' "$0"
+	sed -n '2,15p' "$0"
 	exit 2
 	;;
 esac

@@ -3,7 +3,7 @@
 Agent notes (`CLAUDE.md` imports this file).
 
 Go web service: cut a church service recording on a waveform, get
-loudness-normalised FLAC/MP3/Opus. `README.md` = usage, `PLAN.md` = background.
+loudness-normalised FLAC/MP3/Opus. `README.md` = what it is, `docs/` = guide, running, outputs, design (was PLAN.md).
 Standard library only (ffmpeg is run as a command).
 
 ## Checks (use these, in this order; output is already short)
@@ -14,6 +14,8 @@ scripts/test.sh all ./web/ -run X     # with real ffmpeg, one package/test (cont
 scripts/test.sh all                   # everything (~3 min, normalizer integration is slow)
 scripts/test.sh e2e [-g name]         # browser tests (~1.5 min); after changing web/static
 scripts/test.sh image                 # Docker build; before release changes
+scripts/fetch-sample.sh && scripts/test.sh guide   # redo docs/img (the guide's pictures) when the UI changes
+scripts/check-links.sh                # relative links and pictures in the Markdown files
 ```
 
 ffmpeg is not on the dev host; `all`/`e2e` run in podman. Don't run `go test -v`

@@ -3,3 +3,4 @@ bin/
 test-results/
 playwright-report/
 screenshots/
+fixtures/

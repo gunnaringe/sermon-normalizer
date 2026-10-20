@@ -273,7 +273,7 @@ pre.log { max-height: 14rem; overflow: auto; background: var(--bg); border: 1px 
 .drop.over { border-color: var(--accent); color: var(--fg); background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
 /* Newly imported recordings, above the years. */
 .recent { margin-bottom: 1.5rem; }
-.recent .arrived { margin-left: 0.6rem; font-size: 0.9em; white-space: nowrap; }
+.recent .arrived { margin: 0 0.6rem; font-size: 0.9em; white-space: nowrap; }
 /* The recordings page: search, years, labels. */
 .searchbar { margin: 0 0 1rem; }
 .search { width: 100%; box-sizing: border-box; font: inherit; padding: 0.7rem 1rem 0.7rem 2.6rem; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); box-shadow: var(--shadow);
