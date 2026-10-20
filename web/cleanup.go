@@ -48,7 +48,7 @@ func (s *Server) sweepLeftovers(now time.Time) {
 	}
 }
 
-// keepSweeping runs sweepLeftovers at start and then every hour, until the
+// keepSweeping runs sweepLeftovers (and empties what has been in the trash long enough) at start and then every hour, until the
 // server closes.
 func (s *Server) keepSweeping() {
 	defer s.wg.Done()
@@ -56,6 +56,7 @@ func (s *Server) keepSweeping() {
 	defer tick.Stop()
 	for now := time.Now(); ; {
 		s.sweepLeftovers(now)
+		s.purgeTrash(now)
 		select {
 		case <-s.ctx.Done():
 			return

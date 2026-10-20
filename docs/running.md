@@ -64,6 +64,7 @@ church and no right to add more sees just its name in the header; otherwise a qu
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |
 | `--cache-days` | 30 | remove cached analyses not used for this long |
+| `--trash-days` | 30 | how long a deleted recording stays in the trash (Settings → Trash) before it is removed for good |
 | `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
 | `--share-listen` | | address of the public upload page (see [Shares](guide.md#shares)); unset = no shares |

@@ -43,6 +43,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   with a sandbox CSP); its version is `logo` in the church list, and the header shows it instead of the app's.
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in `original/`).
+- `web/trash.go`: deleting a recording moves its date folder to `<root>/.trash/<id>/` (+ `trash.json`: where from, when); `GET api/trash`,
+  restore, remove for good, and the purge after `--trash-days` (hourly, with the leftovers sweep). Hidden, so no path of the API reaches it.
 - `web/recording.go`: `<folder>/recording.json`, the one state file per recording: `recording` (format, metadata,
   channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV, AIFF or video it was made from), `imported` (when it arrived: `markImported`; `recentImports` lists the last `newFor` on top of the first page), the sermon, and `outputs`
   (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock).

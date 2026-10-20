@@ -83,6 +83,8 @@ export async function recordingsView(view, { top, church, emptyNote }) {
       if (open) {
         detail = h('tr', { class: 'detail-row' }, h('td', { colspan: 2 }, sermonDetail(e, {
           suggestions,
+          trashDays: data.trashDays,
+          deleted: () => { all.splice(all.indexOf(e), 1); render(); },
           changed: () => { for (const draw of chips.get(e.path) || []) draw(); },
         })));
         tr.after(detail);

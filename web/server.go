@@ -30,10 +30,11 @@ func init() { mime.AddExtensionType(".webmanifest", "application/manifest+json")
 
 // Config is how the server is set up.
 type Config struct {
-	Root     string // folder holding the date folders (e.g. Taler/)
-	Inbox    string // folder new recordings arrive in; "" = no inbox
-	CacheDir string // waveform data and previews
-	Layout   string // where imports go under Root, as a Go time layout
+	Root      string // folder holding the date folders (e.g. Taler/)
+	Inbox     string // folder new recordings arrive in; "" = no inbox
+	CacheDir  string // waveform data and previews
+	Layout    string // where imports go under Root, as a Go time layout
+	TrashDays int    // how long a deleted recording is kept; 0 = DefaultTrashDays
 	// InboxEvery is how often the inbox is looked at, InboxSettle how long a
 	// file must stay unchanged before it is taken (0 = 10 s and 30 s).
 	InboxEvery, InboxSettle time.Duration
@@ -179,6 +180,10 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/run", s.handleRun)
 	mux.HandleFunc("POST /api/make", s.handleMake)
 	mux.HandleFunc("POST /api/outputs/remove", s.handleRemoveOutputs)
+	mux.HandleFunc("POST /api/recordings/delete", s.handleDelete)
+	mux.HandleFunc("GET /api/trash", s.handleTrash)
+	mux.HandleFunc("POST /api/trash/restore", s.handleRestore)
+	mux.HandleFunc("POST /api/trash/remove", s.handleTrashRemove)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleJob)
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.handleJobEvents)
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleJobCancel)

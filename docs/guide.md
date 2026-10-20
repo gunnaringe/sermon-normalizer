@@ -118,6 +118,11 @@ Each can have a label, which shows on the waveform.
   a date can hold one sermon. **Rename…** on a sermon's page changes its date or name (the folder and
   the files named after it, also in `original/`; files already made keep their tags). A recording
   from the inbox that finds its date taken lands in `<date> 2`; rename it.
+- **Delete and the trash:** *Delete…* on a recording (after a confirmation) moves its whole folder, with its files and the
+  original, into the church's trash; nothing is removed yet. **Settings → Trash** lists what is there, how long it has
+  left (30 days, `--trash-days`), and has *Restore* (back where it was, unless that date has a recording again) and
+  *Delete now* (for good, after a confirmation). After the time, the server removes it by itself. A recording that is
+  being processed cannot be deleted.
 - **Inbox** (with `--inbox`): recordings that arrive by other means go into their date folder
   by themselves (see below); there is no inbox page. The recordings list shows a "converting" or
   "preparing" tag while a recording is made ready.
