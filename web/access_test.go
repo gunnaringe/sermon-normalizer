@@ -107,7 +107,7 @@ func TestAccessOnlyAdminsAddChurches(t *testing.T) {
 // same goes for "default".
 func TestAdminIsReserved(t *testing.T) {
 	h := newAccessApp(t)
-	for _, name := range []string{"admin", "Admin", " ADMIN ", "default"} {
+	for _, name := range []string{"admin", "Admin", " ADMIN ", "default", "Settings", "recording", "Folders"} {
 		w := as(h, "sermon_studio_admin", "POST", "/api/tenants", `{"name":"`+name+`"}`)
 		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "reserved") {
 			t.Errorf("%q: %d %s", name, w.Code, w.Body.String())

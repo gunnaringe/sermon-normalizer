@@ -65,7 +65,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `api/shares` (only with `--share-listen`; shown as the last section of Settings, `shares.js`). `web/sharesite.go`: the public listener
   (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
-- `web/static/`: plain JS, no build. `sermons.js` = a sermon's details inside the folder list (play, download,
+- `web/static/`: plain JS, no build. `app.js` = the hash router (`#/<church>/…`, old addresses without a church are moved; the
+  church comes from the address) and the Settings overlay (`openSettings`, over whichever page is shown). `sermons.js` = a sermon's details inside the folder list (play, download,
   make a format); clicking anywhere on a date row expands it; an unprocessed recording only offers the editor there. `icons/` = the logo: `logo.svg` is the one source (header, favicon,
   `manifest.webmanifest`); the PNGs (home screen, favicon fallback) come from it via `scripts/make-icons.sh`;
   the public page serves only the ones listed in `sharePage`. `dialog.js` = confirm/alert/prompt in the app's look

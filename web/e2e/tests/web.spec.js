@@ -485,13 +485,13 @@ test('upload straight into a new date folder, in chunks', async ({ page }) => {
   await expect(page.getByLabel('Date')).toHaveValue('2026-09-27');
   await expect(page.getByText('from the name')).toBeVisible();
   await page.getByRole('button', { name: 'Upload' }).click();
-  await expect(page).toHaveURL(/#\/folder\/2026\/2026-09-27$/);
+  await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-09-27$/);
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
   const dir = path.join(DATA, 'root/2026/2026-09-27');
   expect(fs.readdirSync(dir).filter((f) => f !== 'recording.json')).toEqual(['2026-09-27_raw.flac']);
   expect(fs.readFileSync(path.join(dir, '2026-09-27_raw.flac')).equals(fs.readFileSync(path.join(DATA, 'upload.flac')))).toBe(true);
   // It is on top of the first page, among the new ones, and opens there.
-  await page.getByRole('link', { name: 'Recordings' }).click();
+  await page.locator('a.brand').click();
   const recent = page.locator('section.recent');
   await expect(recent.getByRole('heading', { name: 'Newly imported' })).toBeVisible();
   const row = recent.locator('tr', { hasText: '2026-09-27' });
@@ -571,8 +571,16 @@ test('churches: add one, folders are separate, the choice is remembered', async 
   await expect(page.getByText('No recordings here yet.')).toBeVisible();
   await page.reload();
   await expect(page.locator('#church')).toHaveValue('second-church');
+  await expect(page).toHaveURL(/#\/second-church$/);
   await page.locator('#church').selectOption('first-church');
+  await expect(page).toHaveURL(/#\/first-church$/);
   await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
+  // A link names its church: it opens that church, whatever this browser used last.
+  await page.goto('#/second-church');
+  await expect(page.locator('#church')).toHaveValue('second-church');
+  await expect(page.getByText('No recordings here yet.')).toBeVisible();
+  await page.goto('#/first-church');
+  await expect(page.locator('#church')).toHaveValue('first-church');
 });
 
 test('settings: default tags are saved and used on the sermon page', async ({ page }) => {
@@ -600,7 +608,7 @@ test('a second sermon the same day: upload with a name, then rename', async ({ p
   await page.locator('input[name=date]').fill('2026-11-01');
   await page.screenshot({ path: path.join(shots, 'folders-upload-chosen.png') });
   await page.getByRole('button', { name: 'Upload' }).click();
-  await expect(page).toHaveURL(/#\/folder\/2026\/2026-11-01$/);
+  await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-11-01$/);
 
   await page.goto('');
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
@@ -609,7 +617,7 @@ test('a second sermon the same day: upload with a name, then rename', async ({ p
   await expect(page.getByText('give it a name')).toBeVisible();
   await page.locator('input[aria-label=Name]').fill('Kveld');
   await page.getByRole('button', { name: 'Upload' }).click();
-  await expect(page).toHaveURL(/#\/folder\/2026\/2026-11-01%20Kveld$|#\/folder\/2026\/2026-11-01 Kveld$/);
+  await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-11-01%20Kveld$|#\/folder\/2026\/2026-11-01 Kveld$/);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('2026-11-01 Kveld');
 
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 }); // prepared: it can be renamed
@@ -628,7 +636,7 @@ test('names: remembered, suggested, and tidied in settings', async ({ page }) =>
   await page.locator('input[name=date]').fill('2026-12-06');
   await page.locator('input[aria-label=Name]').fill('Engangs');
   await page.getByRole('button', { name: 'Upload' }).click();
-  await expect(page).toHaveURL(/#\/folder\/2026\/2026-12-06/);
+  await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-12-06/);
 
   await page.goto('');
   await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
@@ -645,11 +653,48 @@ test('names: remembered, suggested, and tidied in settings', async ({ page }) =>
   await page.getByLabel('Suggest names').check();
 });
 
-test('header: settings and log out are icons; log out asks first', async ({ page }) => {
-  await page.goto('');
+test('settings: an overlay over the page, closed by the cross, Esc or a click outside', async ({ page }) => {
+  await page.goto('#/first-church/folders/2026');
+  await expect(page.getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
   await page.getByRole('link', { name: 'Settings' }).click();
-  await expect(page).toHaveURL(/#\/settings$/);
-  await expect(page.getByRole('link', { name: 'Settings' })).toHaveClass(/active/);
+  await expect(dialog.getByRole('heading', { name: 'Default tags' })).toBeVisible();
+  await expect(page).toHaveURL(/#\/first-church\/folders\/2026$/); // still on the page it was opened over
+  await page.screenshot({ path: path.join(shots, 'settings-overlay.png') });
+  await dialog.getByRole('button', { name: 'Close settings' }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.mouse.click(5, 300); // the backdrop
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
+
+  // The address opens it over the recordings; closing goes back to them.
+  await page.goto('#/first-church/settings/shares');
+  await expect(dialog.getByRole('heading', { name: 'Shares' })).toBeInViewport();
+  await dialog.getByRole('button', { name: 'Close settings' }).click();
+  await expect(page).toHaveURL(/#\/first-church$/);
+  await expect(dialog).toBeHidden();
+});
+
+test('addresses: the church comes first; old ones are moved', async ({ page }) => {
+  await page.goto('');
+  await expect(page).toHaveURL(/#\/first-church$/);
+  await page.goto('#/folders/2026');
+  await expect(page).toHaveURL(/#\/first-church\/folders\/2026$/);
+  await page.goto('#/folder/2026/2026-10-04');
+  await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-10-04$/);
+  await expect(page.getByRole('heading', { name: '2026-10-04' })).toBeVisible();
+  await page.goto('#/shares');
+  await expect(page).toHaveURL(/#\/first-church\/settings\/shares$/);
+  await page.goto('#/no-such-church/folder/x');
+  await expect(page.getByText('No such church: no-such-church')).toBeVisible();
+});
+
+test('header: log out is an icon and asks first', async ({ page }) => {
+  await page.goto('');
   let posted = false;
   await page.route('**/logged-out', (r) => { posted = r.request().method() === 'POST'; r.fulfill({ body: 'logged out' }); });
   const out = page.locator('#logout button');
@@ -711,7 +756,7 @@ test('header: several churches: a quiet dropdown', async ({ page }) => {
 
 test('shares: make a code in the studio, send a recording with the link', async ({ page, context }) => {
   await page.goto('#/shares'); // the old address leads to the shares in the settings
-  await expect(page).toHaveURL(/#\/settings\/shares$/);
+  await expect(page).toHaveURL(/#\/first-church\/settings\/shares$/);
   await expect(page.getByRole('heading', { name: 'Shares' })).toBeInViewport();
   await page.locator('input[name=label]').fill('Sound desk');
   await page.locator('input[name=maxUploads]').fill('3');
@@ -759,7 +804,7 @@ test('shares: make a code in the studio, send a recording with the link', async 
   // Revoked: the code no longer works.
   page.once('dialog', () => {});
   await page.locator('.share', { hasText: 'Sound desk' }).getByRole('button', { name: 'Revoke' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click();
+  await page.getByRole('dialog', { name: 'Revoke share' }).getByRole('button', { name: 'Revoke' }).click();
   await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('revoked');
   await up.reload();
   await expect(up.getByRole('alert')).toContainText('withdrawn');

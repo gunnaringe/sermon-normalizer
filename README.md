@@ -55,7 +55,10 @@ data/norkirken-melhus/
 ```
 
 The folder name is the church's id and, until it is renamed on the Settings page, its name. Add a
-church in the app ("+ Add church…") or just make the folder. A `church.json` that cannot be read stops
+church in the app ("+ Add church…") or just make the folder. The church is the first part of every address
+(`#/<church>` the recordings, `#/<church>/folder/<path>` the editor, `#/<church>/settings` the settings), so a link opens
+that church whatever the browser used last. The ids `folder`, `folders`, `recording`, `recordings`, `settings`, `upload` and
+`shares` are reserved for that. A `church.json` that cannot be read stops
 the server from starting rather than being overwritten.
 
 **Logo:** *Settings → Church → Upload logo…* (PNG, JPEG, WebP or SVG, up to 1 MB) puts the church's own
@@ -199,7 +202,7 @@ all (flags above), and an upload is refused when the disk would get within 1 GB 
 
 ### Tags
 
-Every output (FLAC, MP3, Opus) gets title, artist, album and date tags. The **Settings** page sets
+Every output (FLAC, MP3, Opus) gets title, artist, album and date tags. The **Settings** overlay (the gear in the header; closes with ✕, Esc or a click outside) sets
 the defaults of the selected church, as templates: the title starts as `{yyyy}-{mm}-{dd}`. Placeholders:
 `{yyyy}` `{yy}` `{mm}` `{dd}` `{date}` (2026-10-04) `{weekday}` and `{name}` (the sermon's name, empty
 if it has none); an unknown one is refused. They are filled in from the date folder's name

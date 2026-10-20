@@ -21,8 +21,14 @@ const (
 )
 
 // reservedID reports ids that cannot be churches: "default" is the church
-// of --root, and no church may have the administrators' group.
-func reservedID(id string) bool { return id == RootTenant || groupOf(id) == groupOf(AdminID) }
+// of --root, no church may have the administrators' group, and the first
+// words of the page addresses (#/<church>/folder/...; old ones had no church)
+// would be mistaken for a church.
+func reservedID(id string) bool {
+	return id == RootTenant || groupOf(id) == groupOf(AdminID) || reservedPages[id]
+}
+
+var reservedPages = map[string]bool{"folder": true, "folders": true, "recording": true, "recordings": true, "settings": true, "upload": true, "shares": true}
 
 // groupOf is the group of a church: norkirken-melhus is for
 // sermon_studio_norkirken_melhus.
