@@ -398,9 +398,8 @@ test('regenerate makes the chosen formats, and only what is missing or out of da
   await expect(pill(page, 'FLAC')).toContainText('not made');
   await expect(page.getByText('Everything chosen is up to date.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Regenerate' })).toBeDisabled();
-  // Downloads straight from the page.
-  const [download] = await Promise.all([page.waitForEvent('download'), pill(page, 'MP3').getByRole('link', { name: 'Download' }).click()]);
-  expect(download.suggestedFilename()).toBe('2026-10-04.mp3');
+  // The files are downloaded from the folder list, not here.
+  await expect(page.locator('section.step').last().getByRole('link', { name: 'Download' })).toHaveCount(0);
   await expect(page.locator('.input-file')).toContainText('2026-10-04_raw.flac'); // moved into original/ by the run
   await page.screenshot({ path: path.join(shots, 'done.png'), fullPage: true });
 

@@ -143,8 +143,8 @@ cancels running jobs and waits for them to clean up.
 - **Options:** checked as you change them; your choices carry over to the next folder. Mono or
   stereo is a switch; choosing stereo for a recording that is mono in effect (one channel,
   identical channels, or one side silent) shows a warning.
-- **Output:** a pill per format (FLAC, MP3, Opus): click to choose it, green when the file is
-  there, with *Download*. `recording.json` keeps what each file was made from (sections, cuts,
+- **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,
+  green when the file is there (play and download it from the folder list). `recording.json` keeps what each file was made from (sections, cuts,
   fades, sound, tags, bitrate), so a file made from other settings than the page shows says
   *will regenerate*; files made from the folder list count too. **Regenerate** saves the edit and
   makes the chosen formats that are missing or out of date, asking first when that replaces a

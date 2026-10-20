@@ -273,18 +273,15 @@ label.switch input:focus-visible + .track { outline: 2px solid var(--accent); ou
 label.switch .side { color: var(--muted); }
 label.switch:has(input:not(:checked)) .side.off, label.switch:has(input:checked) .side.on { color: var(--fg); font-weight: 600; }
 
-/* the formats */
-.pills { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.6rem; }
-.pill { display: inline-flex; align-items: center; gap: 0.5rem; border: 2px solid var(--line); border-radius: 999px; padding: 0.2rem 0.3rem 0.2rem 0.2rem; }
-.pill.exists { border-color: var(--ok); }
-.pill button.pick { border: 0; border-radius: 999px; background: none; padding: 0.3rem 0.6rem; font-weight: 600; }
+/* the formats: one per line, the names and the states in columns */
+.pills { display: grid; grid-template-columns: max-content max-content; align-items: center; gap: 0.4rem 1rem; margin-bottom: 0.6rem; }
+.pill { display: contents; }
+.pill button.pick { border: 2px solid var(--line); border-radius: 999px; padding: 0.3rem 0.9rem; font-weight: 600; text-align: left; min-width: 7.5rem; background: none; }
+.pill.exists button.pick { border-color: var(--ok); }
 .pill.chosen button.pick { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 .pill .box { font-weight: normal; }
-.pill .state { font-size: 0.8em; color: var(--muted); }
+.pill .state { font-size: 0.85em; color: var(--muted); }
 .pill .state.will { color: var(--warn); font-weight: 600; }
-.button.small { padding: 0.2rem 0.6rem; font-size: 0.85em; border-radius: 999px; }
 @media (max-width: 640px) {
   .channels > .name { min-width: 0; }
-  .pill { width: 100%; }
-  .pill .button.small { margin-left: auto; }
 }

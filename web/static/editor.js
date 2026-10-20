@@ -1003,8 +1003,7 @@ export async function editorView(view, path, config) {
           class: 'pick', 'aria-pressed': String(chosen), title: chosen ? `Leave ${label} out` : `Make ${label} too`,
           onclick: () => { opts[format] = !opts[format]; saveOptions(opts); renderOutputs(); },
         }, h('span', { class: 'box', 'aria-hidden': 'true' }, chosen ? '☑' : '☐'), ' ', label, file ? ' ✓' : ''),
-        h('span', { class: 'state' + (chosen && (stale || !file) ? ' will' : '') }, note),
-        file ? h('a', { class: 'button small', href: fileURL(file, true), title: `${file.name}, ${formatSize(file.size)}` }, 'Download') : '');
+        h('span', { class: 'state' + (chosen && (stale || !file) ? ' will' : '') }, note));
     }));
     const make = toMake();
     const chosen = FORMATS.filter(([f]) => opts[f]).length;
@@ -1079,7 +1078,7 @@ export async function editorView(view, path, config) {
       j.warnings.length ? h('div', {}, j.warnings.map((w) => h('p', { class: 'warn' }, '⚠ ' + w))) : '',
       j.error ? h('p', { class: 'error' }, j.error) : '',
       j.state === 'cancelled' ? h('p', {}, 'Cancelled. Nothing half-written was left behind.') : '',
-      j.state === 'done' ? h('p', {}, 'Done: the files are under Output, and in the folder list.') : '',
+      j.state === 'done' ? h('p', {}, 'Done. Listen to and download the files from the folder list.') : '',
       h('details', { open: running }, h('summary', {}, 'Log'), log),
       running ? h('button', { onclick: cancel }, 'Cancel') : ''));
     log.scrollTop = log.scrollHeight;
