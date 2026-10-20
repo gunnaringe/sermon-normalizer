@@ -490,8 +490,16 @@ test('upload straight into a new date folder, in chunks', async ({ page }) => {
   const dir = path.join(DATA, 'root/2026/2026-09-27');
   expect(fs.readdirSync(dir).filter((f) => f !== 'recording.json')).toEqual(['2026-09-27_raw.flac']);
   expect(fs.readFileSync(path.join(dir, '2026-09-27_raw.flac')).equals(fs.readFileSync(path.join(DATA, 'upload.flac')))).toBe(true);
-  // The date now has a recording: a second upload to it is refused.
+  // It is on top of the first page, among the new ones, and opens there.
   await page.getByRole('link', { name: 'Recordings' }).click();
+  const recent = page.locator('section.recent');
+  await expect(recent.getByRole('heading', { name: 'Newly imported' })).toBeVisible();
+  const row = recent.locator('tr', { hasText: '2026-09-27' });
+  await expect(row).toContainText('arrived today');
+  await row.getByRole('button', { name: '2026-09-27', exact: true }).click();
+  await expect(recent.getByRole('link', { name: 'Open in the editor' })).toBeVisible();
+  await page.screenshot({ path: path.join(shots, 'folders-new.png') });
+  // The date now has a recording: a second upload to it is refused.
   await page.locator('input[type=file]').setInputFiles({ name: 'again 2026-09-27.flac', mimeType: 'audio/flac', buffer: Buffer.from('x') });
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page.getByText('already has a raw recording')).toBeVisible();

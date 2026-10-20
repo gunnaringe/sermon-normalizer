@@ -22,6 +22,9 @@ type folderState struct {
 	Recording *recordingFacts `json:"recording"`
 	// ConvertedFrom is the WAV the recording was converted from, if it was.
 	ConvertedFrom *sourceFile `json:"convertedFrom,omitempty"`
+	// Imported is when the recording arrived (upload, inbox, share); the
+	// folder list shows it among the new ones for a while (newFor).
+	Imported *time.Time `json:"imported,omitempty"`
 	sermonFile
 	// Outputs is how each output (flac, mp3, opus) was made, by the format.
 	Outputs map[string]outputMade `json:"outputs"`
@@ -116,6 +119,14 @@ func (s *Server) updateState(folder string, fn func(*folderState) error) (*folde
 		return st, errStateWrite
 	}
 	return st, nil
+}
+
+// markImported notes in the folder that its recording has just arrived.
+func (s *Server) markImported(folder string) {
+	now := time.Now().UTC()
+	if _, err := s.updateState(folder, func(st *folderState) error { st.Imported = &now; return nil }); err != nil {
+		s.cfg.Logger.Printf("%s: %v", s.relPath(folder), err)
+	}
 }
 
 // folderOfRecording is the date folder of a recording: its folder, or the

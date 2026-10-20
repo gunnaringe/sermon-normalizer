@@ -316,8 +316,13 @@ func TestUploadInChunks(t *testing.T) {
 		t.Errorf("mtime %v, want the browser's lastModified", st.ModTime())
 	}
 	entries, _ := os.ReadDir(filepath.Dir(raw))
-	if len(entries) != 1 {
-		t.Errorf("only the recording should be left: %v", entries)
+	if len(entries) != 2 || entries[1].Name() != stateName {
+		t.Errorf("only the recording and its state should be left: %v", entries)
+	}
+	// It is among the new ones on top of the folder list, with when it came.
+	recent := decode[struct{ Recent []folderEntry }](t, ts.do(t, "GET", "/api/folders?path=", nil)).Recent
+	if len(recent) != 1 || recent[0].Path != "2026/2026-10-04" || recent[0].Imported == nil || time.Since(*recent[0].Imported) > time.Minute {
+		t.Errorf("recent: %+v", recent)
 	}
 	if rec := chunk(t, ts, "2026-10-04", "again.flac", 3, 0, "abc", time.Time{}); rec.Code != http.StatusConflict ||
 		!strings.Contains(rec.Body.String(), "already has a raw recording") {
@@ -375,8 +380,18 @@ func TestInboxIngest(t *testing.T) {
 		t.Error("second recording of the day missing")
 	}
 	entry := ts.entry(filepath.Join(ts.root, "2026", "2026-09-27 2"))
-	if !entry.Date || !entry.Raw {
+	if !entry.Date || !entry.Raw || entry.Imported == nil {
 		t.Errorf("entry %+v", entry)
+	}
+	// New ones, newest first; one that came long ago is not new any more.
+	old := time.Now().Add(-newFor - time.Hour)
+	ts.updateState(filepath.Join(ts.root, "2026", "2026-10-04"), func(st *folderState) error { st.Imported = &old; return nil })
+	var paths []string
+	for _, e := range ts.recentImports() {
+		paths = append(paths, e.Path)
+	}
+	if got := strings.Join(paths, ", "); got != "2026/2026-09-27 2, 2026/2026-09-27" {
+		t.Errorf("recent: %s", got)
 	}
 	if err := ts.ingest("gone.flac"); err != nil {
 		t.Errorf("a file taken meanwhile is not an error: %v", err)
