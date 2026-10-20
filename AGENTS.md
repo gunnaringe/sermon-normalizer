@@ -104,7 +104,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - Messages from `normalizer` show in the web UI: use the form's names
   (Start, Save, mono), not flags. English everywhere.
 - The public upload page is on the internet without a login: add nothing to `ShareHandler`
-  that reads files or reaches the studio; `TestSharePublicIsSeparate` checks this.
+  that reads files or reaches the studio (the one exception: `api/share/logo` sends the church's logo to a valid code); `TestSharePublicIsSeparate` checks this.
 - Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`
   in `web/e2e/package.json`.
 

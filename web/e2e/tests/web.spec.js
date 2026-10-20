@@ -768,11 +768,23 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('open');
   await page.locator('#shares').screenshot({ path: path.join(shots, 'settings-shares.png') });
 
+  // The church's own logo, if it has one, is shown once the code is in (and not before).
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#b00020"/></svg>';
+  expect((await page.request.put('api/logo?tenant=first-church', { data: svg, headers: { 'Content-Type': 'image/svg+xml' } })).ok()).toBe(true);
+  const entry = await context.newPage();
+  await entry.goto('http://localhost:8081/');
+  await expect(entry.locator('header .brand img')).toHaveAttribute('src', 'icons/logo.svg');
+  await entry.close();
+
   // The link fills in the code, which then leaves the address bar.
   const up = await context.newPage();
   await up.goto(link);
   await expect(up.getByRole('heading', { name: 'Sound desk' })).toBeVisible();
   expect(up.url()).not.toContain('code');
+  await expect(up.locator('header .brand img')).toHaveAttribute('src', /^blob:/);
+  await expect.poll(() => up.locator('header .brand img').evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+  await up.screenshot({ path: path.join(shots, 'share-upload-logo.png') });
+  expect((await page.request.delete('api/logo?tenant=first-church')).ok()).toBe(true);
   await expect(up.getByText('3 more files · until 2099-12-31 23:59')).toBeVisible();
   await up.locator('input[type=file]').setInputFiles({
     name: 'Gudstjeneste 2026-09-13.flac', mimeType: 'audio/flac',

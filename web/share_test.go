@@ -502,3 +502,37 @@ func TestShareOldFullListIsAllTypes(t *testing.T) {
 		t.Errorf("%+v %+v", list[0], list[1])
 	}
 }
+
+// The public page shows the church's own logo, to someone with a valid code and to no one else.
+func TestShareLogo(t *testing.T) {
+	st := newShareTest(t, RateLimits{RequestsPerIP: 1000, RequestsTotal: 1000, FailsPerIP: 100, FailsTotal: 100})
+	code, _ := st.makeShare(`{"label":"Sound desk","types":[".wav"]}`)
+	info := func() map[string]any {
+		w := st.call("GET", "/api/share", code, "1.1.1.1", nil)
+		return decode[map[string]any](t, w)
+	}
+	if w := st.call("GET", "/api/share/logo", code, "1.1.1.1", nil); w.Code != http.StatusNotFound {
+		t.Errorf("no logo yet: %d", w.Code)
+	}
+	if info()["logo"] != false {
+		t.Errorf("info says there is a logo: %v", info())
+	}
+	png := []byte("\x89PNG\r\n\x1a\n" + strings.Repeat("x", 40))
+	if err := os.WriteFile(filepath.Join(st.church, "logo.png"), png, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if info()["logo"] != true {
+		t.Errorf("info does not say there is a logo: %v", info())
+	}
+	w := st.call("GET", "/api/share/logo", code, "1.1.1.1", nil)
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" || !bytes.Equal(w.Body.Bytes(), png) ||
+		!strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("logo: %d %v", w.Code, w.Header())
+	}
+	// Without a good code there is nothing.
+	for _, c := range []string{"", "AAAA-BBBB-CCCC-DDDD"} {
+		if w := st.call("GET", "/api/share/logo", c, "2.2.2.2", nil); w.Code != http.StatusForbidden {
+			t.Errorf("logo with code %q: %d", c, w.Code)
+		}
+	}
+}

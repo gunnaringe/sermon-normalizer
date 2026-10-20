@@ -21,7 +21,7 @@ import (
 // The public upload page. It is its own handler, served on its own listener,
 // and knows nothing of the studio: a static page and api/share/*, where every
 // request carries a share's code in the Share-Code header. Nothing is listed
-// or read back; files go to the share's church inbox as .<id>.partial and are
+// or read back (but for the church's logo, to someone with a code); files go to the share's church inbox as .<id>.partial and are
 // renamed when complete, then ingested like any other inbox file.
 
 // shareChunk is the largest chunk taken; the page sends 16 MB.
@@ -49,6 +49,7 @@ func (a *App) ShareHandler() http.Handler {
 		})
 	}
 	mux.HandleFunc("GET /api/share", a.handleShareInfo)
+	mux.HandleFunc("GET /api/share/logo", a.handleShareLogo)
 	mux.HandleFunc("POST /api/share/uploads", a.handleShareStart)
 	mux.HandleFunc("GET /api/share/uploads/{id}", a.handleShareStatus)
 	mux.HandleFunc("PUT /api/share/uploads/{id}", a.handleShareChunk)
@@ -60,7 +61,7 @@ func (a *App) ShareHandler() http.Handler {
 func (a *App) shareGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
@@ -136,7 +137,7 @@ func (a *App) handleShareInfo(w http.ResponseWriter, r *http.Request) {
 	n, bytes := sh.reserved()
 	info := map[string]any{
 		"label": sh.Label, "church": t.info().Name, "types": sh.types(), "allTypes": sh.AllTypes, "maxFileSize": sh.MaxFileSize,
-		"expires": sh.Expires, "state": sh.state(time.Now()), "chunk": 16 << 20,
+		"expires": sh.Expires, "state": sh.state(time.Now()), "chunk": 16 << 20, "logo": t.logoFile() != "",
 	}
 	if sh.MaxUploads > 0 {
 		info["uploadsLeft"] = max(0, sh.MaxUploads-sh.Count-n)
@@ -145,6 +146,16 @@ func (a *App) handleShareInfo(w http.ResponseWriter, r *http.Request) {
 		info["bytesLeft"] = max(0, sh.MaxTotal-sh.Bytes-bytes)
 	}
 	writeJSON(w, http.StatusOK, info)
+}
+
+// handleShareLogo sends the church's own logo to someone who has a valid code: GET api/share/logo.
+// It is the only file of the church that the public page can reach, and only that one.
+func (a *App) handleShareLogo(w http.ResponseWriter, r *http.Request) {
+	t, _, _, ok := a.shareFor(w, r)
+	if !ok {
+		return
+	}
+	serveLogo(w, r, t)
 }
 
 // shareFileName makes the name a file gets in the inbox from the one it

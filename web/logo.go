@@ -57,6 +57,11 @@ func (a *App) handleLogo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errors.New("no such church"))
 		return
 	}
+	serveLogo(w, r, t)
+}
+
+// serveLogo sends the church's logo, or a 404.
+func serveLogo(w http.ResponseWriter, r *http.Request, t *tenant) {
 	p := t.logoFile()
 	if p == "" {
 		writeError(w, http.StatusNotFound, errors.New("no logo"))
