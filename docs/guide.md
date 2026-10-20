@@ -87,6 +87,9 @@ Each can have a label, which shows on the waveform.
 - **Pause:** a section (but the last) and a cut each have a *Pause* field: seconds of silence (0 to 30) put into the sermon where
   the section ends, or where the cut is. It shows on the waveform and in the length, and is part of what makes the
   files out of date.
+- **Fades:** the sermon fades in from its start and out to its end. Drag the round knob at the start of the first section
+  (or the end of the last) along the waveform; the arrow keys move a focused knob by half a second (`shift`: a tenth). A fade can be
+  up to 30 seconds or half the sermon.
 - **Cutting parts out:** with the sermon selected, *Cut out here* (or `c`) marks 10 s from the
   playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
   dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut outside
