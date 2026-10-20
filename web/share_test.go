@@ -333,8 +333,8 @@ func TestSharePublicIsSeparate(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "share.js") || !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatalf("page: %d %v", w.Code, w.Header())
 	}
-	for _, path := range []string{"/icons/favicon-32.png", "/icons/logo-64.png", "/icons/apple-touch-icon.png"} {
-		if w := st.call("GET", path, "", "1.1.1.1", nil); w.Code != 200 || w.Header().Get("Content-Type") != "image/png" {
+	for _, path := range []string{"/icons/logo.svg", "/icons/favicon-32.png", "/icons/apple-touch-icon.png"} {
+		if w := st.call("GET", path, "", "1.1.1.1", nil); w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "image/") {
 			t.Errorf("GET %s on the public listener: %d %s", path, w.Code, w.Header().Get("Content-Type"))
 		}
 	}
