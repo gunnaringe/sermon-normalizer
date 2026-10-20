@@ -92,7 +92,13 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 ## Pull requests, with screenshots
 
 Every change goes in a PR (branch, push, `gh pr create`), never straight to `main`:
-merging deploys. A PR that changes anything visible includes screenshots of it:
+merging deploys. **You handle all of the git yourself**: branch from a fresh `origin/main`, commit, push,
+open the PR, and keep it mergeable (rebase on `main`, fix conflicts). The user only reviews and presses
+merge; never ask them to check out a branch, pull, rebase or retarget. Prefer one PR per change, off
+`main`. Stack one on another only when it must be, and then say so, because a PR merged into its parent's
+branch never reaches `main`: once the parent is merged, retarget the child (`gh pr edit --base main`)
+before it is merged, or open a new PR from the same branch. After a merge, check that the change is
+really in `origin/main`, and bring the local checkout up to date (`git switch main && git pull`). A PR that changes anything visible includes screenshots of it:
 
 ```bash
 scripts/test.sh e2e [-g name]                 # saves web/e2e/screenshots/<name>.png
