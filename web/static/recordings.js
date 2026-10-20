@@ -7,18 +7,21 @@ import { sermonDetail } from './sermons.js';
 import { t, tn } from './i18n.js';
 
 function badges(e) {
+  // While the server works on it, that is the status: what is left to do is not known until it is done.
+  const busy = [];
+  if (e.job) busy.push(h('span', { class: 'badge busy' }, t('processing')));
+  if (e.converting) busy.push(h('span', { class: 'badge busy' }, t('converting')));
+  if (e.preparing) busy.push(h('span', { class: 'badge busy' }, t('preparing')));
+  if (busy.length) return busy;
   const out = [];
-  if (e.job) out.push(h('span', { class: 'badge busy' }, t('processing')));
-  if (e.converting) out.push(h('span', { class: 'badge busy' }, t('converting')));
-  if (e.preparing) out.push(h('span', { class: 'badge busy' }, t('preparing')));
   // Done is cut and saved (or made before there was saving); the files follow.
   const done = e.saved || e.outputs.length > 0;
   if (e.raw && !done) out.push(h('span', { class: 'badge warn', title: t('Not cut yet: open it in the editor') }, t('to do')));
   if (done) out.push(h('span', { class: 'badge on', title: t('Cut and saved') }, t('done')));
-  if (!e.job && e.saved && e.outputs.length === 0) {
+  if (e.saved && e.outputs.length === 0) {
     out.push(h('span', { class: 'badge warn', title: t('No files made: open it in the editor and press Save') }, t('no files')));
   }
-  if (!e.job && e.outdated) {
+  if (e.outdated) {
     out.push(h('span', { class: 'badge warn', title: t('Made from an older cut: open it in the editor and press Save') }, t('files out of date')));
   }
   return out;

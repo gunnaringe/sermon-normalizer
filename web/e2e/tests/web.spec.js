@@ -828,3 +828,18 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await expect(page.locator('.share', { hasText: 'Sound desk' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /ended/ })).toHaveCount(0);
 });
+
+test('a recording being imported shows that, not what is left to do', async ({ page }) => {
+  // The server's list, with the first recording shown as being converted.
+  await page.route('**/api/recordings*', async (route) => {
+    const res = await route.fetch();
+    const data = await res.json();
+    Object.assign(data.recordings[0], { converting: true, saved: false, outputs: [] });
+    await route.fulfill({ response: res, json: data });
+  });
+  await page.goto('');
+  const row = page.locator('.year tr.row').first();
+  await expect(row).toContainText('converting');
+  await expect(row).not.toContainText('to do');
+  await expect(row.locator('.badge')).toHaveCount(1);
+});
