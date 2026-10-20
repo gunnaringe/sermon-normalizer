@@ -205,6 +205,13 @@ button.chip:hover { color: var(--fg); border-color: var(--muted); }
 .labels { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0; margin: 0.4rem 0; }
 .label-input { font: inherit; font-size: 0.85rem; padding: 0.15rem 0.6rem; width: 9rem; border: 1px dashed var(--line); border-radius: 999px; background: none; color: var(--fg); }
 .label-input:focus { border-style: solid; }
+.label-add-box { position: relative; display: inline-flex; align-items: center; gap: 0.3rem; }
+.label-add { border-radius: 999px; padding: 0.1rem 0.7rem; font-size: 1rem; line-height: 1.2; }
+.suggest { position: absolute; top: 100%; left: 0; z-index: 5; margin: 0.2rem 0 0; padding: 0.2rem 0; min-width: 9rem; max-height: 14rem; overflow: auto;
+  list-style: none; background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.suggest li { padding: 0.35rem 0.8rem; cursor: pointer; font-size: 0.9rem; }
+.label-add[hidden] { display: none; }
+.suggest li:hover { background: var(--line); }
 tr.row.target { animation: target 2.5s ease-out; }
 @keyframes target { from { background: var(--selection); } to { background: transparent; } }
 /* On the folder list: one line above the list, out of the way of listening. */

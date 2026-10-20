@@ -73,6 +73,36 @@ test('search finds names, dates and labels in every year; labels are added and r
   await detail.getByRole('button', { name: /Remove label x/ }).click();
 });
 
+test('a label is added with the + button, a comma, by leaving the field, or from the suggestions', async ({ page }) => {
+  await page.goto('');
+  await page.locator('.year tr.row', { hasText: '2026-10-04' }).locator('button.sermon-name').click();
+  const detail = page.locator('tr.detail-row');
+  const field = detail.getByLabel('Add a label');
+  await expect(detail.getByRole('button', { name: 'Add the label' })).toBeHidden(); // nothing typed yet
+  await field.fill('Easter');
+  await detail.getByRole('button', { name: 'Add the label' }).click();
+  await field.fill('guest,');
+  await expect(detail.locator('.chip.own')).toHaveText(['Easter×', 'guest×']);
+  await field.fill('baptism');
+  await page.locator('h1').click(); // leaving the field adds it
+  await expect(detail.locator('.chip.own')).toHaveText(['Easter×', 'guest×', 'baptism×']);
+
+  // Another recording: the labels in use are offered, narrowed as you type.
+  await page.locator('.year tr.row', { hasText: '2026-10-04' }).locator('button.sermon-name').click();
+  await page.locator('.year tr.row', { hasText: '2026-08-30' }).locator('button.sermon-name').click();
+  const other = page.locator('tr.detail-row').getByLabel('Add a label');
+  await other.focus();
+  await expect(page.locator('.suggest li')).toHaveText(['baptism', 'Easter', 'guest']);
+  await other.fill('ea');
+  await expect(page.locator('.suggest li')).toHaveText(['Easter']);
+  await page.screenshot({ path: path.join(shots, 'recordings-label-suggest.png') });
+  await page.locator('.suggest li', { hasText: 'Easter' }).click();
+  await expect(page.locator('tr.detail-row .chip.own')).toHaveText(['Easter×']);
+  await expect(page.locator('.suggest li')).toHaveText(['baptism', 'guest']); // not the one it has
+
+  for (const l of ['Easter']) await page.getByRole('button', { name: 'Remove label ' + l }).click();
+});
+
 test('a link opens the recordings page at one recording; Copy link makes it', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('#/first-church/recording/2025/2025-12-21');
