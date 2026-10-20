@@ -152,6 +152,8 @@ cancels running jobs and waits for them to clean up.
   deletes the files of those not chosen (never the recording), asking first when that replaces or
   deletes a file. The run is followed live and keeps going if the browser is closed. Cancelling leaves
   nothing half-written.
+- **Newly imported:** a recording that arrived (upload, inbox, share) in the last 7 days is also listed
+  on top of the first page, with when it came; the import time is kept in its `recording.json`.
 - **Upload** (at the top of the recordings list): drop or pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)

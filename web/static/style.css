@@ -172,6 +172,9 @@ pre.log { max-height: 14rem; overflow: auto; background: var(--bg); border: 1px 
 
 .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 1.5rem; text-align: center; color: var(--muted); }
 .drop.over { border-color: var(--accent); color: var(--fg); }
+/* Newly imported recordings, above the years. */
+.recent { margin-bottom: 1.5rem; }
+.recent .arrived { margin-left: 0.6rem; font-size: 0.9em; white-space: nowrap; }
 /* On the folder list: one line above the list, out of the way of listening. */
 .upload { margin: 0 0 1rem; }
 .upload .drop { padding: 0.6rem 0.8rem; text-align: left; }
