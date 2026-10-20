@@ -19,7 +19,7 @@ async function route() {
   if (section === 'upload') return location.replace('#/');
   if (section === 'shares') return location.replace('#/settings/shares');
   const nav = section === 'settings' ? section : 'folders';
-  for (const a of document.querySelectorAll('header nav a')) a.classList.toggle('active', a.dataset.nav === nav);
+  for (const a of document.querySelectorAll('header [data-nav]')) a.classList.toggle('active', a.dataset.nav === nav);
   try {
     if (section === 'folder') teardown = await editorView(view, path, config);
     else if (section === 'settings') teardown = await settingsView(path);
@@ -328,12 +328,32 @@ async function churchPicker() {
 }
 
 // logoutButton shows Log out when the server knows the login proxy's logout.
+// The icon asks first: a click opens "Log out?", which logs out when clicked;
+// a click elsewhere, or a few seconds, closes it again.
 async function logoutButton() {
   const { logoutUrl } = await api('GET', 'api/session');
   if (!logoutUrl) return;
   const form = document.getElementById('logout');
+  const button = form.querySelector('button');
   form.action = logoutUrl;
   form.hidden = false;
+  let timer = null;
+  const close = () => {
+    clearTimeout(timer);
+    button.classList.remove('asking');
+    button.setAttribute('aria-label', 'Log out');
+  };
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (button.classList.contains('asking')) {
+      form.submit();
+      return;
+    }
+    button.classList.add('asking');
+    button.setAttribute('aria-label', 'Log out? Click again to log out');
+    timer = setTimeout(close, 5000);
+  });
+  document.addEventListener('click', close);
 }
 
 async function start() {

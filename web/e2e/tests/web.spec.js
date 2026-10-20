@@ -637,6 +637,26 @@ test('names: remembered, suggested, and tidied in settings', async ({ page }) =>
   await page.getByLabel('Suggest names').check();
 });
 
+test('header: settings and log out are icons; log out asks first', async ({ page }) => {
+  await page.goto('');
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(page.getByRole('link', { name: 'Settings' })).toHaveClass(/active/);
+  let posted = false;
+  await page.route('**/logged-out', (r) => { posted = r.request().method() === 'POST'; r.fulfill({ body: 'logged out' }); });
+  const out = page.locator('#logout button');
+  await out.click();
+  await expect(out).toHaveText('Log out?');
+  await page.locator('header').screenshot({ path: path.join(shots, 'header-logout.png') });
+  await page.locator('main').click(); // elsewhere: closes it
+  await expect(page.getByText('Log out?')).toBeHidden();
+  expect(posted).toBe(false);
+  await out.click();
+  await out.click();
+  await expect(page.getByText('logged out')).toBeVisible();
+  expect(posted).toBe(true);
+});
+
 test('settings: rename the church; the dropdown follows', async ({ page }) => {
   await page.goto('#/settings');
   await page.locator('input[name=church]').fill('Norkirken Melhus');

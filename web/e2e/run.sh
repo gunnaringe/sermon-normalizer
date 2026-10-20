@@ -21,7 +21,7 @@ ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$long':s=8000:d=5400" -c:a flac "$d
 ffmpeg -v error -f lavfi -i "aevalsrc=exprs='$expr':s=48000:d=30" -c:a flac "$data/upload.flac"
 
 ./bin/sermon-studio --listen 127.0.0.1:8080 --data-dir "$data/churches" --cache-dir "$data/cache" \
-	--share-listen 127.0.0.1:8081 --share-url http://localhost:8081/ >"$data/server.log" 2>&1 &
+	--share-listen 127.0.0.1:8081 --share-url http://localhost:8081/ --logout-url http://127.0.0.1:8080/logged-out >"$data/server.log" 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null; wait $server 2>/dev/null || true' EXIT
 for i in $(seq 50); do
