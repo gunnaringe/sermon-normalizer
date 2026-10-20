@@ -94,7 +94,23 @@ const queue = [];
 let running = false;
 let limitsLine = null;
 
+// showLogo puts the church's own logo in the header, in place of the app's. The code goes in a header, so
+// the image is fetched with it and shown from the bytes.
+let logoShown = false;
+async function showLogo() {
+  if (!info.logo || logoShown) return;
+  logoShown = true;
+  try {
+    const resp = await fetch('api/share/logo', { headers: { 'Share-Code': code } });
+    if (!resp.ok) return;
+    const img = document.querySelector('header .brand img');
+    img.src = URL.createObjectURL(await resp.blob());
+    img.alt = info.church;
+  } catch { /* the app's logo stays */ }
+}
+
 function showUpload() {
+  showLogo();
   const input = h('input', { type: 'file', multiple: true, accept: info.types.join(','), hidden: true });
   const list = h('ul', { class: 'files' });
   const drop = h('div', { class: 'drop' },
