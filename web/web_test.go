@@ -167,7 +167,7 @@ func TestCheck(t *testing.T) {
 	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "select where the sermon") {
 		t.Errorf("no selection: %+v", pl)
 	}
-	q.Sections, q.FadeIn = []span{{21, 79}}, 1
+	q.Sections, q.FadeIn = []span{{Start: 21, End: 79}}, 1
 	pl := decode[plan](t, ts.do(t, "POST", url, q))
 	if parsed := ts.check(filepath.Join(ts.root, "d/2026-10-04"), q).opt; parsed.Start != 21 || parsed.End != 79 || parsed.FadeIn != 1 {
 		t.Errorf("parsed options %+v", parsed)
@@ -184,7 +184,7 @@ func TestCheck(t *testing.T) {
 		t.Errorf("just made: %+v", pl.Outputs)
 	}
 	for name, change := range map[string]func(*runRequest){
-		"a cut":     func(r *runRequest) { r.Cuts = []span{{40, 45}} },
+		"a cut":     func(r *runRequest) { r.Cuts = []span{{Start: 40, End: 45}} },
 		"stereo":    func(r *runRequest) { r.Stereo = true },
 		"a tag":     func(r *runRequest) { r.Title = ptr("Another") },
 		"a bitrate": func(r *runRequest) { r.Mp3Bitrate = "192k" },
@@ -206,7 +206,7 @@ func TestCheck(t *testing.T) {
 	}
 	// A folder without a recording cannot be run; one whose recording is in original/ can.
 	q = defaultRequest()
-	q.Sections = []span{{30, 3600}}
+	q.Sections = []span{{Start: 30, End: 3600}}
 	if pl := decode[plan](t, ts.do(t, "POST", "/api/check?path=d/2026-10-11", q)); pl.Error == "" {
 		t.Errorf("no folder: %+v", pl)
 	}
@@ -226,40 +226,41 @@ func TestCheckCuts(t *testing.T) {
 	folder := filepath.Join(ts.root, "d/2026-10-04")
 
 	q := defaultRequest()
-	q.Sections = []span{{20, 80}}
-	q.Cuts = []span{{60, 65}, {30, 40}}
+	q.Sections = []span{{Start: 20, End: 80}}
+	q.Cuts = []span{{Start: 60, End: 65}, {Start: 30, End: 40}}
 	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Error != "" || len(pl.Notices) != 0 {
 		t.Errorf("cuts inside the sermon: %+v", pl)
 	}
 	if opt := ts.check(folder, q).opt; opt.Start != 20 || opt.End != 80 || !reflect.DeepEqual(opt.Cuts, []normalizer.Span{{Start: 30, End: 40}, {Start: 60, End: 65}}) {
 		t.Errorf("parsed cuts %+v", opt)
 	}
-	q.Cuts = []span{{70, 90}}
-	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "inside the sermon") {
-		t.Errorf("cut past the end: %+v", pl)
+	q.Cuts = []span{{Start: 70, End: 90}}
+	// A cut that sticks out past the end is cut at the edge, not refused.
+	if pl := ts.check(folder, q); pl.Error != "" || !reflect.DeepEqual(pl.opt.Cuts, []normalizer.Span{{Start: 70, End: 80}}) {
+		t.Errorf("cut past the end: %+v %+v", pl, pl.opt)
 	}
 
 	// Several sections: the gaps between them are left out like cuts, and
 	// sections that overlap are one.
-	q.Sections = []span{{60, 90}, {10, 30}, {25, 40}}
-	q.Cuts = []span{{70, 75}}
+	q.Sections = []span{{Start: 60, End: 90}, {Start: 10, End: 30}, {Start: 25, End: 40}}
+	q.Cuts = []span{{Start: 70, End: 75}}
 	pl := ts.check(folder, q)
 	want := []normalizer.Span{{Start: 40, End: 60}, {Start: 70, End: 75}}
 	if pl.Error != "" || pl.opt.Start != 10 || pl.opt.End != 90 || !reflect.DeepEqual(pl.opt.Cuts, want) {
 		t.Errorf("sections: %+v %+v", pl, pl.opt)
 	}
-	// A cut between sections leaves nothing out: allowed, with a notice.
-	q.Cuts = []span{{45, 50}}
-	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Error != "" || len(pl.Notices) != 1 || !strings.Contains(pl.Notices[0], "between two sections") {
+	// A cut between sections leaves nothing more out: allowed (the editor warns by it).
+	q.Cuts = []span{{Start: 45, End: 50}}
+	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Error != "" || len(pl.Notices) != 0 {
 		t.Errorf("cut in a gap: %+v", pl)
 	}
-	q.Sections = []span{{50, 40}}
+	q.Sections = []span{{Start: 50, End: 40}}
 	q.Cuts = nil
 	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "section must end after it starts") {
 		t.Errorf("backwards section: %+v", pl)
 	}
-	q.Sections = []span{{20, 80}}
-	q.Cuts = []span{{40, 30}}
+	q.Sections = []span{{Start: 20, End: 80}}
+	q.Cuts = []span{{Start: 40, End: 30}}
 	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "must end after it starts") {
 		t.Errorf("backwards cut: %+v", pl)
 	}
@@ -437,7 +438,7 @@ func TestRunQueueAndCancel(t *testing.T) {
 	defer func() { <-ts.jobs.sem }()
 
 	q := defaultRequest()
-	q.Sections = []span{{30, 3600}}
+	q.Sections = []span{{Start: 30, End: 3600}}
 	rec := ts.do(t, "POST", "/api/run?path=2026-10-04", q)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("run: %d %s", rec.Code, rec.Body)
@@ -496,7 +497,7 @@ func TestMakeFormat(t *testing.T) {
 	if rec := mk("mp3"); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "not saved") {
 		t.Errorf("nothing saved: %d %s", rec.Code, rec.Body)
 	}
-	saved := sermonSettings{cutting: cutting{Sections: []span{{30, 3600}}, Cuts: []span{}}}
+	saved := sermonSettings{cutting: cutting{Sections: []span{{Start: 30, End: 3600}}, Cuts: []span{}}}
 	if _, err := ts.updateState(filepath.Join(ts.root, "2026-10-04"), func(st *folderState) error { st.Saved = &saved; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -546,7 +547,7 @@ func TestRemoveOutputs(t *testing.T) {
 	ts.jobs.sem <- struct{}{}
 	defer func() { <-ts.jobs.sem }()
 	q := defaultRequest()
-	q.Sections = []span{{1, 2}}
+	q.Sections = []span{{Start: 1, End: 2}}
 	snap := decode[jobSnapshot](t, ts.do(t, "POST", "/api/run?path=2026-10-04", q))
 	if rec := ts.do(t, "POST", "/api/outputs/remove?path=2026-10-04&format=opus", nil); rec.Code != http.StatusConflict {
 		t.Errorf("while busy: %d", rec.Code)
@@ -638,7 +639,7 @@ func TestRecordingSavedAndOutdated(t *testing.T) {
 	if e := ts.entry(folder); e.Saved || e.Outdated {
 		t.Fatalf("before saving: %+v", e)
 	}
-	saved := sermonSettings{cutting: cutting{Sections: []span{{21, 79}}, Cuts: []span{}}, FadeIn: 1}
+	saved := sermonSettings{cutting: cutting{Sections: []span{{Start: 21, End: 79}}, Cuts: []span{}}, FadeIn: 1}
 	other := saved
 	other.FadeIn = 2
 	write := func(made sermonSettings) {
