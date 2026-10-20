@@ -34,20 +34,16 @@ function badges(e) {
   if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
   if (e.preparing) out.push(h('span', { class: 'badge busy' }, 'preparing'));
   if (e.raw && e.outputs.length === 0) out.push(h('span', { class: 'badge warn', title: 'Only the full, unedited recording of the service exists' }, 'not processed'));
-  for (const f of ['flac', 'mp3', 'opus']) {
-    if (e.outputs.includes(f)) out.push(h('span', { class: 'badge on' }, '✓ ' + f));
-  }
+  if (e.outputs.length) out.push(h('span', { class: 'badge on', title: 'Ready to play and download' }, 'ready'));
   return out;
 }
 
-// A sermon (a date folder with files made) opens its details in the list. A
-// recording that is not processed still opens the editor when clicked, as it
-// always did; its arrow shows the warning and the raw recording instead.
+// A date folder opens its details in the list, anywhere on its row. A
+// recording that is not processed only offers the editor there.
 async function foldersView(path) {
   const data = await api('GET', 'api/folders?path=' + q(path));
   const body = h('tbody');
   for (const e of data.entries) {
-    const processed = e.outputs.length > 0;
     const href = (e.date ? '#/folder/' : '#/folders/') + e.path;
     let detail = null;
     const toggle = h('button', { class: 'twisty', 'aria-expanded': 'false', title: 'Show details', 'aria-label': 'Show details of ' + e.name }, '▸');
@@ -63,10 +59,10 @@ async function foldersView(path) {
       toggle.textContent = detail ? '▾' : '▸';
     };
     toggle.addEventListener('click', (ev) => { ev.stopPropagation(); flip(); });
-    const name = processed
-      ? h('button', { class: 'sermon-name', onclick: flip }, e.name)
-      : h('a', { href }, e.name + (e.date ? '' : '/'));
-    const row = h('tr', { class: 'row', onclick: processed ? flip : () => { location.hash = href; } },
+    const name = e.date
+      ? h('button', { class: 'sermon-name' }, e.name) // its click reaches the row
+      : h('a', { href }, e.name + '/');
+    const row = h('tr', { class: 'row', onclick: e.date ? flip : () => { location.hash = href; } },
       h('td', {}, e.date ? toggle : '', name),
       h('td', {}, badges(e)));
     body.append(row);

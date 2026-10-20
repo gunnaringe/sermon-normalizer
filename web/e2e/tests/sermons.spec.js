@@ -30,6 +30,7 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await page.goto('#/folders/2026');
   const row = page.locator('tr.row', { hasText: '2026-07-05' });
   await expect(row).not.toContainText('not processed');
+  await expect(row).toContainText('ready');
   await row.click();
   await expect(page).toHaveURL(/#\/folders\/2026$/);
   const detail = page.locator('tr.detail-row');
@@ -52,6 +53,10 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await expect(detail.getByRole('link', { name: 'Download MP3' })).toHaveClass(/on/, { timeout: 60_000 });
   expect(fs.readdirSync(path.join(DATA, 'root', folder)).some((f) => f.endsWith('.mp3'))).toBe(true);
 
+  await row.locator('button.sermon-name').click(); // the name button too: once, not twice
+  await expect(detail).toHaveCount(0);
+  await row.click();
+  await expect(detail).toHaveCount(1);
   await row.click(); // closes again
   await expect(detail).toHaveCount(0);
   await row.getByRole('button', { name: /Show details/ }).click();
@@ -62,13 +67,13 @@ test('a recording that is not processed has the tag and an edit button, and stil
   await page.goto('#/folders/2026');
   const row = page.locator('tr.row', { hasText: '2026-08-30' });
   await expect(row).toContainText('not processed');
-  await row.getByRole('button', { name: /Show details/ }).click();
+  await row.click(); // anywhere on the row
   await expect(page.getByRole('link', { name: 'Open in the editor' })).toBeVisible();
   await expect(page.locator('tr.detail-row audio')).toHaveCount(0);
   await expect(page.locator('tr.detail-row')).not.toContainText('Download'); // nothing to download yet
   await expect(page).toHaveURL(/#\/folders\/2026$/);
   await page.screenshot({ path: path.join(shots, 'sermon-list-unprocessed.png') });
-  await row.getByRole('link', { name: '2026-08-30' }).click();
+  await page.getByRole('link', { name: 'Open in the editor' }).click();
   await expect(page).toHaveURL(/#\/folder\/2026\/2026-08-30$/);
 });
 
