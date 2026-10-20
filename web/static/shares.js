@@ -3,20 +3,24 @@
 // share is made. A section of the settings; sharesView fills its box.
 import { api, h, formatSize, formatDate, formatDateTime } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
+import { t, tn } from './i18n.js';
 
 const GB = 1 << 30;
 
+// What a share's state is called; the server's words are the keys of this table.
+const STATES = { revoked: 'revoked', expired: 'expired', 'used up': 'used up', full: 'full' };
+
 function stateText(s) {
-  if (s.state) return h('span', { class: 'badge' }, s.state);
-  if (s.uploading) return h('span', { class: 'badge busy' }, `${s.uploading} uploading`);
-  return h('span', { class: 'badge on' }, 'open');
+  if (s.state) return h('span', { class: 'badge' }, t(STATES[s.state] || s.state));
+  if (s.uploading) return h('span', { class: 'badge busy' }, t('{n} uploading', { n: s.uploading }));
+  return h('span', { class: 'badge on' }, t('open'));
 }
 
 function limits(s) {
-  const out = [`up to ${formatSize(s.maxFileSize)} per file`, s.allTypes ? 'all audio' : s.types.join(' ')];
-  if (s.maxUploads) out.push(`${s.maxUploads} files`);
-  if (s.maxTotal) out.push(`${formatSize(s.maxTotal)} in all`);
-  out.push(s.expires ? 'until ' + formatDateTime(s.expires) : 'no expiry');
+  const out = [t('up to {size} per file', { size: formatSize(s.maxFileSize) }), s.allTypes ? t('all audio') : s.types.join(' ')];
+  if (s.maxUploads) out.push(tn(s.maxUploads, '{n} file', '{n} files'));
+  if (s.maxTotal) out.push(t('{size} in all', { size: formatSize(s.maxTotal) }));
+  out.push(s.expires ? t('until {time}', { time: formatDateTime(s.expires) }) : t('no expiry'));
   return out.join(' · ');
 }
 
@@ -30,7 +34,7 @@ function parseExpiry(s) {
     ? new Date(+m[1], m[2] - 1, +m[3], 23, 59, 59)
     : new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]));
   if (!d || d.getMonth() !== m[2] - 1 || d.getDate() !== +m[3] || (m[4] !== undefined && (+m[4] > 23 || +m[5] > 59))) {
-    throw new Error('Write the expiry as yyyy-mm-dd or yyyy-mm-dd hh:mm.');
+    throw new Error(t('Write the expiry as yyyy-mm-dd or yyyy-mm-dd hh:mm.'));
   }
   return d.toISOString();
 }
@@ -56,20 +60,20 @@ function holdToCopy(el, text, done) {
 async function showCode(url, code) {
   const link = linkFor(url, code);
   const note = h('span', { class: 'muted', role: 'status' });
-  const codeEl = h('span', { class: 'share-code', title: 'Hold to copy' }, code);
-  holdToCopy(codeEl, code, () => { note.textContent = 'Code copied.'; });
+  const codeEl = h('span', { class: 'share-code', title: t('Hold to copy') }, code);
+  holdToCopy(codeEl, code, () => { note.textContent = t('Code copied.'); });
   const share = h('button', { type: 'button', name: 'share', onclick: async () => {
     const what = link ? { url: link } : { text: code };
     if (navigator.share) {
-      try { await navigator.share({ title: 'Send recordings', ...what }); } catch { /* closed */ }
+      try { await navigator.share({ title: t('Send recordings'), ...what }); } catch { /* closed */ }
       return;
     }
     await navigator.clipboard.writeText(link || code);
-    note.textContent = link ? 'Link copied.' : 'Code copied.';
-  } }, 'Share');
-  await alertDialog({ title: 'Share made', body: [
-    'The code is shown only once. Share it before you close this.', h('br'), h('br'),
-    codeEl, h('br'), h('span', { class: 'muted' }, 'Hold the code to copy it.'),
+    note.textContent = link ? t('Link copied.') : t('Code copied.');
+  } }, t('Share'));
+  await alertDialog({ title: t('Share made'), body: [
+    t('The code is shown only once. Share it before you close this.'), h('br'), h('br'),
+    codeEl, h('br'), h('span', { class: 'muted' }, t('Hold the code to copy it.')),
     ...(link ? [h('br'), h('br'), h('span', { class: 'share-link' }, link)] : []),
     h('br'), h('br'), share, ' ', note,
   ] });
@@ -78,16 +82,16 @@ async function showCode(url, code) {
 export async function sharesView(box) {
   const data = await api('GET', 'api/shares');
   const num = (name, attrs = {}) => h('input', { type: 'number', name, min: 0, step: 'any', ...attrs });
-  const label = h('input', { type: 'text', name: 'label', maxlength: 80, placeholder: 'e.g. Recordings from the sound desk' });
+  const label = h('input', { type: 'text', name: 'label', maxlength: 80, placeholder: t('e.g. Recordings from the sound desk') });
   const types = data.types.map((t) => h('input', { type: 'checkbox', name: 'type', value: t, checked: true }));
   const typeList = h('span', { hidden: true }, types.map((c) => h('label', { class: 'check' }, c, ' ' + c.value + ' ')));
   const allTypes = h('input', { type: 'checkbox', name: 'allTypes', checked: true,
     onchange: () => { typeList.hidden = allTypes.checked; } });
   const fileSize = num('maxFileSize', { value: data.defaultFileSize / GB, min: 0.01 });
-  const uploads = num('maxUploads', { step: 1, placeholder: 'no limit' });
-  const total = num('maxTotal', { placeholder: 'no limit' });
+  const uploads = num('maxUploads', { step: 1, placeholder: t('no limit') });
+  const total = num('maxTotal', { placeholder: t('no limit') });
   const expires = h('input', { type: 'text', name: 'expires', class: 'date', maxlength: 16, autocomplete: 'off',
-    placeholder: 'yyyy-mm-dd [hh:mm]' });
+    placeholder: t('yyyy-mm-dd [hh:mm]') });
   const status = h('span', { class: 'error' });
   const create = h('button', { class: 'primary', name: 'create-share', onclick: async () => {
     status.textContent = '';
@@ -104,11 +108,11 @@ export async function sharesView(box) {
       await showCode(data.url, made.code);
       await sharesView(box);
     } catch (err) { status.textContent = err.message; }
-  } }, 'Make share');
+  } }, t('Make share'));
 
   const revoke = (s) => async () => {
-    const ok = await confirmDialog({ title: 'Revoke share', confirm: 'Revoke', danger: true,
-      body: `Nobody can upload with the code of "${s.label}" any more. Files already sent stay; uploads in progress stop.` });
+    const ok = await confirmDialog({ title: t('Revoke share'), confirm: t('Revoke'), danger: true,
+      body: t('Nobody can upload with the code of "{label}" any more. Files already sent stay; uploads in progress stop.', { label: s.label }) });
     if (!ok) return;
     try {
       await api('POST', `api/shares/${encodeURIComponent(s.id)}/revoke`);
@@ -117,8 +121,8 @@ export async function sharesView(box) {
   };
 
   const remove = (s) => async () => {
-    const ok = await confirmDialog({ title: 'Remove share', confirm: 'Remove', danger: true,
-      body: `"${s.label}" and its list of uploads are removed. Files already sent stay.` });
+    const ok = await confirmDialog({ title: t('Remove share'), confirm: t('Remove'), danger: true,
+      body: t('"{label}" and its list of uploads are removed. Files already sent stay.', { label: s.label }) });
     if (!ok) return;
     try {
       await api('POST', `api/shares/${encodeURIComponent(s.id)}/remove`);
@@ -127,8 +131,8 @@ export async function sharesView(box) {
   };
   const ended = data.shares.filter((s) => s.state);
   const removeEnded = async () => {
-    const ok = await confirmDialog({ title: 'Remove ended shares', confirm: 'Remove', danger: true,
-      body: `${ended.length} share${ended.length === 1 ? '' : 's'} that no longer take${ended.length === 1 ? 's' : ''} uploads (revoked, expired, used up or full) are removed with their lists of uploads. Files already sent stay.` });
+    const ok = await confirmDialog({ title: t('Remove ended shares'), confirm: t('Remove'), danger: true,
+      body: tn(ended.length, '{n} share that no longer takes uploads (revoked, expired, used up or full) is removed with its list of uploads. Files already sent stay.', '{n} shares that no longer take uploads (revoked, expired, used up or full) are removed with their lists of uploads. Files already sent stay.') });
     if (!ok) return;
     try {
       await api('POST', 'api/shares/remove-ended');
@@ -140,29 +144,29 @@ export async function sharesView(box) {
     h('p', {}, h('strong', {}, s.label), ' ', stateText(s), ' ',
       h('span', { class: 'muted mono' }, '…' + s.hint)),
     h('p', { class: 'muted' }, limits(s)),
-    h('p', {}, `${s.count ? `${s.count} file${s.count === 1 ? '' : 's'} received (${formatSize(s.bytes)})` : 'Nothing received yet'} · made ${formatDate(s.created)}`),
-    s.log.length ? h('details', {}, h('summary', {}, 'Uploads'),
+    h('p', {}, `${s.count ? t('{files} received ({size})', { files: tn(s.count, '{n} file', '{n} files'), size: formatSize(s.bytes) }) : t('Nothing received yet')} · ${t('made {date}', { date: formatDate(s.created) })}`),
+    s.log.length ? h('details', {}, h('summary', {}, t('Uploads')),
       h('table', { class: 'list' }, s.log.map((u) => h('tr', {},
         h('td', {}, formatDateTime(u.time)), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
     h('p', {}, s.state
-      ? h('button', { name: 'remove', onclick: remove(s) }, 'Remove')
-      : h('button', { name: 'revoke', onclick: revoke(s) }, 'Revoke'))));
+      ? h('button', { name: 'remove', onclick: remove(s) }, t('Remove'))
+      : h('button', { name: 'revoke', onclick: revoke(s) }, t('Revoke')))));
 
   box.replaceChildren(
-    h('h2', {}, 'Shares'),
-    h('p', { class: 'muted' }, 'A share is a code that lets someone without a login send recordings on the upload page', data.url ? [' (', h('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.url), ')'] : '',
-      '. The recordings arrive in this church like any other. Give people the code or the link. ' +
-      'The code is shown only once, when you make the share.'),
+    h('h2', {}, t('Shares')),
+    h('p', { class: 'muted' }, t('A share is a code that lets someone without a login send recordings on the upload page'), data.url ? [' (', h('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.url), ')'] : '',
+      '. ' + t('The recordings arrive in this church like any other. Give people the code or the link.') + ' ' +
+      t('The code is shown only once, when you make the share.')),
     data.inbox ? h('div', { class: 'panel share-form' },
-      h('label', { for: 'share-label' }, 'Name'), Object.assign(label, { id: 'share-label' }),
-      h('span', {}, 'File types'), h('span', {}, h('label', { class: 'check' }, allTypes, ' All supported audio'), h('br'), typeList),
-      h('label', {}, 'Max file size (GB)'), fileSize,
-      h('label', {}, 'Max number of files'), uploads,
-      h('label', {}, 'Max total size (GB)'), total,
-      h('label', {}, 'Expires'), expires,
+      h('label', { for: 'share-label' }, t('Name')), Object.assign(label, { id: 'share-label' }),
+      h('span', {}, t('File types')), h('span', {}, h('label', { class: 'check' }, allTypes, ' ' + t('All supported audio')), h('br'), typeList),
+      h('label', {}, t('Max file size (GB)')), fileSize,
+      h('label', {}, t('Max number of files')), uploads,
+      h('label', {}, t('Max total size (GB)')), total,
+      h('label', {}, t('Expires')), expires,
       h('div', { class: 'wide' }, create, ' ', status))
-      : h('p', { class: 'error' }, 'Shares need an inbox folder, and this church has none.'),
-    h('h3', {}, 'Made'),
-    ended.length ? h('p', {}, h('button', { name: 'remove-ended', onclick: removeEnded }, `Remove ${ended.length} ended`)) : '',
-    ...(rows.length ? rows : [h('p', { class: 'muted' }, 'No shares yet.')]));
+      : h('p', { class: 'error' }, t('Shares need an inbox folder, and this church has none.')),
+    h('h3', {}, t('Made')),
+    ended.length ? h('p', {}, h('button', { name: 'remove-ended', onclick: removeEnded }, t('Remove {n} ended', { n: ended.length }))) : '',
+    ...(rows.length ? rows : [h('p', { class: 'muted' }, t('No shares yet.'))]));
 }

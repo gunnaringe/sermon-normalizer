@@ -6,6 +6,7 @@ import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
 import { recordingsView } from './recordings.js';
+import { t, tr, lang, LANGS, setLang, getTheme, setTheme } from './i18n.js';
 
 const view = document.getElementById('view');
 let config = { inbox: false, defaults: {} };
@@ -31,7 +32,7 @@ async function route() {
   const path = rest.join('/');
   if (!churches.tenants.some((t) => t.id === church)) {
     shown = '';
-    view.replaceChildren(h('p', { class: 'error' }, `No such church: ${church}. `, h('a', { href: '#/' }, 'Go to the recordings')));
+    view.replaceChildren(h('p', { class: 'error' }, t('No such church: {church}.', { church }), ' ', h('a', { href: '#/' }, t('Go to the recordings'))));
     return;
   }
   if (church !== currentTenant()) {
@@ -54,7 +55,7 @@ async function route() {
       if (section === 'settings') await openSettings(path);
     } else {
       shown = '';
-      view.replaceChildren(h('p', { class: 'error' }, 'No such page.'));
+      view.replaceChildren(h('p', { class: 'error' }, t('No such page.')));
     }
   } catch (err) {
     shown = '';
@@ -68,7 +69,7 @@ async function foldersView() {
   return recordingsView(view, {
     top: uploadBox(),
     church: currentTenant(),
-    emptyNote: 'No recordings here yet. Upload one above' + (config.inbox ? ', or put one in the inbox folder.' : '.'),
+    emptyNote: config.inbox ? t('No recordings here yet. Upload one above, or put one in the inbox folder.') : t('No recordings here yet. Upload one above.'),
   });
 }
 
@@ -79,9 +80,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function suggestDate(file) {
   for (const m of file.name.matchAll(/(20\d\d)[-_.]?(\d\d)[-_.]?(\d\d)/g)) {
     const d = `${m[1]}-${m[2]}-${m[3]}`;
-    if (!Number.isNaN(Date.parse(d))) return { date: d, source: 'from the name' };
+    if (!Number.isNaN(Date.parse(d))) return { date: d, source: t('from the name') };
   }
-  return { date: formatDate(file.lastModified), source: "from the file's date" };
+  return { date: formatDate(file.lastModified), source: t("from the file's date") };
 }
 
 // sendFile uploads file into the date folder in chunks: each request stays
@@ -101,7 +102,7 @@ async function sendFile(file, date, sermon, onProgress) {
       data = await resp.json().catch(() => ({}));
     } catch (e) {
       sent = true;
-      if (++failures > 6) throw new Error('the connection keeps failing: ' + e.message);
+      if (++failures > 6) throw new Error(t('the connection keeps failing: {error}', { error: e.message }));
       await sleep(1000 * 2 ** failures);
       continue;
     }
@@ -133,26 +134,26 @@ function uploadBox() {
   const status = h('p', { class: 'muted' });
   const progress = h('progress', { max: 1, value: 0, hidden: true });
   const drop = h('div', { class: 'drop' },
-    h('strong', {}, 'Upload a recording: '), 'drop an audio or video file here, or ',
-    h('button', { class: 'link', type: 'button', onclick: () => input.click() }, 'choose a file'), '.');
+    h('strong', {}, t('Upload a recording:')), ' ', t('drop an audio or video file here, or'), ' ',
+    h('button', { class: 'link', type: 'button', onclick: () => input.click() }, t('choose a file')), '.');
 
   function choose(file) {
     if (!file) return;
     if (!isInputType(file.name)) {
       status.className = 'error';
-      status.textContent = `${file.name}: not a type of file that can be used. Use ${INPUT_TYPES.join(' ')}.`;
+      status.textContent = t('{name}: not a type of file that can be used. Use {types}.', { name: file.name, types: INPUT_TYPES.join(' ') });
       return;
     }
     const guess = suggestDate(file);
-    const date = dateInput({ name: 'date', value: guess.date, required: true, 'aria-label': 'Date' });
-    const sermon = h('input', { type: 'text', maxlength: 60, placeholder: 'optional, e.g. Evening', 'aria-label': 'Name' });
+    const date = dateInput({ name: 'date', value: guess.date, required: true, 'aria-label': t('Date') });
+    const sermon = h('input', { type: 'text', maxlength: 60, placeholder: t('optional, e.g. Evening'), 'aria-label': t('Name') });
     const button = h('button', { class: 'primary', onclick: async () => {
       if (!date.value) return;
       button.disabled = date.disabled = sermon.disabled = true;
       progress.hidden = false;
       progress.value = 0;
       status.className = 'muted';
-      status.textContent = `Uploading ${file.name} (${formatSize(file.size)})…`;
+      status.textContent = t('Uploading {name} ({size})…', { name: file.name, size: formatSize(file.size) });
       try {
         const path = await sendFile(file, date.value, sermon.value.trim(), (p) => { progress.value = p; });
         location.hash = href('folder', path);
@@ -162,13 +163,13 @@ function uploadBox() {
         button.disabled = date.disabled = sermon.disabled = false;
         progress.hidden = true;
       }
-    } }, 'Upload');
+    } }, t('Upload'));
     status.textContent = '';
     chosen.replaceChildren(h('div', { class: 'panel' },
       h('p', {}, h('strong', {}, file.name), ' · ', formatSize(file.size), ' ',
-        h('button', { class: 'link', type: 'button', onclick: () => { chosen.replaceChildren(); status.textContent = ''; } }, 'cancel')),
-      h('p', {}, h('label', {}, 'Date ', date), ' ', h('span', { class: 'muted' }, guess.source)),
-      h('p', {}, h('label', {}, 'Name ', sermon)),
+        h('button', { class: 'link', type: 'button', onclick: () => { chosen.replaceChildren(); status.textContent = ''; } }, t('cancel'))),
+      h('p', {}, h('label', {}, t('Date'), ' ', date), ' ', h('span', { class: 'muted' }, guess.source)),
+      h('p', {}, h('label', {}, t('Name'), ' ', sermon)),
       h('p', {}, button)));
     suggestNames(sermon);
   }
@@ -192,11 +193,11 @@ async function openSettings(part = '') {
     settingsDialog.querySelector('#shares')?.scrollIntoView();
     return;
   }
-  const dialog = h('dialog', { class: 'dialog settings-dialog', 'aria-label': 'Settings' });
+  const dialog = h('dialog', { class: 'dialog settings-dialog', 'aria-label': t('Settings') });
   const body = h('div', { class: 'settings' });
   dialog.append(
-    h('div', { class: 'settings-head' }, h('h1', {}, 'Settings'),
-      h('button', { type: 'button', class: 'close', title: 'Close', 'aria-label': 'Close settings', onclick: () => dialog.close() }, '✕')),
+    h('div', { class: 'settings-head' }, h('h1', {}, t('Settings')),
+      h('button', { type: 'button', class: 'close', title: t('Close'), 'aria-label': t('Close settings'), onclick: () => dialog.close() }, '✕')),
     body);
   dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // the backdrop
   dialog.addEventListener('close', () => {
@@ -220,11 +221,11 @@ async function openSettings(part = '') {
 // part 'shares' scrolls to the shares.
 async function settingsView(box, part) {
   const data = await api('GET', 'api/settings');
-  const fields = [['title', 'Title'], ['artist', 'Artist'], ['album', 'Album']];
+  const fields = [['title', t('Title')], ['artist', t('Artist')], ['album', t('Album')]];
   const inputs = {};
   const previews = {};
   const status = h('span', { class: 'muted' });
-  const save = h('button', { class: 'primary', name: 'save-tags' }, 'Save');
+  const save = h('button', { class: 'primary', name: 'save-tags' }, t('Save'));
   const rows = fields.map(([key, label]) => {
     inputs[key] = h('input', { type: 'text', name: key, value: data.meta[key], maxlength: 200, oninput: () => { status.textContent = ''; preview(); } });
     previews[key] = h('span', { class: 'muted' });
@@ -237,7 +238,7 @@ async function settingsView(box, part) {
       const named = await api('POST', 'api/meta/preview', { ...values(), name: 'Evening' });
       for (const [key] of fields) {
         previews[key].classList.remove('error');
-        previews[key].textContent = plain[key] || named[key] ? '→ ' + plain[key] + (named[key] !== plain[key] ? '   (with a name: ' + named[key] + ')' : '') : 'empty: no tag';
+        previews[key].textContent = plain[key] || named[key] ? '→ ' + plain[key] + (named[key] !== plain[key] ? '   (' + t('with a name: {value}', { value: named[key] }) + ')' : '') : t('empty: no tag');
       }
       save.disabled = false;
     } catch (err) {
@@ -250,7 +251,7 @@ async function settingsView(box, part) {
   save.addEventListener('click', async () => {
     try {
       await api('PUT', 'api/settings', { meta: values() });
-      status.textContent = 'Saved.';
+      status.textContent = t('Saved.');
     } catch (err) { status.textContent = err.message; }
   });
   // Remembered sermon names: suggested when naming a sermon; delete one-offs here.
@@ -267,13 +268,13 @@ async function settingsView(box, part) {
       h('label', { class: 'check' }, h('input', {
         type: 'checkbox', name: 'autocomplete', checked: names.enabled,
         onchange: (e) => { names.enabled = e.target.checked; saveNames(); },
-      }), 'Suggest names'),
+      }), t('Suggest names')),
       names.list.length
         ? h('ul', { class: 'names' }, names.list.map((n) => h('li', {}, n, ' ',
-          h('button', { class: 'link', title: 'Remove ' + n, 'aria-label': 'Remove ' + n,
+          h('button', { class: 'link', title: t('Remove {name}', { name: n }), 'aria-label': t('Remove {name}', { name: n }),
             onclick: () => { names.list = names.list.filter((x) => x !== n); saveNames(); } }, '✕'))))
         : h('p', { class: 'muted' }, names.enabled
-          ? 'No names yet. Names you use are saved here.' : 'Names are not saved.'));
+          ? t('No names yet. Names you use are saved here.') : t('Names are not saved.')));
   }
   showNames();
 
@@ -284,10 +285,10 @@ async function settingsView(box, part) {
   const saveName = h('button', { class: 'primary', name: 'save-church', onclick: async () => {
     try {
       await api('PUT', 'api/church', { name: nameInput.value });
-      nameStatus.textContent = 'Saved.';
+      nameStatus.textContent = t('Saved.');
       window.dispatchEvent(new Event('churches-changed'));
     } catch (err) { nameStatus.textContent = err.message; }
-  } }, 'Save');
+  } }, t('Save'));
 
   // The church's own logo, shown in the header instead of the app's.
   const logoBox = h('div', { class: 'logo-row' });
@@ -295,15 +296,15 @@ async function settingsView(box, part) {
   const logoInput = h('input', { type: 'file', name: 'logo', accept: 'image/png,image/jpeg,image/webp,image/svg+xml', hidden: true });
   const showLogo = (logo) => {
     logoBox.replaceChildren(
-      logo ? h('img', { src: forTenant('api/logo') + '&v=' + logo, alt: 'Logo' }) : h('span', { class: 'muted' }, 'The Sermon Studio logo is used.'),
-      h('button', { type: 'button', name: 'upload-logo', onclick: () => logoInput.click() }, logo ? 'Change logo…' : 'Upload logo…'),
+      logo ? h('img', { src: forTenant('api/logo') + '&v=' + logo, alt: t('Logo') }) : h('span', { class: 'muted' }, t('The Sermon Studio logo is used.')),
+      h('button', { type: 'button', name: 'upload-logo', onclick: () => logoInput.click() }, logo ? t('Change logo…') : t('Upload logo…')),
       logo ? h('button', { type: 'button', name: 'remove-logo', onclick: async () => {
         try {
           await api('DELETE', 'api/logo');
           showLogo('');
           window.dispatchEvent(new Event('churches-changed'));
         } catch (err) { logoStatus.textContent = err.message; }
-      } }, 'Remove') : '',
+      } }, t('Remove')) : '',
       logoInput, logoStatus);
   };
   logoInput.addEventListener('change', async () => {
@@ -320,7 +321,7 @@ async function settingsView(box, part) {
       return;
     }
     showLogo(data.logo);
-    logoStatus.textContent = 'Saved.';
+    logoStatus.textContent = t('Saved.');
     window.dispatchEvent(new Event('churches-changed'));
   });
   showLogo(tenants.tenants.find((t) => t.id === currentTenant())?.logo || '');
@@ -329,26 +330,39 @@ async function settingsView(box, part) {
   if (tenants.shares) await sharesView(shares);
 
   const view_ = h('div', {},
-    h('h2', {}, 'Church'),
-    h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, 'Name'), nameInput), h('div', {}, saveName, ' ', nameStatus),
-      h('p', { class: 'muted' }, 'Logo, shown in the header. PNG, JPEG, WebP or SVG, up to 1 MB.'), logoBox),
-    h('h2', {}, 'Default tags'),
-    h('p', { class: 'muted' }, 'Written into all generated recordings. You can change them for one recording in the editor. Placeholders: ',
-      data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + p.help + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
+    h('h2', {}, t('Appearance')),
+    appearance(),
+    h('h2', {}, t('Church')),
+    h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, t('Name')), nameInput), h('div', {}, saveName, ' ', nameStatus),
+      h('p', { class: 'muted' }, t('Logo, shown in the header. PNG, JPEG, WebP or SVG, up to 1 MB.')), logoBox),
+    h('h2', {}, t('Default tags')),
+    h('p', { class: 'muted' }, t('Written into all generated recordings. You can change them for one recording in the editor. Placeholders:'), ' ',
+      data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + tr(p.help) + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
     h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
-    h('h2', {}, 'Sermon names'),
-    h('p', { class: 'muted' }, 'Names you give recordings are suggested next time. Remove one-off names here.'),
+    h('h2', {}, t('Sermon names')),
+    h('p', { class: 'muted' }, t('Names you give recordings are suggested next time. Remove one-off names here.')),
     namesBox,
-    h('h2', {}, 'Waveform'),
-    h('p', { class: 'muted' }, 'Saved in this browser only.'),
+    h('h2', {}, t('Waveform')),
+    h('p', { class: 'muted' }, t('Saved in this browser only.')),
     h('div', { class: 'panel' }, h('label', { class: 'check' }, h('input', {
       type: 'checkbox', name: 'wheel-zoom-key', checked: wheelZoomNeedsKey(),
       onchange: (e) => setWheelZoomNeedsKey(e.target.checked),
-    }), 'Zoom with the scroll wheel only while holding Ctrl (Cmd on a Mac)')),
+    }), t('Zoom with the scroll wheel only while holding Ctrl (Cmd on a Mac)'))),
     tenants.shares ? shares : '');
   box.replaceChildren(view_);
   if (part === 'shares') shares.scrollIntoView();
   preview();
+}
+
+// appearance: this browser's language and theme. A new language redoes the page,
+// since the text is made as the pages are drawn; a theme applies at once.
+function appearance() {
+  const choose = (name, label, options, value, onchange) => h('label', {}, h('span', { class: 'name' }, label),
+    h('select', { name, onchange: (e) => onchange(e.target.value) },
+      options.map(([v, text]) => h('option', { value: v, selected: v === value }, text))));
+  return h('div', { class: 'panel tags' },
+    choose('language', t('Language'), LANGS, lang, (v) => { setLang(v); location.hash = href('settings'); location.reload(); }),
+    choose('theme', t('Theme'), [['auto', t('Automatic (the device)')], ['light', t('Light')], ['dark', t('Dark')]], getTheme(), setTheme));
 }
 
 // The church in the header: its name (one church, no adding), else a quiet dropdown.
@@ -368,7 +382,7 @@ function fillPicker() {
   nameText.hidden = !single;
   nameText.textContent = mine?.name || '';
   select.replaceChildren(...churches.tenants.map((t) => h('option', { value: t.id, selected: t.id === cur }, t.name)),
-    churches.canAdd ? h('option', { value: '+' }, '+ Add church…') : '');
+    churches.canAdd ? h('option', { value: '+' }, t('+ Add church…')) : '');
   select.value = cur;
 }
 
@@ -384,13 +398,13 @@ select.addEventListener('change', async () => {
     location.hash = '#/' + select.value;
     return;
   }
-  const name = await promptDialog({ title: 'Add a church', label: 'Name of the new church', confirm: 'Add church' });
+  const name = await promptDialog({ title: t('Add a church'), label: t('Name of the new church'), confirm: t('Add church') });
   if (name && name.trim()) {
     try {
-      const t = await api('POST', 'api/tenants', { name });
-      churches.tenants.push(t);
-      location.hash = '#/' + t.id;
-      if (t.group) alertDialog({ title: 'Church added', body: `Give people access by adding them to the group ${t.group} in Pocket ID.` });
+      const t_ = await api('POST', 'api/tenants', { name });
+      churches.tenants.push(t_);
+      location.hash = '#/' + t_.id;
+      if (t_.group) alertDialog({ title: t('Church added'), body: t('Give people access by adding them to the group {group} in Pocket ID.', { group: t_.group }) });
     } catch (err) { alertDialog({ body: err.message }); }
   }
   fillPicker();
@@ -417,7 +431,7 @@ async function logoutButton() {
   const close = () => {
     clearTimeout(timer);
     button.classList.remove('asking');
-    button.setAttribute('aria-label', 'Log out');
+    button.setAttribute('aria-label', t('Log out'));
   };
   button.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -426,7 +440,7 @@ async function logoutButton() {
       return;
     }
     button.classList.add('asking');
-    button.setAttribute('aria-label', 'Log out? Click again to log out');
+    button.setAttribute('aria-label', t('Log out? Click again to log out'));
     timer = setTimeout(close, 5000);
   });
   document.addEventListener('click', close);

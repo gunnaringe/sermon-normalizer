@@ -4,17 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Send a recording</title>
+  <title data-i18n="Send a recording">Send a recording</title>
   <link rel="icon" href="icons/logo.svg" type="image/svg+xml">
   <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
+  <script src="theme.js"></script>
   <script type="module" src="share.js"></script>
 </head>
 <body>
   <header>
-    <span class="brand"><img src="icons/logo.svg" alt="" width="28" height="28">Send a recording</span>
+    <span class="brand"><img src="icons/logo.svg" alt="" width="28" height="28"><span data-i18n="Send a recording">Send a recording</span></span>
+    <div class="tools"><select id="lang" title="Language" aria-label="Language" data-i18n-title="Language" data-i18n-aria-label="Language"></select></div>
   </header>
-  <main id="view" class="narrow"><p class="muted">Loading…</p></main>
+  <main id="view" class="narrow"><p class="muted" data-i18n="Loading…">Loading…</p></main>
+  <footer><a href="https://github.com/gunnaringe/sermon-studio" target="_blank" rel="noopener" data-i18n="Source code on GitHub">Source code on GitHub</a></footer>
 </body>
 </html>

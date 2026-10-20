@@ -4,32 +4,33 @@
 // details of the recording (sermons.js) right where it is.
 import { api, h, debounce, formatDate, formatDateTime } from './util.js';
 import { sermonDetail } from './sermons.js';
+import { t, tn } from './i18n.js';
 
 function badges(e) {
   const out = [];
-  if (e.job) out.push(h('span', { class: 'badge busy' }, 'processing'));
-  if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
-  if (e.preparing) out.push(h('span', { class: 'badge busy' }, 'preparing'));
+  if (e.job) out.push(h('span', { class: 'badge busy' }, t('processing')));
+  if (e.converting) out.push(h('span', { class: 'badge busy' }, t('converting')));
+  if (e.preparing) out.push(h('span', { class: 'badge busy' }, t('preparing')));
   // Done is cut and saved (or made before there was saving); the files follow.
   const done = e.saved || e.outputs.length > 0;
-  if (e.raw && !done) out.push(h('span', { class: 'badge warn', title: 'Not cut yet: open it in the editor' }, 'to do'));
-  if (done) out.push(h('span', { class: 'badge on', title: 'Cut and saved' }, 'done'));
+  if (e.raw && !done) out.push(h('span', { class: 'badge warn', title: t('Not cut yet: open it in the editor') }, t('to do')));
+  if (done) out.push(h('span', { class: 'badge on', title: t('Cut and saved') }, t('done')));
   if (!e.job && e.saved && e.outputs.length === 0) {
-    out.push(h('span', { class: 'badge warn', title: 'No files made: open it in the editor and press Save' }, 'no files'));
+    out.push(h('span', { class: 'badge warn', title: t('No files made: open it in the editor and press Save') }, t('no files')));
   }
   if (!e.job && e.outdated) {
-    out.push(h('span', { class: 'badge warn', title: 'Made from an older cut: open it in the editor and press Save' }, 'files out of date'));
+    out.push(h('span', { class: 'badge warn', title: t('Made from an older cut: open it in the editor and press Save') }, t('files out of date')));
   }
   return out;
 }
 
 // arrived says when a recording came: today/yesterday with the time, else the date.
-function arrived(t) {
-  const d = new Date(t);
+function arrived(when) {
+  const d = new Date(when);
   const time = formatDateTime(d).slice(11);
-  if (formatDate(d) === formatDate(Date.now())) return 'arrived today ' + time;
-  if (formatDate(d) === formatDate(Date.now() - 864e5)) return 'arrived yesterday ' + time;
-  return 'arrived ' + formatDate(d);
+  if (formatDate(d) === formatDate(Date.now())) return t('arrived today {time}', { time });
+  if (formatDate(d) === formatDate(Date.now() - 864e5)) return t('arrived yesterday {time}', { time });
+  return t('arrived {date}', { date: formatDate(d) });
 }
 
 const yearOf = (e) => e.name.slice(0, 4);
@@ -62,7 +63,7 @@ export async function recordingsView(view, { top, church, emptyNote }) {
   function chipsFor(e) {
     const box = h('span', { class: 'chips' });
     const draw = () => box.replaceChildren(...e.labels.map((l) => h('button', {
-      type: 'button', class: 'chip', title: 'Search for ' + l,
+      type: 'button', class: 'chip', title: t('Search for {label}', { label: l }),
       onclick: (ev) => { ev.stopPropagation(); setQuery(l); },
     }, l)));
     draw();
@@ -73,7 +74,7 @@ export async function recordingsView(view, { top, church, emptyNote }) {
 
   function row(e, { when = false, register = false } = {}) {
     let detail = null;
-    const toggle = h('button', { class: 'twisty', 'aria-expanded': 'false', title: 'Show details', 'aria-label': 'Show details of ' + e.name }, '▸');
+    const toggle = h('button', { class: 'twisty', 'aria-expanded': 'false', title: t('Show details'), 'aria-label': t('Show details of {name}', { name: e.name }) }, '▸');
     const flip = (open = !detail) => {
       if (open === !!detail) return;
       if (open) {
@@ -108,7 +109,7 @@ export async function recordingsView(view, { top, church, emptyNote }) {
           if (open) openYears.delete(year); else openYears.add(year);
           remember();
           draw();
-        } }, h('span', { class: 'tw' }, open ? '▾' : '▸'), year, h('span', { class: 'muted' }, ` · ${entries.length} ${entries.length === 1 ? 'recording' : 'recordings'}`)),
+        } }, h('span', { class: 'tw' }, open ? '▾' : '▸'), year, h('span', { class: 'muted' }, ` · ${tn(entries.length, '{n} recording', '{n} recordings')}`)),
         open ? table(entries, { register: true }) : '');
     };
     draw();
@@ -128,7 +129,7 @@ export async function recordingsView(view, { top, church, emptyNote }) {
     if (tokens.length) {
       const found = all.filter((e) => matches(e, tokens));
       list.replaceChildren(
-        h('p', { class: 'muted results', role: 'status' }, found.length ? `${found.length} ${found.length === 1 ? 'recording' : 'recordings'}` : 'No recording matches.'),
+        h('p', { class: 'muted results', role: 'status' }, found.length ? tn(found.length, '{n} recording', '{n} recordings') : t('No recording matches.')),
         found.length ? table(found, { register: true }) : '');
       return;
     }
@@ -144,12 +145,12 @@ export async function recordingsView(view, { top, church, emptyNote }) {
       years.get(yearOf(e)).push(e);
     }
     list.replaceChildren(
-      lately.length ? h('section', { class: 'recent' }, h('h2', {}, 'Newly imported'), table(lately, { when: true })) : '',
+      lately.length ? h('section', { class: 'recent' }, h('h2', {}, t('Newly imported')), table(lately, { when: true })) : '',
       ...[...years].map(([year, entries]) => yearSection(year, entries)));
   }
 
-  const input = h('input', { type: 'search', name: 'search', class: 'search', placeholder: 'Search name, date or label',
-    'aria-label': 'Search recordings', autocomplete: 'off' });
+  const input = h('input', { type: 'search', name: 'search', class: 'search', placeholder: t('Search name, date or label'),
+    'aria-label': t('Search recordings'), autocomplete: 'off' });
   input.addEventListener('input', debounce(() => { query = input.value; render(); }, 120));
   function setQuery(v) {
     input.value = query = v;
@@ -157,14 +158,14 @@ export async function recordingsView(view, { top, church, emptyNote }) {
   }
   const note = h('p', { class: 'muted', role: 'status' });
 
-  view.replaceChildren(h('h1', {}, 'Recordings'), top, h('div', { class: 'searchbar' }, input), note, list);
+  view.replaceChildren(h('h1', {}, t('Recordings')), top, h('div', { class: 'searchbar' }, input), note, list);
   render();
 
   return {
     // open shows one recording: its year open, its row expanded, scrolled to.
     open(path) {
       const e = all.find((x) => x.path === path);
-      note.textContent = e ? '' : 'That recording was not found.';
+      note.textContent = e ? '' : t('That recording was not found.');
       if (!e) return;
       if (query) setQuery('');
       if (!openYears.has(yearOf(e))) {

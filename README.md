@@ -247,6 +247,15 @@ normalized (up to 40 dB of dynamic gain), so even a very quiet recording can be 
 cutting; the waveform keeps the original levels, where loud music and quieter speech stand
 apart. The browser only streams the preview; the cut is always made from the original.
 
+### Language and theme
+
+The interface is in English, Norwegian bokmål and Norwegian nynorsk. It follows the browser's language (Norwegian
+`no` is bokmål; anything else is English) until you choose one in **Settings → Appearance**, where the theme is also set:
+automatic (the device's light or dark), light or dark. Both are kept in the browser. The public upload page follows the
+browser too and has a language choice in its header. Messages from the server are translated where they are known
+(`web/static/locales.js`); the tags written into files (like the `{weekday}` name) are not translated. The footer links to
+the source on GitHub.
+
 ## What a run makes
 
 ```

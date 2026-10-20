@@ -74,6 +74,12 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   the public page serves only the ones listed in `sharePage`. `dialog.js` = confirm/alert/prompt in the app's look
   (never use the browser's `confirm`/`alert`/`prompt`). `vendor/wavesurfer/` is wavesurfer.js
   7.12.12, unmodified.
+- `web/static/i18n.js` + `locales.js` + `theme.js`: English, Norwegian bokmål (`nb`), nynorsk (`nn`) and the theme (automatic /
+  light / dark; `data-theme` on `<html>`, set before the first paint). Every text the UI shows goes through `t('English text', {param})`
+  (the English text is the key; `tn(n, 'one', 'other')` for plurals; `data-i18n` in the HTML). `tr(msg)` translates the
+  server's English messages (those with a value in them are matched by pattern, e.g. `{size}`). A new text needs its `nb` and `nn`
+  entry in `locales.js` (`TestLocales` fails otherwise). Never name a variable `t` where `t()` is called. The language is the
+  browser's (`no` = bokmål) unless chosen in Settings → Appearance (or on the public page's header); stored in localStorage.
 - `normalizer/`: the pipeline (`pipeline.go`; `Options.Cuts` = parts left out of
   Start..End, each kept part is its own ffmpeg input joined by `cutInput`'s filter graph),
   ffmpeg wrapper (`ffmpeg.go`:

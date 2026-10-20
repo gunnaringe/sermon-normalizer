@@ -4,6 +4,12 @@
 // address bar once read. Files are sent in chunks, so they pass Cloudflare's
 // limits and continue after a dropped connection or a reload.
 import { h, formatSize, formatDateTime } from './util.js';
+import { t, tn, tr, lang, LANGS, setLang } from './i18n.js';
+
+// The language, for those whose browser is set to another one.
+const langSelect = document.getElementById('lang');
+langSelect.replaceChildren(...LANGS.map(([code, name]) => h('option', { value: code, selected: code === lang }, name)));
+langSelect.addEventListener('change', () => { setLang(langSelect.value); location.reload(); });
 
 const view = document.getElementById('view');
 let code = '';
@@ -24,12 +30,12 @@ async function call(method, url, body) {
 }
 
 function waitText(secs) {
-  return secs > 90 ? `${Math.ceil(secs / 60)} minutes` : `${secs} seconds`;
+  return secs > 90 ? t('{n} minutes', { n: Math.ceil(secs / 60) }) : t('{n} seconds', { n: secs });
 }
 
 function errorText(resp, data) {
-  if (resp.status === 429) return `${data.error || 'Too many attempts'} (wait ${waitText(Number(resp.headers.get('Retry-After')) || 60)}).`;
-  return data.error || `${resp.status} ${resp.statusText}`;
+  if (resp.status === 429) return t('{error} (wait {time}).', { error: tr(data.error || 'Too many attempts'), time: waitText(Number(resp.headers.get('Retry-After')) || 60) });
+  return tr(data.error || `${resp.status} ${resp.statusText}`);
 }
 
 // codeFromLink takes #code=... from the address and removes it.
@@ -41,15 +47,15 @@ function codeFromLink() {
 
 function showCodeForm(message = '') {
   const input = h('input', { type: 'text', name: 'code', autocomplete: 'off', spellcheck: 'false', maxlength: 64,
-    placeholder: 'XXXX-XXXX-XXXX-XXXX', 'aria-label': 'Code', value: code });
-  const button = h('button', { class: 'primary', type: 'submit' }, 'Continue');
+    placeholder: 'XXXX-XXXX-XXXX-XXXX', 'aria-label': t('Code'), value: code });
+  const button = h('button', { class: 'primary', type: 'submit' }, t('Continue'));
   const form = h('form', { class: 'code-form', onsubmit: (e) => {
     e.preventDefault();
     if (input.value.trim()) { button.disabled = true; tryCode(input.value.trim()); }
   } }, input, button);
   view.replaceChildren(
-    h('h1', {}, 'Send a recording'),
-    h('p', {}, 'Enter the code you were given.'),
+    h('h1', {}, t('Send a recording')),
+    h('p', {}, t('Enter the code you were given.')),
     form,
     message ? h('p', { class: 'error', role: 'alert' }, message) : '');
   input.focus();
@@ -61,7 +67,7 @@ async function tryCode(c) {
   try {
     r = await call('GET', 'api/share');
   } catch (e) {
-    showCodeForm('Could not reach the server: ' + e.message);
+    showCodeForm(t('Could not reach the server: {error}', { error: e.message }));
     return;
   }
   if (!r.resp.ok) {
@@ -75,10 +81,12 @@ async function tryCode(c) {
 }
 
 function limitsText() {
-  const parts = [`${info.allTypes ? 'Audio or video' : info.types.join(' or ')} files up to ${formatSize(info.maxFileSize)}`];
-  if (info.uploadsLeft !== undefined) parts.push(`${info.uploadsLeft} more file${info.uploadsLeft === 1 ? '' : 's'}`);
-  if (info.bytesLeft !== undefined) parts.push(`${formatSize(info.bytesLeft)} left`);
-  if (info.expires) parts.push('until ' + formatDateTime(info.expires));
+  const parts = [info.allTypes
+    ? t('Audio or video files up to {size}', { size: formatSize(info.maxFileSize) })
+    : t('{types} files up to {size}', { types: info.types.join(` ${t('or')} `), size: formatSize(info.maxFileSize) })];
+  if (info.uploadsLeft !== undefined) parts.push(tn(info.uploadsLeft, '{n} more file', '{n} more files'));
+  if (info.bytesLeft !== undefined) parts.push(t('{size} left', { size: formatSize(info.bytesLeft) }));
+  if (info.expires) parts.push(t('until {time}', { time: formatDateTime(info.expires) }));
   return parts.join(' · ');
 }
 
@@ -90,11 +98,11 @@ function showUpload() {
   const input = h('input', { type: 'file', multiple: true, accept: info.types.join(','), hidden: true });
   const list = h('ul', { class: 'files' });
   const drop = h('div', { class: 'drop' },
-    'Drop the recording here, or ',
-    h('a', { href: '#', onclick: (e) => { e.preventDefault(); input.click(); } }, 'choose a file'), '.');
+    t('Drop the recording here, or'), ' ',
+    h('a', { href: '#', onclick: (e) => { e.preventDefault(); input.click(); } }, t('choose a file')), '.');
   const add = (files) => {
     for (const file of files) {
-      const row = { file, status: h('p', { class: 'muted' }, 'Waiting…'), progress: h('progress', { max: 1, value: 0 }) };
+      const row = { file, status: h('p', { class: 'muted' }, t('Waiting…')), progress: h('progress', { max: 1, value: 0 }) };
       list.append(h('li', {}, h('p', {}, h('strong', {}, file.name), ' · ', formatSize(file.size)), row.progress, row.status));
       queue.push(row);
     }
@@ -114,13 +122,13 @@ function showUpload() {
     sessionStorage.removeItem('shareCode');
     code = '';
     showCodeForm();
-  } }, 'Use another code');
+  } }, t('Use another code'));
   view.replaceChildren(
     h('h1', {}, info.label),
-    limitsLine = h('p', { class: 'muted' }, `For ${info.church}. ${limitsText()}.`),
-    info.state ? h('p', { class: 'error' }, 'This code cannot be used any more.') : drop,
+    limitsLine = h('p', { class: 'muted' }, t('For {church}. {limits}.', { church: info.church, limits: limitsText() })),
+    info.state ? h('p', { class: 'error' }, t('This code cannot be used any more.')) : drop,
     input, list,
-    h('p', { class: 'muted' }, 'Keep this page open until every file is received. ', other));
+    h('p', { class: 'muted' }, t('Keep this page open until every file is received.'), ' ', other));
 }
 
 async function run() {
@@ -129,12 +137,12 @@ async function run() {
   while (queue.length) {
     const row = queue.shift();
     row.status.className = 'muted';
-    row.status.textContent = 'Uploading…';
+    row.status.textContent = t('Uploading…');
     try {
       await sendFile(row.file, (p) => { row.progress.value = p; });
       row.progress.value = 1;
       row.status.className = 'ok';
-      row.status.textContent = '✓ Received. Thank you!';
+      row.status.textContent = t('✓ Received. Thank you!');
     } catch (e) {
       row.progress.hidden = true;
       row.status.className = 'error';
@@ -145,7 +153,7 @@ async function run() {
   const r = await call('GET', 'api/share').catch(() => null);
   if (r && r.resp.ok) {
     info = r.data;
-    limitsLine.textContent = `For ${info.church}. ${limitsText()}.`;
+    limitsLine.textContent = t('For {church}. {limits}.', { church: info.church, limits: limitsText() });
   }
 }
 
@@ -154,9 +162,9 @@ async function run() {
 async function sendFile(file, onProgress) {
   const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
   if (!info.types.includes(ext)) {
-    throw new Error(info.allTypes ? 'This type of file cannot be sent.' : `Only ${info.types.join(' and ')} files can be sent with this code.`);
+    throw new Error(info.allTypes ? t('This type of file cannot be sent.') : t('Only {types} files can be sent with this code.', { types: info.types.join(` ${t('and')} `) }));
   }
-  if (file.size > info.maxFileSize) throw new Error(`The file is larger than the ${formatSize(info.maxFileSize)} this code allows.`);
+  if (file.size > info.maxFileSize) throw new Error(t('The file is larger than the {size} this code allows.', { size: formatSize(info.maxFileSize) }));
   const key = `shareUpload:${file.name}:${file.size}:${file.lastModified}`;
   let id = localStorage.getItem(key);
   let offset = 0;
@@ -179,7 +187,7 @@ async function sendFile(file, onProgress) {
     try {
       r = await call('PUT', `api/share/uploads/${encodeURIComponent(id)}?offset=${offset}`, file.slice(offset, offset + chunk));
     } catch (e) {
-      if (++failures > 8) throw new Error('The connection keeps failing: ' + e.message + '. Choose the file again to continue.');
+      if (++failures > 8) throw new Error(t('The connection keeps failing: {error}. Choose the file again to continue.', { error: e.message }));
       await sleep(1000 * Math.min(60, 2 ** failures));
       continue;
     }
