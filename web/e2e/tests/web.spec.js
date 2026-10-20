@@ -377,6 +377,9 @@ test('the page: Input file, Edit, Options, Output', async ({ page }) => {
   await expect(page.getByText('Regenerate saves the edit and makes: MP3, Opus.')).toBeVisible();
   await page.locator('section.step').first().screenshot({ path: path.join(shots, 'edit-input.png') });
   await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-new.png') });
+  // The choice is this recording's own: not remembered, here or for other folders.
+  await page.reload();
+  await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 });
 });
 
 test('regenerate makes the chosen formats, and only what is missing or out of date', async ({ page }) => {
@@ -420,7 +423,7 @@ test('regenerate makes the chosen formats, and only what is missing or out of da
   await page.getByLabel('Fade in (s)').fill('1');
   await expect(pill(page, 'MP3')).toContainText('up to date');
 
-  // The choices are remembered for the next folder; the files and the finished run stay.
+  // After a reload the recording's files decide what is chosen; the fade and the finished run stay.
   await page.reload();
   await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByLabel('Fade in (s)')).toHaveValue('1');
@@ -448,6 +451,27 @@ test('a run can be cancelled', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Cancelled' })).toBeVisible({ timeout: 30_000 });
   const left = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).filter((f) => f.includes('.partial') || f.startsWith('.'));
   expect(left).toEqual([]);
+});
+
+test('a format that is not chosen any more is deleted by Regenerate', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04', { keep: true });
+  // The sermon's files decide what is chosen, not the choice in another folder.
+  await expect(pick(page, 'MP3')).toHaveAttribute('aria-pressed', 'true');
+  await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'false');
+  await pick(page, 'MP3').click();
+  await expect(pill(page, 'MP3')).toContainText('will be deleted');
+  await expect(page.getByText('Regenerate deletes: MP3.')).toBeVisible();
+  await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-delete.png') });
+  await page.getByRole('button', { name: 'Regenerate' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('These files are deleted');
+  await expect(dialog).toContainText('2026-10-04.mp3');
+  await dialog.getByRole('button', { name: 'Regenerate' }).click();
+  await expect(pill(page, 'MP3')).toContainText('not made');
+  const dir = path.join(DATA, 'root/2026/2026-10-04');
+  expect(fs.existsSync(path.join(dir, '2026-10-04.mp3'))).toBe(false);
+  expect(fs.existsSync(path.join(dir, 'original/2026-10-04_raw.flac'))).toBe(true); // the recording is never touched
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'recording.json'), 'utf8')).outputs).toEqual({});
 });
 
 test('upload straight into a new date folder, in chunks', async ({ page }) => {

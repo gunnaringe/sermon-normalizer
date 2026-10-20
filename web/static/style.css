@@ -282,6 +282,7 @@ label.switch:has(input:not(:checked)) .side.off, label.switch:has(input:checked)
 .pill .box { font-weight: normal; }
 .pill .state { font-size: 0.85em; color: var(--muted); }
 .pill .state.will { color: var(--warn); font-weight: 600; }
+.pill .state.delete { color: var(--error); font-weight: 600; }
 @media (max-width: 640px) {
   .channels > .name { min-width: 0; }
 }

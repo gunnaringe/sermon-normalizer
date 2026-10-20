@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestTidyNames(t *testing.T) {
@@ -29,6 +30,7 @@ func TestNameSuggestions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(a.Close) // waits for the analyses the uploads start
 	h := a.Handler()
 	do(h, "POST", "/api/tenants", `{"name":"Kirke B"}`)
 	upload := func(query string) int {
@@ -58,7 +60,14 @@ func TestNameSuggestions(t *testing.T) {
 	}
 
 	// Rename learns too; turning suggestions off stops learning.
-	if w := do(h, "POST", "/api/rename?path=2026%2F2026-10-04", `{"date":"2026-10-04","name":"Påske"}`); w.Code != http.StatusOK {
+	// The upload started an analysis (it fails at once here, without ffmpeg);
+	// a rename waits until it has stopped.
+	w := do(h, "POST", "/api/rename?path=2026%2F2026-10-04", `{"date":"2026-10-04","name":"Påske"}`)
+	for deadline := time.Now().Add(5 * time.Second); w.Code == http.StatusConflict && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+		w = do(h, "POST", "/api/rename?path=2026%2F2026-10-04", `{"date":"2026-10-04","name":"Påske"}`)
+	}
+	if w.Code != http.StatusOK {
 		t.Fatalf("rename: %d %s", w.Code, w.Body)
 	}
 	if got := names("main"); !reflect.DeepEqual(got.List, []string{"Kveld", "Påske"}) {

@@ -51,6 +51,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `sermon` in the folder info.
 - `web/folders.go`: folder list/info, run options, `check` (validates a run).
 - `web/make.go`: `POST api/make?path&format`: one missing format from the saved version (a normal run, no Force).
+  `POST api/outputs/remove?path&format=…`: deletes outputs (only those) and their records; not during a run.
 - `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
 - `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3
   preview, cached by path+size+mtime; `carry` moves the cache on import.

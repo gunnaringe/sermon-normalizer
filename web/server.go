@@ -183,6 +183,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/rename", s.handleRename)
 	mux.HandleFunc("POST /api/run", s.handleRun)
 	mux.HandleFunc("POST /api/make", s.handleMake)
+	mux.HandleFunc("POST /api/outputs/remove", s.handleRemoveOutputs)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleJob)
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.handleJobEvents)
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleJobCancel)

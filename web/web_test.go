@@ -514,3 +514,42 @@ func TestMakeFormat(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// Outputs can be deleted, only outputs, and not while a run is busy.
+func TestRemoveOutputs(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	ts.file(t, "2026-10-04/2026-10-04_raw.flac", "x")
+	ts.file(t, "2026-10-04/2026-10-04.mp3", "x")
+	ts.file(t, "2026-10-04/2026-10-04.opus", "x")
+	folder := filepath.Join(ts.root, "2026-10-04")
+	ts.updateState(folder, func(st *folderState) error {
+		st.Outputs["mp3"], st.Outputs["opus"] = outputMade{From: "a"}, outputMade{From: "b"}
+		return nil
+	})
+	if rec := ts.do(t, "POST", "/api/outputs/remove?path=2026-10-04&format=raw", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("not an output: %d", rec.Code)
+	}
+	rec := ts.do(t, "POST", "/api/outputs/remove?path=2026-10-04&format=mp3&format=flac", nil) // FLAC is not there: fine
+	if rec.Code != http.StatusOK {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	if fileExists(filepath.Join(folder, "2026-10-04.mp3")) || !fileExists(filepath.Join(folder, "2026-10-04.opus")) || !fileExists(filepath.Join(folder, "2026-10-04_raw.flac")) {
+		t.Error("only the MP3 should be gone")
+	}
+	if made := readState(folder).Outputs; len(made) != 1 || made["opus"].From != "b" {
+		t.Errorf("outputs in recording.json: %+v", made)
+	}
+	if info := decode[folderInfo](t, rec); len(info.Outputs) != 1 || info.Outputs[0].Format != "opus" {
+		t.Errorf("folder info: %+v", info.Outputs)
+	}
+	// Not while a run is busy.
+	ts.jobs.sem <- struct{}{}
+	defer func() { <-ts.jobs.sem }()
+	q := defaultRequest()
+	q.Sections = []span{{1, 2}}
+	snap := decode[jobSnapshot](t, ts.do(t, "POST", "/api/run?path=2026-10-04", q))
+	if rec := ts.do(t, "POST", "/api/outputs/remove?path=2026-10-04&format=opus", nil); rec.Code != http.StatusConflict {
+		t.Errorf("while busy: %d", rec.Code)
+	}
+	ts.do(t, "POST", "/api/jobs/"+snap.ID+"/cancel", nil)
+}

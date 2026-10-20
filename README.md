@@ -146,9 +146,11 @@ cancels running jobs and waits for them to clean up.
 - **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,
   green when the file is there (play and download it from the folder list). `recording.json` keeps what each file was made from (sections, cuts,
   fades, sound, tags, bitrate), so a file made from other settings than the page shows says
-  *will regenerate*; files made from the folder list count too. **Regenerate** saves the edit and
-  makes the chosen formats that are missing or out of date, asking first when that replaces a
-  file. The run is followed live and keeps going if the browser is closed. Cancelling leaves
+  *will regenerate*; files made from the folder list count too. The choice is the recording's own (not
+  carried over): it starts with the formats it has, or the defaults when it has none; a file whose format is no longer chosen says *will be deleted*.
+  **Regenerate** saves the edit, makes the chosen formats that are missing or out of date and
+  deletes the files of those not chosen (never the recording), asking first when that replaces or
+  deletes a file. The run is followed live and keeps going if the browser is closed. Cancelling leaves
   nothing half-written.
 - **Upload:** pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).

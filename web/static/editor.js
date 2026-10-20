@@ -32,15 +32,22 @@ function describeFormat(fmt) {
   ].filter(Boolean).join(' · ');
 }
 
-// savedOptions are the choices of the last run, except per-run ones.
+// FORMAT_KEYS are chosen per recording, so they are never carried over.
+const FORMAT_KEYS = ['flac', 'mp3', 'opus'];
+
+// savedOptions are the choices of the last run, except per-recording ones.
 function savedOptions(config) {
   const opts = { ...config.defaults.mono };
-  try { Object.assign(opts, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch {}
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORE) || '{}');
+    for (const k of FORMAT_KEYS) delete stored[k];
+    Object.assign(opts, stored);
+  } catch {}
   return opts;
 }
 
 function saveOptions(opts) {
-  const { sections, cuts, title, artist, album, ...keep } = opts;
+  const { sections, cuts, title, artist, album, flac, mp3, opus, ...keep } = opts;
   localStorage.setItem(STORE, JSON.stringify(keep));
 }
 
@@ -54,6 +61,9 @@ export async function editorView(view, path, config) {
   };
 
   const opts = savedOptions(config);
+  // The formats are this recording's own: those it has, or the defaults when it
+  // has none. Choosing here changes nothing elsewhere.
+  if (info.outputs.length) for (const f of FORMAT_KEYS) opts[f] = info.outputs.some((o) => o.format === f);
   // Tags are per sermon: the church's defaults for this folder, editable for this run.
   const tags = { title: '', artist: '', album: '', ...(info.tags || {}) };
   let job = info.job;
@@ -988,55 +998,69 @@ export async function editorView(view, path, config) {
     return { file, stale: Boolean(file && st && (st.stale || !st.known)), unknown: Boolean(file && st && !st.known) };
   }
 
-  // toMake is what Regenerate makes: the chosen formats that are missing or out of date.
+  // toMake is what Regenerate makes: the chosen formats that are missing or out
+  // of date; toDelete what it deletes: the files of the formats not chosen.
   const toMake = () => FORMATS.map(([f]) => f).filter((f) => opts[f] && (!outputState(f).file || outputState(f).stale));
+  const toDelete = () => FORMATS.map(([f]) => f).filter((f) => !opts[f] && outputState(f).file);
+  const labels = (list) => list.map((f) => FORMATS.find(([x]) => x === f)[1]).join(', ');
 
   function renderOutputs() {
     pills.replaceChildren(...FORMATS.map(([format, label]) => {
       const { file, stale, unknown } = outputState(format);
       const chosen = Boolean(opts[format]);
       const note = !file ? (chosen ? 'will be made' : 'not made')
-        : stale ? (chosen ? 'will regenerate' : unknown ? 'settings not known' : 'out of date')
-          : 'up to date';
+        : !chosen ? 'will be deleted'
+          : stale ? 'will regenerate' : 'up to date';
       return h('div', { 'data-format': format, class: 'pill' + (file ? ' exists' : '') + (chosen ? ' chosen' : '') + (stale ? ' stale' : '') },
         h('button', {
           class: 'pick', 'aria-pressed': String(chosen), title: chosen ? `Leave ${label} out` : `Make ${label} too`,
-          onclick: () => { opts[format] = !opts[format]; saveOptions(opts); renderOutputs(); },
+          onclick: () => { opts[format] = !opts[format]; renderOutputs(); },
         }, h('span', { class: 'box', 'aria-hidden': 'true' }, chosen ? '☑' : '☐'), ' ', label, file ? ' ✓' : ''),
-        h('span', { class: 'state' + (chosen && (stale || !file) ? ' will' : '') }, note));
+        h('span', { class: 'state' + (file && !chosen ? ' delete' : chosen && (stale || !file) ? ' will' : '') }, note));
     }));
-    const make = toMake();
-    const chosen = FORMATS.filter(([f]) => opts[f]).length;
-    outputNote.textContent = lastCheck.error ? ''
-      : !chosen ? 'Choose at least one format.'
-        : make.length ? 'Regenerate saves the edit and makes: ' + make.map((f) => FORMATS.find(([x]) => x === f)[1]).join(', ') + '.'
-          : 'Everything chosen is up to date.';
-    regenerateButton.disabled = Boolean(lastCheck.error) || busy() || !make.length;
+    const make = toMake(), del = toDelete();
+    const blocked = make.length > 0 && Boolean(lastCheck.error); // deleting does not need a valid edit
+    outputNote.textContent = blocked ? ''
+      : make.length || del.length
+        ? 'Regenerate ' + [make.length ? 'saves the edit and makes: ' + labels(make) : '', del.length ? 'deletes: ' + labels(del) : '']
+          .filter(Boolean).join(', and ') + '.'
+        : 'Everything chosen is up to date.';
+    regenerateButton.disabled = blocked || busy() || !(make.length || del.length);
   }
 
   // regenerate saves the edit, then makes the chosen formats that are missing
-  // or out of date; it asks first when that replaces files.
+  // or out of date and deletes the files of those not chosen; it asks first
+  // when that replaces or deletes files, or changes the saved version.
   async function regenerate() {
     await persistAdjusted();
-    const make = toMake();
-    if (!make.length) return;
+    const make = toMake(), del = toDelete();
+    if (!make.length && !del.length) return;
     const replaced = make.map(outputState).filter((x) => x.file).map((x) => x.file.name);
-    const changes = Boolean(sermon.adjusted) || !sermon.saved;
-    if (replaced.length || changes) {
+    const deleted = del.map((f) => outputState(f).file.name);
+    const changes = make.length > 0 && (Boolean(sermon.adjusted) || !sermon.saved);
+    if (replaced.length || deleted.length || changes) {
       const ok = await confirmDialog({
         title: 'Regenerate?',
         body: [
-          h('p', {}, 'The sermon is cut and processed from the recording, with the sections, cuts and fades shown here.'),
+          make.length ? h('p', {}, 'The sermon is cut and processed from the recording, with the sections, cuts and fades shown here.') : '',
           changes ? h('p', {}, sermon.saved ? 'They replace the saved version.' : 'They become the saved version.') : '',
           replaced.length ? [h('p', {}, 'These files are replaced:'), h('ul', {}, replaced.map((n) => h('li', {}, n)))] : '',
+          deleted.length ? [h('p', {}, 'These files are deleted:'), h('ul', {}, deleted.map((n) => h('li', {}, n)))] : '',
         ],
         confirm: 'Regenerate',
-        danger: replaced.length > 0,
+        danger: replaced.length > 0 || deleted.length > 0,
       });
       if (!ok) return;
     }
     regenerateButton.disabled = true;
     try {
+      if (del.length) {
+        const inf = await api('POST', 'api/outputs/remove?path=' + q(path) + del.map((f) => '&format=' + f).join(''));
+        info.outputs = inf.outputs;
+        renderOutputs();
+        check();
+      }
+      if (!make.length) return;
       if (sermon.adjusted) sermon = await api('POST', 'api/sermon/save?path=' + q(path));
       renderVersion();
       const req = request(replaced.length > 0);
