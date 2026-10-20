@@ -245,7 +245,6 @@ button.dl:disabled:not(.busy) { opacity: 0.6; }
 button.dl.busy { opacity: 1; animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { background: var(--line); } 50% { background: color-mix(in srgb, var(--ok) 55%, var(--line)); } }
 @media (prefers-reduced-motion: reduce) { button.dl.busy { animation: none; background: color-mix(in srgb, var(--ok) 35%, var(--line)); } }
-.raw-warning { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 0.7rem; }
 @media (max-width: 640px) {
   table.list tr.detail-row td { padding: 0.6rem 0.5rem; }
 }

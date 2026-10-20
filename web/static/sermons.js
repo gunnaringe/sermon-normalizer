@@ -1,5 +1,5 @@
 // The details of a date folder in the folder list: what a sermon has (info,
-// play, download, make a missing format), or the warning for a recording that
+// play, download, make a missing format), or, for a recording that
 // has not been processed.
 import { api, q, h, formatSize, formatTime, forTenant } from './util.js';
 
@@ -30,10 +30,6 @@ export function sermonDetail(entry) {
 
   function unprocessed(info) {
     return [
-      h('div', { class: 'raw-warning', role: 'alert' },
-        h('strong', {}, 'Not processed. '),
-        'This is the full, unedited raw recording of the whole service, not the sermon. ',
-        'Open it in the editor to select the sermon and make the files.'),
       h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Open in the editor')),
     ];
   }

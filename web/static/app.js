@@ -33,7 +33,7 @@ function badges(e) {
   if (e.job) out.push(h('span', { class: 'badge busy' }, 'processing'));
   if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
   if (e.preparing) out.push(h('span', { class: 'badge busy' }, 'preparing'));
-  if (e.raw && e.outputs.length === 0) out.push(h('span', { class: 'badge warn' }, 'not processed'));
+  if (e.raw && e.outputs.length === 0) out.push(h('span', { class: 'badge warn', title: 'Only the full, unedited recording of the service exists' }, 'not processed'));
   for (const f of ['flac', 'mp3', 'opus']) {
     if (e.outputs.includes(f)) out.push(h('span', { class: 'badge on' }, '✓ ' + f));
   }

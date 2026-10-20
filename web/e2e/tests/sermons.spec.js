@@ -58,13 +58,12 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await expect(page.locator('tr.detail-row')).toHaveCount(1);
 });
 
-test('a recording that is not processed warns, and still opens the editor', async ({ page }) => {
+test('a recording that is not processed has the tag and an edit button, and still opens the editor', async ({ page }) => {
   await page.goto('#/folders/2026');
   const row = page.locator('tr.row', { hasText: '2026-08-30' });
   await expect(row).toContainText('not processed');
   await row.getByRole('button', { name: /Show details/ }).click();
-  const warning = page.getByRole('alert');
-  await expect(warning).toContainText('full, unedited raw recording');
+  await expect(page.getByRole('link', { name: 'Open in the editor' })).toBeVisible();
   await expect(page.locator('tr.detail-row audio')).toHaveCount(0);
   await expect(page.locator('tr.detail-row')).not.toContainText('Download'); // nothing to download yet
   await expect(page).toHaveURL(/#\/folders\/2026$/);

@@ -60,7 +60,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
 - `web/static/`: plain JS, no build. `sermons.js` = a sermon's details inside the folder list (play, download,
-  make a format); an unprocessed recording still opens the editor on click and only warns when expanded. `icons/` = the logo: `logo.svg` is the one source (header, favicon,
+  make a format); an unprocessed recording still opens the editor on click; expanded it only offers the editor. `icons/` = the logo: `logo.svg` is the one source (header, favicon,
   `manifest.webmanifest`); the PNGs (home screen, favicon fallback) come from it via `scripts/make-icons.sh`;
   the public page serves only the ones listed in `sharePage`. `dialog.js` = confirm/alert/prompt in the app's look
   (never use the browser's `confirm`/`alert`/`prompt`). `vendor/wavesurfer/` is wavesurfer.js
