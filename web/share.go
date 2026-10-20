@@ -15,6 +15,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // Shares let people without a login send recordings to a church's inbox:
@@ -33,7 +35,7 @@ type ShareOptions struct {
 }
 
 // shareTypes are what a share can accept: what the inbox takes in.
-var shareTypes = []string{".wav", ".flac"}
+var shareTypes = normalizer.InputTypes()
 
 const (
 	defaultShareFileSize = 4 << 30
@@ -187,6 +189,12 @@ func readShares(dir string) ([]*Share, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", sharesFile, err)
+	}
+	for _, sh := range list {
+		// Made when these two were all there was: it meant all of them.
+		if !sh.AllTypes && slices.Equal(sh.Types, []string{".wav", ".flac"}) {
+			sh.AllTypes, sh.Types = true, nil
+		}
 	}
 	return list, nil
 }

@@ -1,7 +1,7 @@
 // The app: a hash router. Every address starts with the church: #/<church> (the
 // recordings), #/<church>/recording/<path> (the recordings, that one opened),
 // #/<church>/folder/<path> (the editor), #/<church>/settings (the settings over the recordings). Settings also opens as an overlay from the gear.
-import { api, q, h, href, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
+import { api, q, h, href, INPUT_TYPES, isInputType, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
@@ -128,19 +128,19 @@ async function sendFile(file, date, sermon, onProgress) {
 // uploadBox is a one-line drop zone; a chosen file opens the form for its
 // date and name below it.
 function uploadBox() {
-  const input = h('input', { type: 'file', accept: '.wav,.flac,audio/wav,audio/flac', hidden: true });
+  const input = h('input', { type: 'file', accept: INPUT_TYPES.join(','), hidden: true });
   const chosen = h('div', {});
   const status = h('p', { class: 'muted' });
   const progress = h('progress', { max: 1, value: 0, hidden: true });
   const drop = h('div', { class: 'drop' },
-    h('strong', {}, 'Upload a recording: '), 'drop a .wav or .flac file here, or ',
+    h('strong', {}, 'Upload a recording: '), 'drop an audio or video file here, or ',
     h('button', { class: 'link', type: 'button', onclick: () => input.click() }, 'choose a file'), '.');
 
   function choose(file) {
     if (!file) return;
-    if (!/\.(wav|flac)$/i.test(file.name)) {
+    if (!isInputType(file.name)) {
       status.className = 'error';
-      status.textContent = `${file.name}: only .wav and .flac recordings are accepted.`;
+      status.textContent = `${file.name}: not a type of file that can be used. Use ${INPUT_TYPES.join(' ')}.`;
       return;
     }
     const guess = suggestDate(file);

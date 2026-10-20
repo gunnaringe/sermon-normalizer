@@ -6,7 +6,7 @@ import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
 import { confirmDialog } from './dialog.js';
-import { api, q, h, href, parseTime, formatTime, formatSize, typing, debounce, forTenant, suggestNames, dateInput, formatDateTime, wheelZoomNeedsKey } from './util.js';
+import { api, q, h, href, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, suggestNames, dateInput, formatDateTime, wheelZoomNeedsKey } from './util.js';
 
 const STORE = 'sermon-studio-options';
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
@@ -156,10 +156,13 @@ export async function editorView(view, path, config) {
       ['File', [raw.name, h('span', { class: 'muted' }, ' · ' + formatSize(raw.size))]],
       ['Format', fmt ? describeFormat(fmt) : h('span', { class: 'muted' }, 'Reading…')],
       ['Length', fmt ? formatTime(fmt.duration, 0) : h('span', { class: 'muted' }, '…')],
-      ['Source', from
-        ? `${describeCodec(fmt) || 'FLAC'}, converted from the original ${describeCodec(from.format) || 'WAV'} ` +
-          `(${from.name}, ${formatSize(from.size)}); verified identical`
-        : (fmt ? `${describeCodec(fmt)} as it was received` : '…')],
+      ['Source', from && isVideo(from.name)
+        ? `${describeCodec(fmt)}, the sound of the original video (${from.name}, ${formatSize(from.size)}), ` +
+          'copied out unchanged; verified identical'
+        : from
+          ? `${describeCodec(fmt) || 'FLAC'}, converted from the original ${describeCodec(from.format) || 'WAV'} ` +
+            `(${from.name}, ${formatSize(from.size)}); verified identical`
+          : (fmt ? `${describeCodec(fmt)} as it was received` : '…')],
       ['Channels', channelsText()],
     ];
     const md = fmt && fmt.metadata ? Object.entries(fmt.metadata) : [];
@@ -226,7 +229,7 @@ export async function editorView(view, path, config) {
     let st = await api('POST', 'api/analysis?path=' + q(path));
     while (alive && st.state === 'running') {
       bar.value = st.progress;
-      note.textContent = st.stage === 'convert' ? 'Converting the recording to FLAC…' : 'Preparing the waveform…';
+      note.textContent = st.stage === 'convert' ? (info.raw && isVideo(info.raw.name) ? 'Taking the sound out of the video…' : 'Converting the recording to FLAC…') : 'Preparing the waveform…';
       await new Promise((r) => setTimeout(r, 500));
       st = await api('GET', 'api/analysis?path=' + q(path));
     }
@@ -235,7 +238,7 @@ export async function editorView(view, path, config) {
       waveSection.replaceChildren(h('p', { class: 'error' }, 'Could not read the recording: ' + (st.error || st.state)));
       return;
     }
-    if (info.raw && /\.wav$/i.test(info.raw.name)) { // it became FLAC meanwhile
+    if (info.raw && converts(info.raw.name)) { // it became FLAC (or .mka) meanwhile
       await refreshInfo();
       check();
     }

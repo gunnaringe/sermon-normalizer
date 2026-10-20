@@ -25,8 +25,9 @@ import (
 const peakWindow = 0.01
 
 // analysisState is how far the waveform data and preview for a recording are.
-// A WAV is first converted to FLAC next to it (stage "convert"), which then
-// replaces it; the analysis (stage "analyze") is of the FLAC.
+// A WAV or AIFF is first made into FLAC next to it, a video's sound copied out
+// (stage "convert"), which then replaces it; the analysis (stage "analyze")
+// is of what it became.
 type analysisState struct {
 	State    string  `json:"state"` // none, running, done, error
 	Stage    string  `json:"stage,omitempty"`
@@ -95,7 +96,7 @@ func (a *analyses) state(raw string, start bool) analysisState {
 		return analysisState{State: "none", Key: key}
 	}
 	st := &analysisState{State: "running", Stage: "analyze", Key: key}
-	if isWAV(raw) {
+	if normalizer.ConvertsTo(raw) != "" {
 		st.Stage = "convert"
 	}
 	a.current[key] = st
@@ -118,9 +119,7 @@ func (a *analyses) state(raw string, start bool) analysisState {
 	return *st
 }
 
-func isWAV(path string) bool { return strings.EqualFold(filepath.Ext(path), ".wav") }
-
-// stage is what is being done to raw right now ("convert" to FLAC, else
+// stage is what is being done to raw right now ("convert", else
 // "analyze"), or "" when nothing is.
 func (a *analyses) stage(raw string) string {
 	key, _ := cacheKey(raw)
@@ -136,7 +135,7 @@ func (a *analyses) stage(raw string) string {
 	return st.Stage
 }
 
-// converting reports whether raw is being converted to FLAC right now.
+// converting reports whether raw is being converted right now.
 func (a *analyses) converting(raw string) bool { return a.stage(raw) == "convert" }
 
 // carry moves the finished analysis of a recording along when the file is
@@ -152,8 +151,9 @@ func (a *analyses) carry(oldKey, newPath string) {
 	}
 }
 
-// run converts raw to FLAC if it is a WAV, then analyses it. keys collects
-// the keys the state is registered under (the WAV's, then the FLAC's).
+// run converts raw if it needs it (normalizer.ConvertsTo), then analyses it.
+// keys collects the keys the state is registered under (the source's, then
+// what it became).
 func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error {
 	ctx := a.s.ctx
 	ff := a.s.cfg.FFmpeg
@@ -171,8 +171,7 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 			a.mu.Unlock()
 		}
 	}
-	if isWAV(raw) {
-		flac := strings.TrimSuffix(raw, filepath.Ext(raw)) + ".flac"
+	if flac := normalizer.ConvertsTo(raw); flac != "" { // or .mka, for a video
 		if fileExists(flac) {
 			return fmt.Errorf("%s and %s both exist", filepath.Base(raw), filepath.Base(flac))
 		}
@@ -186,24 +185,24 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 			}
 			a.mu.Unlock()
 		}()
-		wav := sourceFile{Name: filepath.Base(raw)}
+		from := sourceFile{Name: filepath.Base(raw)}
 		if st, err := os.Stat(raw); err == nil {
-			wav.Size = st.Size()
+			from.Size = st.Size()
 		}
-		wav.Format, _ = ff.ProbeFile(ctx, raw) // only shown: a WAV ffmpeg can read has a header
-		if err := ff.ToFlac(ctx, raw, ".wav", flac, progress); err != nil {
+		from.Format, _ = ff.ProbeFile(ctx, raw) // only shown
+		if err := ff.Convert(ctx, raw, flac, progress); err != nil {
 			return err
 		}
 		if err := os.Remove(raw); err != nil {
 			return err
 		}
 		if _, err := a.s.updateState(folderOfRecording(flac), func(st *folderState) error {
-			st.ConvertedFrom = &wav
+			st.ConvertedFrom = &from
 			return nil
 		}); err != nil {
 			a.s.cfg.Logger.Printf("%s: %v", a.s.display(flac), err)
 		}
-		a.s.cfg.Logger.Printf("converted %s to FLAC (verified identical) and removed the WAV", a.s.display(raw))
+		a.s.cfg.Logger.Printf("converted %s to %s (verified identical) and removed it", a.s.display(raw), filepath.Base(flac))
 		newKey, err := cacheKey(flac)
 		if err != nil {
 			return err

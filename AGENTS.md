@@ -44,7 +44,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/namelist.go`: remembered sermon names per church (suggestions on/off + list, learned on
   upload/rename; `GET/PUT api/names`), stored in `church.json` like the tags.
 - `web/recording.go`: `<folder>/recording.json`, the one state file per recording: `recording` (format, metadata,
-  channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV), `imported` (when it arrived: `markImported`; `recentImports` lists the last `newFor` on top of the first page), the sermon, and `outputs`
+  channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV, AIFF or video it was made from), `imported` (when it arrived: `markImported`; `recentImports` lists the last `newFor` on top of the first page), the sermon, and `outputs`
   (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock).
 - `web/sermon.go`: the sermon part of it: `saved` (the version the user saved) + `adjusted`
   (what the editor keeps as you edit; null when equal to saved): sections, cuts, fades.
@@ -56,7 +56,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/make.go`: `POST api/make?path&format`: one missing format from the saved version (a normal run, no Force).
   `POST api/outputs/remove?path&format=…`: deletes outputs (only those) and their records; not during a run.
 - `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
-- `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3
+- `web/analysis.go`: conversion on arrival (`normalizer.ConvertsTo`: WAV/AIFF→FLAC, video→`.mka`), then waveform peaks + normalized MP3
   preview, cached by path+size+mtime; `carry` moves the cache on import.
 - `web/upload.go`: chunked upload straight to a date folder (the form is on top of the recordings page, `uploadBox` in `app.js`).
 - `web/inbox.go`: inbox file names, date suggestion, `newRawFolder`.
@@ -84,10 +84,13 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 
 - Outputs go through `FFmpeg.RunTo` (`.partial`, renamed on success); existing
   outputs are skipped by a run; Regenerate (Force in the API) redoes the stale ones it turns on.
-- Delete a source only after its copy is verified identical (`SameAudio` for
-  WAV→FLAC, byte MD5 for copies). A run moves the whole recording into
-  `<date>/original/` (WAV → verified FLAC); the outputs are cut straight from it
-  using the sections + cuts, there is no edit file.
+- Delete a source only after its copy is verified identical (`FFmpeg.Convert`: `SameAudio` for
+  WAV/AIFF→FLAC, the same packets for a video's sound; byte MD5 for copies). A run moves the whole
+  recording into `<date>/original/` as it is (any of `normalizer.InputTypes`); the outputs are cut
+  straight from it using the sections + cuts, there is no edit file. Every encode maps only `0:a:0`
+  (an MP3's cover picture or a video must not end up in the outputs).
+- The input types are one table, `normalizer/types.go`; `INPUT_TYPES` in `util.js` and the
+  upload page's `magicOK` follow it (tests check both).
 - No long work inside a request: it sits behind Cloudflare (100 MB bodies,
   ~100 s timeout). Start background work on `s.ctx` under `s.wg`.
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.

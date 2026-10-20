@@ -9,10 +9,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 type shareTest struct {
@@ -108,7 +111,7 @@ func TestShareFileName(t *testing.T) {
 			t.Errorf("%q: the inbox would not take %q: %v", in, got, err)
 		}
 	}
-	for _, bad := range []string{"x.mp3", "x", "x.wav.exe", "x.wa"} {
+	for _, bad := range []string{"x.txt", "x", "x.wav.exe", "x.wa"} {
 		if _, err := shareFileName(bad); err == nil {
 			t.Errorf("shareFileName(%q) accepted", bad)
 		}
@@ -416,5 +419,61 @@ func TestShareAllTypes(t *testing.T) {
 	}
 	if w := do(st.studio, "POST", "/api/shares", `{"label":"S"}`); w.Code != http.StatusBadRequest {
 		t.Errorf("no types at all: %d", w.Code)
+	}
+}
+
+// Every type the inbox takes is checked by its first bytes on the upload page.
+func TestShareMagicForEveryType(t *testing.T) {
+	heads := map[string]string{
+		".wav": "RIFF\x00\x00\x00\x00WAVEfmt ", ".aiff": "FORM\x00\x00\x00\x00AIFFCOMM", ".aif": "FORM\x00\x00\x00\x00AIFCFVER",
+		".flac": "fLaC\x00\x00\x00\x22", ".mp3": "\xFF\xFB\x90\x00", ".aac": "\xFF\xF1\x50\x80",
+		".m4a": "\x00\x00\x00\x20ftypM4A ", ".mp4": "\x00\x00\x00\x18ftypmp42", ".mov": "\x00\x00\x00\x14ftypqt  ",
+		".ogg": "OggS\x00\x02", ".opus": "OggS\x00\x02", ".wma": "\x30\x26\xB2\x75\x8E\x66\xCF\x11\xA6\xD9\x00\xAA\x00\x62\xCE\x6C",
+		".mka": "\x1A\x45\xDF\xA3\x01", ".mkv": "\x1A\x45\xDF\xA3\x01", ".webm": "\x1A\x45\xDF\xA3\x01",
+	}
+	for _, ext := range shareTypes {
+		head, ok := heads[ext]
+		if !ok {
+			t.Errorf("%s: no example here", ext)
+			continue
+		}
+		if !magicOK("a"+ext, []byte(head)) {
+			t.Errorf("%s: its own start is refused", ext)
+		}
+		if magicOK("a"+ext, []byte("<html><body>....")) {
+			t.Errorf("%s: html is taken", ext)
+		}
+	}
+}
+
+// The upload form's list of types is the server's.
+func TestInputTypesInJS(t *testing.T) {
+	b, err := static.ReadFile("static/util.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?s)INPUT_TYPES = \[(.*?)\]`).FindSubmatch(b)
+	if m == nil {
+		t.Fatal("no INPUT_TYPES in util.js")
+	}
+	var js []string
+	for _, s := range regexp.MustCompile(`'([^']+)'`).FindAllSubmatch(m[1], -1) {
+		js = append(js, string(s[1]))
+	}
+	if !slices.Equal(js, normalizer.InputTypes()) {
+		t.Errorf("util.js has %v, the server %v", js, normalizer.InputTypes())
+	}
+}
+
+// A share made when WAV and FLAC were all there was takes every type now.
+func TestShareOldFullListIsAllTypes(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, sharesFile), []byte(`[{"id":"a","types":[".wav",".flac"]},{"id":"b","types":[".wav"]}]`), 0o644)
+	list, err := readShares(dir)
+	if err != nil || len(list) != 2 {
+		t.Fatal(err)
+	}
+	if !list[0].AllTypes || list[0].Types != nil || list[1].AllTypes {
+		t.Errorf("%+v %+v", list[0], list[1])
 	}
 }

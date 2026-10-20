@@ -173,12 +173,23 @@ func NewPaths(folder string) (Paths, error) {
 	}, nil
 }
 
-// RawOriginal is where the whole recording is kept after a run.
-func (p Paths) RawOriginal() string { return filepath.Join(p.Original, p.Date+"_raw.flac") }
+// RawOriginal is the whole recording kept in original/ after a run, of any
+// input type, or "" if there is none.
+func (p Paths) RawOriginal() string { return p.findRaw(p.Original) }
 
-// rawName is the name of the whole recording in the date folder: <date>_raw,
-// as .flac or .wav.
+// rawName is the name of the whole recording: <date>_raw.<ext>, ext one of
+// InputTypes.
 const rawName = "_raw"
+
+// findRaw is the whole recording in dir, or "".
+func (p Paths) findRaw(dir string) string {
+	for _, ext := range InputTypes() {
+		if f := filepath.Join(dir, p.Date+rawName+ext); exists(f) {
+			return f
+		}
+	}
+	return ""
+}
 
 // Pipeline runs the steps for one date folder.
 type Pipeline struct {
@@ -213,25 +224,13 @@ func (p *Pipeline) inFolder(suffix string) string {
 	return filepath.Join(p.P.Folder, p.P.Date+suffix)
 }
 
-// findSource returns the source with the given name in the folder,
-// preferring FLAC over WAV, or "".
-func (p *Pipeline) findSource(name string) string { return p.P.findSource(name) }
-
-func (p Paths) findSource(name string) string {
-	in := func(ext string) string { return filepath.Join(p.Folder, p.Date+name+ext) }
-	return firstExisting(in(".flac"), in(".wav"))
-}
-
 // Source is the whole recording a run would use, found the same way as the
 // pipeline: in the date folder first (a new arrival), then in original/.
 func (p Paths) Source() string {
-	if raw := p.findSource(rawName); raw != "" {
+	if raw := p.findRaw(p.Folder); raw != "" {
 		return raw
 	}
-	if exists(p.RawOriginal()) {
-		return p.RawOriginal()
-	}
-	return ""
+	return p.RawOriginal()
 }
 
 // runTo runs ffmpeg into dst, reporting progress against total seconds when
@@ -275,69 +274,71 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	return p.report(ctx)
 }
 
-// --- 1. raw: the whole recording may arrive as WAV or FLAC ---------------
+// --- 1. raw: the whole recording, of any of the InputTypes -----------------
 
 func (p *Pipeline) stepRaw(ctx context.Context) error {
 	p.step("1. Raw recording")
 	if err := os.MkdirAll(p.P.Original, 0o755); err != nil {
 		return err
 	}
-	ok, err := p.ingest(ctx, p.P.RawOriginal(), rawName)
+	raw, err := p.ingest(ctx)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	if raw == "" {
 		return errors.New("no raw recording to cut")
 	}
-	p.raw = p.P.RawOriginal()
+	p.raw = raw
 	p.logf("Cutting %s from %s to %s%s while making the master.", filepath.Base(p.raw), p.cutFrom(), p.cutTo(), p.cutsNote())
 	return nil
 }
 
-// ingest brings the recording (WAV or FLAC) in the date folder into original/ as FLAC.
-//   - A FLAC in the folder is moved to dst.
-//   - A WAV is converted to dst (if dst is missing or forced), the audio is
-//     verified with MD5, and the WAV is deleted only if the audio is identical.
+// ingest brings the recording in the date folder into original/ and returns
+// where it is there ("" if there is none).
+//   - One that is kept as it is (FLAC, compressed audio) is moved.
+//   - Other lossless audio (WAV, AIFF) is made into FLAC there, and a video's
+//     sound copied out (both are normally done as it arrives); the source is
+//     deleted only when the audio is checked to be identical.
 //
-// Returns whether dst exists afterwards.
-func (p *Pipeline) ingest(ctx context.Context, dst, name string) (bool, error) {
-	wav, flac := firstExisting(p.inFolder(name+".wav")), firstExisting(p.inFolder(name+".flac"))
-
+// A recording already in original/ is replaced only with Force.
+func (p *Pipeline) ingest(ctx context.Context) (string, error) {
+	have := p.P.RawOriginal()
+	src := p.P.findRaw(p.P.Folder)
 	switch {
-	case flac == "":
-	case exists(dst) && !p.Opt.Force:
-		p.warnf("%s is already in original/; leaving %s in the folder (Save and generate replaces it).", filepath.Base(dst), filepath.Base(flac))
-	default:
-		if err := MoveFile(flac, dst); err != nil {
-			return false, err
+	case src == "":
+		if have != "" {
+			p.logf("Using %s.", filepath.Base(have))
 		}
-		p.logf("Moved %s to %s.", filepath.Base(flac), dst)
+		return have, nil
+	case have != "" && !p.Opt.Force:
+		p.warnf("%s is already in original/; leaving %s in the folder.", filepath.Base(have), filepath.Base(src))
+		return have, nil
 	}
-	if wav == "" {
-		if exists(dst) && flac == "" {
-			p.logf("No WAV; using %s.", filepath.Base(dst))
+	dst := filepath.Join(p.P.Original, filepath.Base(src))
+	if to := ConvertsTo(src); to == "" {
+		if err := MoveFile(src, dst); err != nil {
+			return "", err
 		}
-		return exists(dst), nil
-	}
-
-	if !exists(dst) || p.Opt.Force {
-		if err := p.runTo(ctx, dst, p.lengthFor(ctx, wav), "-i", wav, "-c:a", "flac"); err != nil {
-			return false, err
+		p.logf("Moved %s to %s.", filepath.Base(src), dst)
+	} else {
+		dst = filepath.Join(p.P.Original, filepath.Base(to))
+		var progress func(float64)
+		if total := p.lengthFor(ctx, src); total > 0 {
+			p.OnProgress(0)
+			progress = func(s float64) { p.OnProgress(math.Min(s/total, 1)) }
 		}
+		if err := p.FF.Convert(ctx, src, dst, progress); err != nil {
+			return "", err
+		}
+		if err := os.Remove(src); err != nil {
+			return "", err
+		}
+		p.logf("OK: %s has exactly the audio of %s. Deleted %s.", filepath.Base(dst), filepath.Base(src), filepath.Base(src))
 	}
-	same, err := p.FF.SameAudio(ctx, wav, dst)
-	if err != nil {
-		return false, err
+	if have != "" && have != dst { // the one it replaces, of another type
+		os.Remove(have)
 	}
-	if !same {
-		p.warnf("%s and %s are NOT identical. Keeping the WAV.", filepath.Base(dst), filepath.Base(wav))
-		return true, nil
-	}
-	if err := os.Remove(wav); err != nil {
-		return false, err
-	}
-	p.logf("OK: %s is identical to the WAV. Deleted %s.", filepath.Base(dst), filepath.Base(wav))
-	return true, nil
+	return dst, nil
 }
 
 // cutInput is how ffmpeg reads the sermon from the raw recording: the input
@@ -499,7 +500,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		return err
 	}
 	if graph == "" {
-		args = append(args, "-af", p.masterFilter(length))
+		args = append(args, "-map", "0:a:0", "-af", p.masterFilter(length)) // not a cover picture or video
 	} else {
 		args = append(args, "-filter_complex", graph+";[cut]"+p.masterFilter(length)+"[out]", "-map", "[out]")
 	}

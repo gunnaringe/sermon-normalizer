@@ -75,7 +75,7 @@ async function tryCode(c) {
 }
 
 function limitsText() {
-  const parts = [`${info.types.join(' or ')} files up to ${formatSize(info.maxFileSize)}`];
+  const parts = [`${info.allTypes ? 'Audio or video' : info.types.join(' or ')} files up to ${formatSize(info.maxFileSize)}`];
   if (info.uploadsLeft !== undefined) parts.push(`${info.uploadsLeft} more file${info.uploadsLeft === 1 ? '' : 's'}`);
   if (info.bytesLeft !== undefined) parts.push(`${formatSize(info.bytesLeft)} left`);
   if (info.expires) parts.push('until ' + formatDateTime(info.expires));
@@ -153,7 +153,9 @@ async function run() {
 // (its id is remembered by the file's name, size and date).
 async function sendFile(file, onProgress) {
   const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-  if (!info.types.includes(ext)) throw new Error(`Only ${info.types.join(' and ')} files can be sent with this code.`);
+  if (!info.types.includes(ext)) {
+    throw new Error(info.allTypes ? 'This type of file cannot be sent.' : `Only ${info.types.join(' and ')} files can be sent with this code.`);
+  }
   if (file.size > info.maxFileSize) throw new Error(`The file is larger than the ${formatSize(info.maxFileSize)} this code allows.`);
   const key = `shareUpload:${file.name}:${file.size}:${file.lastModified}`;
   let id = localStorage.getItem(key);

@@ -181,9 +181,17 @@ cancels running jobs and waits for them to clean up.
   by themselves (see below); there is no inbox page. The recordings list shows a "converting" or
   "preparing" tag while a recording is made ready.
 
-**A WAV is converted to FLAC as soon as it arrives** (upload, inbox, or opening a folder that
-has one), verified identical by MD5 of the audio, and then replaces the WAV. Right after, the
-server prepares the waveform and the listening preview, so cutting can start at once.
+**Recordings may be any common audio or video file**: WAV, AIFF, FLAC, MP3, M4A/AAC, Ogg, Opus,
+WMA, or a video (MP4, MOV, MKV, WebM). As soon as one arrives (upload, inbox, share, or opening a
+folder that has one):
+- **WAV and AIFF are converted to FLAC**, verified identical by MD5 of the audio, and then the
+  original is removed;
+- **a video's sound is copied out**, unchanged, into `.mka` (Matroska audio), verified packet for
+  packet, and then the video is removed;
+- **FLAC and compressed audio are kept as they are**: FLAC would only make an MP3 bigger.
+
+Right after, the server prepares the waveform and the listening preview, so cutting can start
+at once.
 
 ### Shares
 
@@ -220,8 +228,8 @@ one run; a field you empty is left out. Saved in the church's `church.json` (wit
 
 ### Inbox
 
-- **The inbox is any folder**: a synced folder or a file share. A `.wav` or
-  `.flac` that has stopped changing for 30 s is moved into its date folder as `<date>_raw.*`
+- **The inbox is any folder**: a synced folder or a file share. A recording (any of the types
+  above) that has stopped changing for 30 s is moved into its date folder as `<date>_raw.*`
   (and converted and prepared there), without anyone opening it. The date is taken from the
   file name, else the recording's tags, else its modification time. If that date already has a
   raw recording, the new one goes in `<date> 2`, `<date> 3`... Hidden files and `*.partial*`
@@ -285,7 +293,7 @@ so there is nothing else to keep in step.
     2026-10-04_raw.flac         the whole recording
 ```
 
-- A WAV is converted to FLAC in `original/`, the audio is verified with MD5, and **the WAV is
-  deleted only if the audio is identical**. A FLAC is moved; across disks it is copied, verified
-  and only then deleted.
+- The recording is moved into `original/` as it is (`_raw.flac`, `_raw.mp3`, `_raw.mka`...); a
+  WAV or video not converted yet is converted there first, and **deleted only if the audio is
+  identical**. Across disks a file is copied, verified and only then deleted.
 - A recording already in `original/` is never replaced by a run that only adds files; one that redoes files replaces it.

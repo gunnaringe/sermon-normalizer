@@ -15,18 +15,17 @@ import (
 
 var errNoInbox = errors.New("no inbox folder configured")
 
-// inboxName checks an inbox file name: a plain .wav/.flac file, not hidden
-// and not one being written.
+// inboxName checks an inbox file name: a plain file of one of the
+// normalizer.InputTypes, not hidden and not one being written.
 func inboxName(name string) (string, error) {
 	base := filepath.Base(name)
 	if base != name || base == "" || strings.HasPrefix(base, ".") || strings.ContainsAny(base, `/\`) || normalizer.IsPartial(base) {
 		return "", fmt.Errorf("invalid file name %q", name)
 	}
-	switch strings.ToLower(filepath.Ext(base)) {
-	case ".wav", ".flac":
+	if _, ok := normalizer.KindOf(base); ok {
 		return base, nil
 	}
-	return "", fmt.Errorf("%s: only .wav and .flac recordings are accepted", base)
+	return "", fmt.Errorf("%s: not a type of file that can be used (%s)", base, strings.Join(normalizer.InputTypes(), " "))
 }
 
 var (

@@ -75,7 +75,7 @@ func TestNewPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Date != "2026-10-04" || p.Original != filepath.Join(dir, "original") || p.RawOriginal() != filepath.Join(dir, "original", "2026-10-04_raw.flac") ||
+	if p.Date != "2026-10-04" || p.Original != filepath.Join(dir, "original") || p.RawOriginal() != "" ||
 		filepath.Base(p.Master) != "2026-10-04.flac" ||
 		filepath.Base(p.Mp3) != "2026-10-04.mp3" ||
 		filepath.Base(p.Opus) != "2026-10-04.opus" {
@@ -416,54 +416,83 @@ func TestValidateCuts(t *testing.T) {
 	}
 }
 
-// A FLAC recording is just moved into original/ (no ffmpeg needed).
-func TestIngestFlacMoves(t *testing.T) {
-	p := newTestPipeline(t, "2026-10-04_raw.flac")
-	src := p.inFolder("_raw.flac")
-	ok, err := p.ingest(context.Background(), p.P.RawOriginal(), rawName)
-	if err != nil || !ok {
-		t.Fatalf("ok=%v err=%v", ok, err)
-	}
-	if exists(src) || !exists(p.P.RawOriginal()) {
-		t.Error("the file should have been moved to original/")
+// A FLAC recording is just moved into original/ (no ffmpeg needed), and so is
+// a compressed one.
+func TestIngestMovesWhatIsKept(t *testing.T) {
+	for _, ext := range []string{".flac", ".mp3", ".m4a"} {
+		p := newTestPipeline(t, "2026-10-04_raw"+ext)
+		src := p.inFolder("_raw" + ext)
+		raw, err := p.ingest(context.Background())
+		if err != nil || raw != filepath.Join(p.P.Original, "2026-10-04_raw"+ext) {
+			t.Fatalf("%s: raw=%q err=%v", ext, raw, err)
+		}
+		if exists(src) || !exists(raw) {
+			t.Errorf("%s: the file should have been moved to original/", ext)
+		}
 	}
 }
 
-// A FLAC already in original/ is not replaced without Force.
-func TestIngestFlacKeepsOriginal(t *testing.T) {
-	p := newTestPipeline(t, "2026-10-04_raw.flac")
-	os.WriteFile(p.P.RawOriginal(), []byte("original"), 0o644)
-	if ok, err := p.ingest(context.Background(), p.P.RawOriginal(), rawName); !ok || err != nil {
-		t.Fatalf("ok=%v err=%v", ok, err)
+// A recording already in original/ is not replaced without Force; with it,
+// also one of another type.
+func TestIngestKeepsOriginal(t *testing.T) {
+	p := newTestPipeline(t, "2026-10-04_raw.mp3")
+	old := filepath.Join(p.P.Original, "2026-10-04_raw.flac")
+	os.WriteFile(old, []byte("original"), 0o644)
+	if raw, err := p.ingest(context.Background()); raw != old || err != nil {
+		t.Fatalf("raw=%q err=%v", raw, err)
 	}
-	if b, _ := os.ReadFile(p.P.RawOriginal()); string(b) != "original" {
+	if b, _ := os.ReadFile(old); string(b) != "original" {
 		t.Error("the file in original/ was replaced")
 	}
-	if !exists(p.inFolder("_raw.flac")) {
+	if !exists(p.inFolder("_raw.mp3")) {
 		t.Error("the new file should be left in the folder")
+	}
+	p.Opt.Force = true
+	if raw, err := p.ingest(context.Background()); raw != filepath.Join(p.P.Original, "2026-10-04_raw.mp3") || err != nil {
+		t.Fatalf("forced: raw=%q err=%v", raw, err)
+	}
+	if exists(old) {
+		t.Error("the replaced FLAC is still in original/")
 	}
 }
 
 func TestIngestNothing(t *testing.T) {
 	p := newTestPipeline(t)
-	if ok, err := p.ingest(context.Background(), p.P.RawOriginal(), rawName); ok || err != nil {
-		t.Errorf("ok=%v err=%v", ok, err)
+	if raw, err := p.ingest(context.Background()); raw != "" || err != nil {
+		t.Errorf("raw=%q err=%v", raw, err)
 	}
 }
 
-// The recording is found in the folder (a new arrival) first, then in original/.
+// The recording is found in the folder (a new arrival) first, then in
+// original/, of any type; what a conversion made before its source.
 func TestSource(t *testing.T) {
 	p := newTestPipeline(t)
 	if got := p.P.Source(); got != "" {
 		t.Errorf("empty folder: %q", got)
 	}
-	os.WriteFile(p.P.RawOriginal(), []byte("x"), 0o644)
-	if got := p.P.Source(); got != p.P.RawOriginal() {
+	orig := filepath.Join(p.P.Original, "2026-10-04_raw.m4a")
+	os.WriteFile(orig, []byte("x"), 0o644)
+	if got := p.P.Source(); got != orig || p.P.RawOriginal() != orig {
 		t.Errorf("in original/: %q", got)
 	}
-	os.WriteFile(p.inFolder("_raw.wav"), []byte("x"), 0o644)
-	if got := p.P.Source(); got != p.inFolder("_raw.wav") {
+	os.WriteFile(p.inFolder("_raw.mp4"), []byte("x"), 0o644)
+	if got := p.P.Source(); got != p.inFolder("_raw.mp4") {
 		t.Errorf("a new arrival: %q", got)
+	}
+	os.WriteFile(p.inFolder("_raw.mka"), []byte("x"), 0o644)
+	if got := p.P.Source(); got != p.inFolder("_raw.mka") {
+		t.Errorf("the video's sound before the video: %q", got)
+	}
+}
+
+func TestKinds(t *testing.T) {
+	for name, want := range map[string]string{"a.WAV": "a.flac", "a.aif": "a.flac", "a.MOV": "a.mka", "a.flac": "", "a.mp3": "", "a.mka": ""} {
+		if got := ConvertsTo(name); got != want {
+			t.Errorf("%s: %q, want %q", name, got, want)
+		}
+	}
+	if _, ok := KindOf("a.txt"); ok {
+		t.Error("a.txt is taken")
 	}
 }
 

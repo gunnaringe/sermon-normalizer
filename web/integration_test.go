@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -335,5 +336,70 @@ func TestIntegrationInboxWatcher(t *testing.T) {
 	}
 	if same, err := ff.SameAudio(context.Background(), wav, flac); err != nil || !same {
 		t.Errorf("FLAC differs: %v %v", same, err)
+	}
+}
+
+// Recordings of other types: an MP3 with a cover picture and an M4A are kept
+// as they are, an AIFF becomes FLAC and a video's sound is copied out as it
+// arrives; each is cut into an MP3 that has the sound and nothing else.
+func TestIntegrationInputTypes(t *testing.T) {
+	ff := requireFFmpeg(t)
+	ts := newTestServer(t, ff)
+	hs := httptest.NewServer(ts.h)
+	defer hs.Close()
+	ctx := context.Background()
+	tmp := t.TempDir()
+	src, cover := filepath.Join(tmp, "service.wav"), filepath.Join(tmp, "cover.png")
+	service(t, ff, src)
+	if _, err := ff.Run(ctx, "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", cover); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		ext, becomes string
+		args         []string
+	}{
+		{".mp3", ".mp3", []string{"-i", src, "-i", cover, "-map", "0:a", "-map", "1:v", "-c:a", "libmp3lame", "-b:a", "96k",
+			"-c:v", "png", "-disposition:v", "attached_pic"}},
+		{".m4a", ".m4a", []string{"-i", src, "-c:a", "aac", "-b:a", "96k"}},
+		{".aiff", ".flac", []string{"-i", src, "-c:a", "pcm_s16be"}},
+		{".mp4", ".mka", []string{"-f", "lavfi", "-i", "testsrc=s=160x120:r=5:d=100", "-i", src, "-map", "0:v", "-map", "1:a",
+			"-c:v", "mpeg4", "-c:a", "aac", "-b:a", "96k"}},
+	}
+	for i, c := range cases {
+		date := fmt.Sprintf("2026-10-%02d", 4+i)
+		ts.file(t, date+"/x", "")
+		raw := filepath.Join(ts.root, date, date+"_raw"+c.ext)
+		if _, err := ff.Run(ctx, append(append([]string{"-y"}, c.args...), raw)...); err != nil {
+			t.Fatalf("%s: making it: %v", c.ext, err)
+		}
+		if st := waitAnalysis(t, ts, date); st.State != "done" {
+			t.Fatalf("%s: analysis %+v", c.ext, st)
+		}
+		paths, _ := normalizer.NewPaths(filepath.Join(ts.root, date))
+		if got := paths.Source(); filepath.Ext(got) != c.becomes || (c.becomes != c.ext && fileExists(raw)) {
+			t.Errorf("%s: the recording is %s now", c.ext, got)
+		}
+		q := defaultRequest()
+		q.Sections = []span{{21, 79}}
+		q.Flac, q.Opus = false, false
+		rec := ts.do(t, "POST", "/api/run?path="+date, q)
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("%s: run: %d %s", c.ext, rec.Code, rec.Body)
+		}
+		snaps := events(t, hs.URL+"/api/jobs/"+decode[jobSnapshot](t, rec).ID+"/events")
+		if last := snaps[len(snaps)-1]; last.State != "done" {
+			t.Fatalf("%s: run %+v", c.ext, last)
+		}
+		if !fileExists(filepath.Join(ts.root, date, "original", date+"_raw"+c.becomes)) {
+			t.Errorf("%s: not kept in original/ as %s", c.ext, c.becomes)
+		}
+		mp3 := filepath.Join(ts.root, date, date+".mp3")
+		if d := duration(t, mp3); d < 57.9 || d > 58.2 {
+			t.Errorf("%s: the MP3 is %.2f s, want 58", c.ext, d)
+		}
+		out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=index", "-of", "csv=p=0", mp3).Output()
+		if err != nil || strings.TrimSpace(string(out)) != "" {
+			t.Errorf("%s: the MP3 has a picture or video (%q, %v)", c.ext, out, err)
+		}
 	}
 }

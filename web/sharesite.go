@@ -134,7 +134,7 @@ func (a *App) handleShareInfo(w http.ResponseWriter, r *http.Request) {
 	defer a.shareMu.Unlock()
 	n, bytes := sh.reserved()
 	info := map[string]any{
-		"label": sh.Label, "church": t.info().Name, "types": sh.types(), "maxFileSize": sh.MaxFileSize,
+		"label": sh.Label, "church": t.info().Name, "types": sh.types(), "allTypes": sh.AllTypes, "maxFileSize": sh.MaxFileSize,
 		"expires": sh.Expires, "state": sh.state(time.Now()), "chunk": 16 << 20,
 	}
 	if sh.MaxUploads > 0 {
@@ -153,7 +153,7 @@ func shareFileName(name string) (string, error) {
 	name = name[strings.LastIndexAny(name, `/\`)+1:]
 	ext := strings.ToLower(filepath.Ext(name))
 	if !slices.Contains(shareTypes, ext) {
-		return "", fmt.Errorf("only %s files are accepted", strings.Join(shareTypes, " and "))
+		return "", errors.New("this type of file is not taken")
 	}
 	base := strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune(" -_.,()", r) {
@@ -190,7 +190,7 @@ func (a *App) handleShareStart(w http.ResponseWriter, r *http.Request) {
 	}
 	name, err := shareFileName(q.Name)
 	if err == nil && !containsExt(sh.types(), name) {
-		err = fmt.Errorf("this code takes %s files", strings.Join(sh.types(), " and "))
+		err = fmt.Errorf("this code takes only %s files", strings.Join(sh.types(), " and "))
 	}
 	if err == nil && q.Size < 1024 {
 		err = errors.New("the file is empty or too small to be a recording")
@@ -283,14 +283,31 @@ func (a *App) handleShareStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"offset": partialSize(partialPath(t, id)), "size": p.Size})
 }
 
-// magicOK checks the first bytes of a file against its extension.
+// magicOK checks the first bytes of a file (16 are read) against its extension.
 func magicOK(name string, head []byte) bool {
+	at := func(i int, magic string) bool {
+		return len(head) >= i+len(magic) && string(head[i:i+len(magic)]) == magic
+	}
+	id3 := at(0, "ID3") // some tools put an ID3 tag first
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".wav": // RIFF, or RF64/BW64 for files over 4 GB
-		return len(head) >= 12 && (bytes.HasPrefix(head, []byte("RIFF")) || bytes.HasPrefix(head, []byte("RF64")) ||
-			bytes.HasPrefix(head, []byte("BW64"))) && string(head[8:12]) == "WAVE"
-	case ".flac": // some tools put an ID3 tag first
-		return bytes.HasPrefix(head, []byte("fLaC")) || bytes.HasPrefix(head, []byte("ID3"))
+		return (at(0, "RIFF") || at(0, "RF64") || at(0, "BW64")) && at(8, "WAVE")
+	case ".aiff", ".aif":
+		return at(0, "FORM") && (at(8, "AIFF") || at(8, "AIFC"))
+	case ".flac":
+		return at(0, "fLaC") || id3
+	case ".mp3": // a tag, or straight away a frame
+		return id3 || (len(head) >= 2 && head[0] == 0xFF && head[1]&0xE0 == 0xE0)
+	case ".aac": // ADTS frames
+		return id3 || (len(head) >= 2 && head[0] == 0xFF && head[1]&0xF6 == 0xF0)
+	case ".m4a", ".mp4", ".mov": // ISO/QuickTime boxes
+		return at(4, "ftyp") || at(4, "moov") || at(4, "mdat") || at(4, "wide") || at(4, "free") || at(4, "skip")
+	case ".ogg", ".opus":
+		return at(0, "OggS")
+	case ".wma": // ASF
+		return at(0, "\x30\x26\xB2\x75\x8E\x66\xCF\x11")
+	case ".mka", ".mkv", ".webm": // EBML
+		return at(0, "\x1A\x45\xDF\xA3")
 	}
 	return false
 }
@@ -341,7 +358,7 @@ func (a *App) handleShareChunk(w http.ResponseWriter, r *http.Request) {
 	}
 	body := io.Reader(http.MaxBytesReader(w, r.Body, min(shareChunk, p.Size-offset)))
 	if offset == 0 {
-		head := make([]byte, 12)
+		head := make([]byte, 16)
 		n, _ := io.ReadFull(body, head)
 		if !magicOK(p.Name, head[:n]) {
 			a.dropUpload(t, sh, id) // its place in the share's limits is free again

@@ -55,6 +55,15 @@ export async function suggestNames(input) {
 
 export const q = (path) => encodeURIComponent(path);
 
+// INPUT_TYPES are the types a recording may come as: normalizer.InputTypes
+// (TestInputTypesInJS keeps them the same). WAV and AIFF become FLAC as they
+// arrive, a video becomes its sound (.mka); the others are kept as they are.
+export const INPUT_TYPES = ['.flac', '.mka', '.wav', '.aiff', '.aif', '.mp3', '.m4a', '.aac', '.ogg', '.opus', '.wma',
+  '.mp4', '.mov', '.mkv', '.webm'];
+export const isInputType = (name) => INPUT_TYPES.includes(name.slice(name.lastIndexOf('.')).toLowerCase());
+export const isVideo = (name) => /\.(mp4|mov|mkv|webm)$/i.test(name);
+export const converts = (name) => isVideo(name) || /\.(wav|aiff?)$/i.test(name);
+
 // parseTime parses 1:12:05, 41:20, 2480 or 41:20.5 as seconds.
 export function parseTime(s) {
   s = s.trim();

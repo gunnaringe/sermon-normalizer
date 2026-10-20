@@ -324,7 +324,7 @@ func TestUploadInChunks(t *testing.T) {
 		t.Errorf("second raw: %d %s", rec.Code, rec.Body)
 	}
 	for _, url := range []string{
-		"/api/upload?date=2026-10-05&name=talk.mp3&size=3&offset=0",
+		"/api/upload?date=2026-10-05&name=talk.txt&size=3&offset=0",
 		"/api/upload?date=05.10.2026&name=a.wav&size=3&offset=0",
 		"/api/upload?date=2026-10-05&name=a.wav&size=0&offset=0",
 		"/api/upload?date=2026-10-05&name=..%2Fa.wav&size=3&offset=0",

@@ -20,7 +20,7 @@ type folderState struct {
 	// Recording is what the recording is; nil until it has been looked at, and
 	// redone when the file changes (Stamp).
 	Recording *recordingFacts `json:"recording"`
-	// ConvertedFrom is the WAV the recording was converted from, if it was.
+	// ConvertedFrom is the file (WAV, AIFF, video) the recording was made from, if it was.
 	ConvertedFrom *sourceFile `json:"convertedFrom,omitempty"`
 	// Imported is when the recording arrived (upload, inbox, share); the
 	// folder list shows it among the new ones for a while (newFor).
