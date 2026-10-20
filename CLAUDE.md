@@ -56,7 +56,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `api/shares` (only with `--share-listen`). `web/sharesite.go`: the public listener
   (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
-- `web/static/`: plain JS, no build. `icons/` = the logo (favicon, header, home screen; `manifest.webmanifest`);
+- `web/static/`: plain JS, no build. `icons/` = the logo: `logo.svg` (hand-drawn vector, header + favicon) and PNGs
+  scaled from the original artwork (home screen, `manifest.webmanifest`);
   the public page serves only the ones listed in `sharePage`. `dialog.js` = confirm/alert/prompt in the app's look
   (never use the browser's `confirm`/`alert`/`prompt`). `vendor/wavesurfer/` is wavesurfer.js
   7.12.12, unmodified.
