@@ -72,7 +72,7 @@ func TestAccessChurchesFollowGroups(t *testing.T) {
 func TestAccessEveryRouteChecksChurch(t *testing.T) {
 	h := newAccessApp(t)
 	member := "sermon_studio_kirke_a"
-	for _, url := range []string{"/api/folders?tenant=kirke-b", "/api/config?tenant=kirke-b", "/api/names?tenant=kirke-b"} {
+	for _, url := range []string{"/api/folders?tenant=kirke-b", "/api/config?tenant=kirke-b"} {
 		if w := as(h, member, "GET", url, ""); w.Code != http.StatusNotFound {
 			t.Errorf("GET %s: status %d, want 404", url, w.Code)
 		}

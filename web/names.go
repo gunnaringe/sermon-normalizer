@@ -142,9 +142,6 @@ func (s *Server) rename(src, dst string) error {
 			s.analyses.carry(oldKey, raw)
 		}
 	}
-	if _, name, ok := parseFolder(newBase); ok {
-		s.learnName(name)
-	}
 	s.cfg.Logger.Printf("renamed %s to %s", s.display(src), s.display(dst))
 	return nil
 }

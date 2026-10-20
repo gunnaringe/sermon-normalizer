@@ -17,7 +17,7 @@ import (
 
 // A church is a folder in the data dir:
 //
-//	<data-dir>/<id>/church.json   name, default tags, remembered names
+//	<data-dir>/<id>/church.json   name, default tags
 //	<data-dir>/<id>/Taler/        the sermons
 //	<data-dir>/<id>/Innboks/      the inbox
 const (
@@ -51,9 +51,8 @@ type AppConfig struct {
 // churchConfig is church.json. Everything is optional: a church is a folder
 // with a Taler folder in it, named after the folder until it is renamed.
 type churchConfig struct {
-	Name  string    `json:"name,omitempty"`
-	Meta  *Meta     `json:"meta,omitempty"`  // default tags; nil = DefaultMeta
-	Names *NameList `json:"names,omitempty"` // remembered sermon names; nil = defaultNames
+	Name string `json:"name,omitempty"`
+	Meta *Meta  `json:"meta,omitempty"` // default tags; nil = DefaultMeta
 }
 
 // TenantInfo is a church as listed in the UI.
@@ -231,9 +230,8 @@ func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
 				return nil, err
 			}
 		}
-		cfg.Meta, cfg.Names = cc.Meta, cc.Names
+		cfg.Meta = cc.Meta
 		cfg.SaveMeta = func(m Meta) error { return a.update(t, func(c *churchConfig) { c.Meta = &m }) }
-		cfg.SaveNames = func(n NameList) error { return a.update(t, func(c *churchConfig) { c.Names = &n }) }
 	}
 	if dir != "" {
 		var err error

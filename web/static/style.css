@@ -315,8 +315,6 @@ tr.row.target { animation: target 2.5s ease-out; }
 .tags input[type=text], .tags select { width: 100%; }
 .options .tag input[type=text] { width: 14em; }
 button.link { border: 0; background: none; box-shadow: none; color: var(--accent); font-size: 0.9rem; padding: 0 0.3rem; cursor: pointer; }
-ul.names { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0; margin: 0.6rem 0 0; }
-ul.names li { border: 1px solid var(--line); border-radius: 999px; padding: 0.1rem 0.3rem 0.1rem 0.8rem; background: var(--panel); }
 
 .dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--fg); padding: 0; width: min(32rem, calc(100vw - 2rem)); box-shadow: var(--shadow-lg); }
 .dialog[open] { animation: pop 0.18s ease-out; }
