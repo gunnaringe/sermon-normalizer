@@ -286,13 +286,50 @@ async function settingsView(part) {
     } catch (err) { nameStatus.textContent = err.message; }
   } }, 'Save');
 
+  // The church's own logo, shown in the header instead of the app's.
+  const logoBox = h('div', { class: 'logo-row' });
+  const logoStatus = h('span', { class: 'muted' });
+  const logoInput = h('input', { type: 'file', name: 'logo', accept: 'image/png,image/jpeg,image/webp,image/svg+xml', hidden: true });
+  const showLogo = (logo) => {
+    logoBox.replaceChildren(
+      logo ? h('img', { src: forTenant('api/logo') + '&v=' + logo, alt: 'Logo' }) : h('span', { class: 'muted' }, 'The Sermon Studio logo is used.'),
+      h('button', { type: 'button', name: 'upload-logo', onclick: () => logoInput.click() }, logo ? 'Change logo…' : 'Upload logo…'),
+      logo ? h('button', { type: 'button', name: 'remove-logo', onclick: async () => {
+        try {
+          await api('DELETE', 'api/logo');
+          showLogo('');
+          window.dispatchEvent(new Event('churches-changed'));
+        } catch (err) { logoStatus.textContent = err.message; }
+      } }, 'Remove') : '',
+      logoInput, logoStatus);
+  };
+  logoInput.addEventListener('change', async () => {
+    const file = logoInput.files[0];
+    logoInput.value = '';
+    if (!file) return;
+    logoStatus.className = 'muted';
+    logoStatus.textContent = '';
+    const resp = await fetch(forTenant('api/logo'), { method: 'PUT', body: file }).catch((e) => ({ ok: false, json: async () => ({ error: e.message }) }));
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      logoStatus.className = 'error';
+      logoStatus.textContent = data.error || `${resp.status} ${resp.statusText}`;
+      return;
+    }
+    showLogo(data.logo);
+    logoStatus.textContent = 'Saved.';
+    window.dispatchEvent(new Event('churches-changed'));
+  });
+  showLogo(tenants.tenants.find((t) => t.id === currentTenant())?.logo || '');
+
   const shares = h('section', { id: 'shares' });
   if (tenants.shares) await sharesView(shares);
 
   const view_ = h('div', {},
     h('h1', {}, 'Settings'),
     h('h2', {}, 'Church'),
-    h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, 'Name'), nameInput), h('div', {}, saveName, ' ', nameStatus)),
+    h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, 'Name'), nameInput), h('div', {}, saveName, ' ', nameStatus),
+      h('p', { class: 'muted' }, 'Logo, shown in the header (PNG, JPEG, WebP or SVG, up to 1 MB). Make it as wide as it is tall, or wider.'), logoBox),
     h('h2', {}, 'Default tags'),
     h('p', { class: 'muted' }, 'Written into the FLAC, MP3 and Opus of every sermon of this church. You can change them for a single run on the sermon\'s page. Placeholders: ',
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + p.help + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
@@ -319,7 +356,16 @@ async function churchPicker() {
   const select = document.getElementById('church');
   let data = await api('GET', 'api/tenants');
   if (!data.tenants.some((t) => t.id === currentTenant())) setTenant(data.default);
+  const brand = document.querySelector('header .brand img');
+  const nameText = document.getElementById('church-name');
   const fill = () => {
+    const mine = data.tenants.find((t) => t.id === currentTenant());
+    brand.src = mine?.logo ? forTenant('api/logo') + '&v=' + mine.logo : 'icons/logo.svg';
+    // One church and no adding: just its name, no dropdown.
+    const single = data.tenants.length === 1 && !data.canAdd;
+    select.hidden = single;
+    nameText.hidden = !single;
+    nameText.textContent = mine?.name || '';
     select.replaceChildren(...data.tenants.map((t) => h('option', { value: t.id, selected: t.id === currentTenant() }, t.name)),
       data.canAdd ? h('option', { value: '+' }, '+ Add church…') : '');
     select.value = currentTenant();

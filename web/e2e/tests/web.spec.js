@@ -675,6 +675,40 @@ test('settings: rename the church; the dropdown follows', async ({ page }) => {
   await expect(page.locator('input[name=church]')).toHaveValue('Norkirken Melhus');
 });
 
+test('settings: a church logo replaces the app logo in the header', async ({ page }) => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#b00020"/></svg>';
+  await page.goto('#/settings');
+  const brand = page.locator('header .brand img');
+  await expect(brand).toHaveAttribute('src', 'icons/logo.svg');
+  await page.locator('input[name=logo]').setInputFiles({ name: 'logo.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(svg) });
+  await expect(brand).toHaveAttribute('src', /api\/logo\?tenant=.*&v=/);
+  await expect(page.locator('.logo-row img')).toBeVisible();
+  await page.locator('input[name=logo]').setInputFiles({ name: 'x.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
+  await expect(page.getByText('must be a PNG, JPEG, WebP or SVG')).toBeVisible();
+  await page.locator('header').screenshot({ path: path.join(shots, 'header-logo.png') });
+  await page.reload(); // kept
+  await expect(brand).toHaveAttribute('src', /api\/logo/);
+  await page.getByRole('button', { name: 'Remove' }).first().click();
+  await expect(brand).toHaveAttribute('src', 'icons/logo.svg');
+});
+
+test('header: with one church there is no dropdown, only its name', async ({ page }) => {
+  await page.route('**/api/tenants', (r) => r.fulfill({ json: {
+    tenants: [{ id: 'first-church', name: 'Norkirken Melhus' }], default: 'first-church', canAdd: false, shares: false } }));
+  await page.goto('');
+  await expect(page.locator('#church-name')).toHaveText('Norkirken Melhus');
+  await expect(page.locator('#church')).toBeHidden();
+  await page.locator('header').screenshot({ path: path.join(shots, 'header-one-church.png') });
+});
+
+test('header: several churches: a quiet dropdown', async ({ page }) => {
+  await page.goto('');
+  await expect(page.locator('#church')).toBeVisible();
+  await expect(page.locator('#church-name')).toBeHidden();
+  await page.locator('#church').hover();
+  await page.locator('header').screenshot({ path: path.join(shots, 'header-dropdown.png') });
+});
+
 test('shares: make a code in the studio, send a recording with the link', async ({ page, context }) => {
   await page.goto('#/shares'); // the old address leads to the shares in the settings
   await expect(page).toHaveURL(/#\/settings\/shares$/);

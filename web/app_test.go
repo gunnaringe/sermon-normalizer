@@ -166,3 +166,59 @@ func TestBrokenChurchFileStopsStartup(t *testing.T) {
 		t.Error("a church.json that cannot be read must not be ignored (it would be overwritten)")
 	}
 }
+
+func TestChurchLogo(t *testing.T) {
+	_, h, _, data := newTestApp(t)
+	if w := do(h, "POST", "/api/tenants", `{"name":"Kirke B"}`); w.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	png := "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + strings.Repeat("\x00", 20)
+	svg := `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>`
+	const url = "/api/logo?tenant=kirke-b"
+
+	if w := do(h, "GET", url, ""); w.Code != http.StatusNotFound {
+		t.Errorf("no logo yet: %d", w.Code)
+	}
+	for name, body := range map[string]string{"text": "hello", "html": "<html><script>alert(1)</script>", "empty": ""} {
+		if w := do(h, "PUT", url, body); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", name, w.Code)
+		}
+	}
+	if w := do(h, "PUT", url, strings.Repeat("x", maxLogo+1)); w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("too big: %d", w.Code)
+	}
+	if w := do(h, "PUT", url, png); w.Code != http.StatusOK || decode[TenantInfo](t, w).Logo == "" {
+		t.Fatalf("png: %d", w.Code)
+	}
+	w := do(h, "GET", url, "")
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" || w.Body.String() != png ||
+		!strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("get: %d %v", w.Code, w.Header())
+	}
+	// A new logo of another type replaces it; the church list carries its version.
+	if w := do(h, "PUT", url, svg); w.Code != http.StatusOK {
+		t.Fatalf("svg: %d %s", w.Code, w.Body)
+	}
+	if _, err := os.Stat(filepath.Join(data, "kirke-b", "logo.png")); err == nil {
+		t.Error("the old logo is still there")
+	}
+	if w := do(h, "GET", url, ""); w.Header().Get("Content-Type") != "image/svg+xml" || w.Body.String() != svg {
+		t.Errorf("svg get: %v", w.Header())
+	}
+	list := decode[struct{ Tenants []TenantInfo }](t, do(h, "GET", "/api/tenants", ""))
+	for _, ti := range list.Tenants {
+		if (ti.ID == "kirke-b") != (ti.Logo != "") {
+			t.Errorf("%s: logo %q", ti.ID, ti.Logo)
+		}
+	}
+	if w := do(h, "DELETE", url, ""); w.Code != http.StatusOK || decode[TenantInfo](t, w).Logo != "" {
+		t.Errorf("delete: %d", w.Code)
+	}
+	if w := do(h, "GET", url, ""); w.Code != http.StatusNotFound {
+		t.Errorf("after delete: %d", w.Code)
+	}
+	// The church without a folder of its own (--root) cannot have one.
+	if w := do(h, "PUT", "/api/logo", png); w.Code != http.StatusBadRequest {
+		t.Errorf("root church: %d", w.Code)
+	}
+}
