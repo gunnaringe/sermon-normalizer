@@ -7,10 +7,19 @@ const DATA = process.env.DATA;
 const shots = path.join(import.meta.dirname, '..', 'screenshots');
 fs.mkdirSync(shots, { recursive: true });
 
+// forget drops the saved and adjusted sermon of a folder from its
+// recording.json; what is known about the recording and the outputs stays.
+function forget(folder) {
+  const file = path.join(DATA, 'root', folder, 'recording.json');
+  if (!fs.existsSync(file)) return;
+  const st = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, JSON.stringify({ ...st, saved: null, savedAt: undefined, adjusted: null }));
+}
+
 // openEditor opens a date folder and waits until the waveform is ready. The
 // saved sections and cuts of an earlier test are forgotten, unless keep is set.
 async function openEditor(page, folder, { timeout = 60_000, keep = false } = {}) {
-  if (!keep) fs.rmSync(path.join(DATA, 'root', folder, 'sermon.json'), { force: true });
+  if (!keep) forget(folder);
   await page.goto('#/folder/' + folder);
   await expect(page.locator('#waveform')).toBeVisible({ timeout });
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout });
@@ -42,7 +51,7 @@ test('cut on the waveform: drag, fields, keys, playback', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await expect(page.locator('#minimap')).toBeVisible();
   // The raw WAV was converted to FLAC before the waveform was made.
-  await expect(page.getByText('Recording: 2026-10-04_raw.flac')).toBeVisible();
+  await expect(page.locator('.input-file')).toContainText('2026-10-04_raw.flac');
 
   // Dragging on the waveform selects; the fields follow.
   const box = await page.locator('#waveform').boundingBox();
@@ -195,7 +204,7 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   await expect(page.locator('.error')).toContainText('inside the sermon');
   await page.locator('.cut.outside').getByRole('button', { name: 'Remove' }).click();
   await expect(page.locator('.cut')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeEnabled();
   await page.screenshot({ path: path.join(shots, 'cuts.png'), fullPage: true });
 
   await page.locator('.cut').first().getByRole('button', { name: 'Remove' }).click();
@@ -232,7 +241,7 @@ test('several sections: drag to add, gaps left out, overlaps merge, keys, remove
   await page.getByLabel('Section 2 to').fill('70');
   await page.getByLabel('Section 2 to').press('Enter');
   await expect(page.getByText('Length 0:40.0 (2 sections)')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeEnabled();
 
   // A cut in a section counts; the run check sees the gap as left out.
   await editor(page, () => window.__editor.addCut(60, 65));
@@ -262,12 +271,12 @@ test('several sections: drag to add, gaps left out, overlaps merge, keys, remove
   await page.locator('.section').getByRole('button', { name: 'Remove' }).click();
   expect(await sections(page)).toEqual([]);
   await expect(page.getByText('Drag on the waveform to select the sermon, or')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Run' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeDisabled();
 });
 
-test('sermon.json keeps the adjustments; Save makes them the saved version, Revert goes back', async ({ page }) => {
+test('recording.json keeps the adjustments; Save makes them the saved version, Revert goes back', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
-  const file = path.join(DATA, 'root/2026/2026-10-04/sermon.json');
+  const file = path.join(DATA, 'root/2026/2026-10-04/recording.json');
   const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
   await expect(page.getByRole('button', { name: 'Save…' })).toBeDisabled();
   await expect(page.getByText('Nothing is saved yet.')).toBeVisible();
@@ -328,35 +337,97 @@ test('sermon.json keeps the adjustments; Save makes them the saved version, Reve
   await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled();
 });
 
-test('run with chosen outputs and follow it live', async ({ page }) => {
+// pill is a format's pill on the Output; pick is its button.
+const pill = (page, label) => page.locator(`.pill[data-format=${label.toLowerCase()}]`);
+const pick = (page, label) => pill(page, label).locator('button.pick');
+
+test('the page: Input file, Edit, Options, Output', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await expect(page.locator('section.step > h2')).toHaveText(['Input file', 'Edit', 'Options', 'Output']);
+
+  // Input file: the recording, where it came from, its channels, a download.
+  const input = page.locator('.input-file');
+  await expect(input).toContainText('FLAC · 48 kHz · 24-bit · 2 channels');
+  await expect(input).toContainText('converted from the original WAV (2026-10-04_raw.wav');
+  await expect(input).toContainText('Mono (the stereo channels are identical)', { timeout: 30_000 });
+  await expect(input).toContainText('1:40');
+  await expect(input.getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /download=1/);
+
+  // Edit has the fades; Options the mono/stereo switch, which warns on this mono-in-effect recording.
+  await expect(page.locator('section.step').nth(1).getByLabel('Fade in (s)')).toBeVisible();
+  const stereo = page.getByRole('switch', { name: 'Stereo' });
+  await expect(stereo).not.toBeChecked();
+  await expect(page.getByText(/stereo gives the same sound in bigger files/)).toBeHidden();
+  await page.locator('label.switch').click();
+  await expect(stereo).toBeChecked();
+  await expect(page.getByText('⚠ The recording is mono (the stereo channels are identical): stereo gives the same sound in bigger files. Choose mono.')).toBeVisible();
+  await expect(page.getByLabel('Target loudness (LUFS)')).toHaveValue('-16'); // the stereo default
+  await page.locator('section.step').nth(2).screenshot({ path: path.join(shots, 'edit-options.png') });
+  await page.locator('label.switch').click();
+  await expect(stereo).not.toBeChecked();
+
+  // Output: a pill per format, all chosen, none made yet.
+  await editor(page, () => window.__editor.addSection(21, 79));
+  for (const label of ['FLAC', 'MP3', 'Opus']) {
+    await expect(pick(page, label)).toHaveAttribute('aria-pressed', 'true');
+    await expect(pill(page, label)).toContainText('will be made');
+  }
+  await pick(page, 'FLAC').click();
+  await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByText('Regenerate saves the edit and makes: MP3, Opus.')).toBeVisible();
+  await page.locator('section.step').first().screenshot({ path: path.join(shots, 'edit-input.png') });
+  await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-new.png') });
+  // The choice is this recording's own: not remembered, here or for other folders.
+  await page.reload();
+  await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 });
+});
+
+test('regenerate makes the chosen formats, and only what is missing or out of date', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await page.getByLabel('Sermon from').fill('0:21');
   await page.getByLabel('Sermon from').press('Enter');
   await page.getByLabel('Sermon to').fill('1:19');
   await page.getByLabel('Sermon to').press('Enter');
-  await page.getByLabel('FLAC master').uncheck();
-  await page.getByLabel('Opus', { exact: true }).uncheck();
+  await pick(page, 'FLAC').click();
+  await pick(page, 'Opus').click();
   await page.getByLabel('Fade in (s)').fill('1');
-  await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Run' }).click();
+  // Nothing is saved yet: Regenerate says it saves, then runs.
+  await page.getByRole('button', { name: 'Regenerate' }).click();
+  await expect(page.getByRole('dialog')).toContainText('They become the saved version.');
+  await page.getByRole('dialog').getByRole('button', { name: 'Regenerate' }).click();
   await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator('.outputs')).toContainText('2026-10-04.mp3');
-  await expect(page.locator('.outputs audio')).toHaveCount(1);
-  // Downloads straight from the page.
-  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('.outputs').getByRole('link', { name: 'Download' }).click()]);
-  expect(download.suggestedFilename()).toBe('2026-10-04.mp3');
-  await expect(page.getByText('Original: 2026-10-04_raw.flac')).toBeVisible(); // moved into original/ by the run
+  await expect(pill(page, 'MP3')).toHaveClass(/exists/);
+  await expect(pill(page, 'MP3')).toContainText('up to date');
+  await expect(pill(page, 'FLAC')).toContainText('not made');
+  await expect(page.getByText('Everything chosen is up to date.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeDisabled();
+  // The files are downloaded from the folder list, not here.
+  await expect(page.locator('section.step').last().getByRole('link', { name: 'Download' })).toHaveCount(0);
+  await expect(page.locator('.input-file')).toContainText('2026-10-04_raw.flac'); // moved into original/ by the run
   await page.screenshot({ path: path.join(shots, 'done.png'), fullPage: true });
 
   const files = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).sort();
-  expect(files).toEqual(['2026-10-04.mp3', 'original', 'sermon.json']); // the settings are kept, the recording is in original/
+  expect(files).toEqual(['2026-10-04.mp3', 'original', 'recording.json']); // the state is kept, the recording is in original/
   expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04/original'))).toEqual(['2026-10-04_raw.flac']);
-  // The options are remembered for the next folder (not Force or the cut).
+  const state = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+  expect(Object.keys(state.outputs)).toEqual(['mp3']);
+  expect(state.convertedFrom.name).toBe('2026-10-04_raw.wav');
+
+  // A change to the edit makes the MP3 out of date; choosing Opus adds it.
+  await page.getByLabel('Fade in (s)').fill('2');
+  await expect(pill(page, 'MP3')).toContainText('will regenerate');
+  await pick(page, 'Opus').click();
+  await expect(page.getByText('Regenerate saves the edit and makes: MP3, Opus.')).toBeVisible();
+  await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-stale.png') });
+  // Back as it was made: up to date again.
+  await page.getByLabel('Fade in (s)').fill('1');
+  await expect(pill(page, 'MP3')).toContainText('up to date');
+
+  // After a reload the recording's files decide what is chosen; the fade and the finished run stay.
   await page.reload();
-  await expect(page.getByLabel('FLAC master')).not.toBeChecked();
+  await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByLabel('Fade in (s)')).toHaveValue('1');
-  // The files stay listed, and the finished run is shown again.
-  await expect(page.locator('.outputs')).toContainText('2026-10-04.mp3');
+  await expect(pill(page, 'MP3')).toHaveClass(/exists/);
   await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible();
 });
 
@@ -364,10 +435,9 @@ test('a run can be cancelled', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await page.getByLabel('Sermon from').fill('0:01');
   await page.getByLabel('Sermon from').press('Enter');
-  await page.getByLabel('FLAC master').check();
-  // Making everything again asks first; Cancel in the dialog changes nothing.
-  await expect(page.getByLabel('Force')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Save and generate' }).click();
+  // Replacing a file asks first; Cancel in the dialog changes nothing.
+  await expect(pill(page, 'MP3')).toContainText('will regenerate');
+  await page.getByRole('button', { name: 'Regenerate' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('These files are replaced');
   await expect(dialog).toContainText('2026-10-04.mp3');
@@ -375,12 +445,33 @@ test('a run can be cancelled', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Processing…' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Save and generate' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Save and generate' }).click();
+  await page.getByRole('button', { name: 'Regenerate' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Regenerate' }).click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Cancelled' })).toBeVisible({ timeout: 30_000 });
   const left = fs.readdirSync(path.join(DATA, 'root/2026/2026-10-04')).filter((f) => f.includes('.partial') || f.startsWith('.'));
   expect(left).toEqual([]);
+});
+
+test('a format that is not chosen any more is deleted by Regenerate', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04', { keep: true });
+  // The sermon's files decide what is chosen, not the choice in another folder.
+  await expect(pick(page, 'MP3')).toHaveAttribute('aria-pressed', 'true');
+  await expect(pick(page, 'FLAC')).toHaveAttribute('aria-pressed', 'false');
+  await pick(page, 'MP3').click();
+  await expect(pill(page, 'MP3')).toContainText('will be deleted');
+  await expect(page.getByText('Regenerate deletes: MP3.')).toBeVisible();
+  await page.locator('section.step').last().screenshot({ path: path.join(shots, 'edit-output-delete.png') });
+  await page.getByRole('button', { name: 'Regenerate' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('These files are deleted');
+  await expect(dialog).toContainText('2026-10-04.mp3');
+  await dialog.getByRole('button', { name: 'Regenerate' }).click();
+  await expect(pill(page, 'MP3')).toContainText('not made');
+  const dir = path.join(DATA, 'root/2026/2026-10-04');
+  expect(fs.existsSync(path.join(dir, '2026-10-04.mp3'))).toBe(false);
+  expect(fs.existsSync(path.join(dir, 'original/2026-10-04_raw.flac'))).toBe(true); // the recording is never touched
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'recording.json'), 'utf8')).outputs).toEqual({});
 });
 
 test('upload straight into a new date folder, in chunks', async ({ page }) => {
@@ -398,7 +489,7 @@ test('upload straight into a new date folder, in chunks', async ({ page }) => {
   await expect(page).toHaveURL(/#\/folder\/2026\/2026-09-27$/);
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
   const dir = path.join(DATA, 'root/2026/2026-09-27');
-  expect(fs.readdirSync(dir)).toEqual(['2026-09-27_raw.flac']);
+  expect(fs.readdirSync(dir).filter((f) => f !== 'recording.json')).toEqual(['2026-09-27_raw.flac']);
   expect(fs.readFileSync(path.join(dir, '2026-09-27_raw.flac')).equals(fs.readFileSync(path.join(DATA, 'upload.flac')))).toBe(true);
   // The date now has a recording: a second upload to it is refused.
   await page.getByRole('link', { name: 'Upload' }).click();
@@ -415,11 +506,12 @@ test('inbox: a recording lands in its date folder by itself', async ({ page }) =
   // The server takes it once it has been quiet for a while; the list is read on load.
   await expect(async () => {
     await page.reload();
-    await expect(page.getByRole('link', { name: '2026-09-20' })).toBeVisible({ timeout: 2_000 });
+    await expect(page.getByRole('button', { name: '2026-09-20', exact: true })).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 60_000 });
-  await page.getByRole('link', { name: '2026-09-20' }).click();
+  await page.getByRole('button', { name: '2026-09-20', exact: true }).click();
+  await page.getByRole('link', { name: 'Open in the editor' }).click();
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 30_000 });
-  expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-09-20'))).toEqual(['2026-09-20_raw.flac']);
+  expect(fs.readdirSync(path.join(DATA, 'root/2026/2026-09-20')).filter((f) => f !== 'recording.json')).toEqual(['2026-09-20_raw.flac']);
   expect(fs.readdirSync(path.join(DATA, 'inbox'))).toEqual([]);
 });
 

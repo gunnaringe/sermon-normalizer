@@ -172,9 +172,33 @@ func TestCheck(t *testing.T) {
 	if parsed := ts.check(filepath.Join(ts.root, "d/2026-10-04"), q).opt; parsed.Start != 21 || parsed.End != 79 || parsed.FadeIn != 1 {
 		t.Errorf("parsed options %+v", parsed)
 	}
-	if pl.Error != "" ||
-		len(pl.Notices) != 1 || !strings.Contains(pl.Notices[0], "2026-10-04.mp3") {
+	if pl.Error != "" || len(pl.Notices) != 0 ||
+		pl.Outputs["mp3"] != (outputState{Exists: true}) || pl.Outputs["flac"].Exists {
 		t.Errorf("plan %+v", pl)
+	}
+
+	// A file made by a run is known; it is out of date once the page would
+	// make it differently, and up to date again when it would not.
+	ts.recordOutputs(ts.check(filepath.Join(ts.root, "d/2026-10-04"), q), time.Now().Add(-time.Hour))
+	if pl := decode[plan](t, ts.do(t, "POST", url, q)); pl.Outputs["mp3"] != (outputState{Exists: true, Known: true}) {
+		t.Errorf("just made: %+v", pl.Outputs)
+	}
+	for name, change := range map[string]func(*runRequest){
+		"a cut":     func(r *runRequest) { r.Cuts = []span{{40, 45}} },
+		"stereo":    func(r *runRequest) { r.Stereo = true },
+		"a tag":     func(r *runRequest) { r.Title = ptr("Another") },
+		"a bitrate": func(r *runRequest) { r.Mp3Bitrate = "192k" },
+	} {
+		r := q
+		change(&r)
+		if pl := decode[plan](t, ts.do(t, "POST", url, r)); !pl.Outputs["mp3"].Stale {
+			t.Errorf("%s: want out of date, got %+v", name, pl.Outputs)
+		}
+	}
+	r := q
+	r.Flac, r.OpusBitrate, r.Force = true, "32k", true // other outputs and Force do not matter to the MP3
+	if pl := decode[plan](t, ts.do(t, "POST", url, r)); pl.Outputs["mp3"].Stale {
+		t.Errorf("unrelated changes: %+v", pl.Outputs)
 	}
 	q.Flac, q.Mp3, q.Opus = false, false, false
 	if pl := decode[plan](t, ts.do(t, "POST", url, q)); !strings.Contains(pl.Error, "at least one output") {
@@ -473,7 +497,7 @@ func TestMakeFormat(t *testing.T) {
 		t.Errorf("nothing saved: %d %s", rec.Code, rec.Body)
 	}
 	saved := sermonSettings{cutting: cutting{Sections: []span{{30, 3600}}, Cuts: []span{}}}
-	if err := writeSermon(filepath.Join(ts.root, "2026-10-04"), &sermonFile{Saved: &saved}); err != nil {
+	if _, err := ts.updateState(filepath.Join(ts.root, "2026-10-04"), func(st *folderState) error { st.Saved = &saved; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	ts.jobs.sem <- struct{}{} // another encode is running: this one stays queued
@@ -485,6 +509,47 @@ func TestMakeFormat(t *testing.T) {
 	snap := decode[jobSnapshot](t, rec)
 	if rec := mk("opus"); rec.Code != http.StatusConflict {
 		t.Errorf("second make while one runs: %d", rec.Code)
+	}
+	ts.do(t, "POST", "/api/jobs/"+snap.ID+"/cancel", nil)
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// Outputs can be deleted, only outputs, and not while a run is busy.
+func TestRemoveOutputs(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	ts.file(t, "2026-10-04/2026-10-04_raw.flac", "x")
+	ts.file(t, "2026-10-04/2026-10-04.mp3", "x")
+	ts.file(t, "2026-10-04/2026-10-04.opus", "x")
+	folder := filepath.Join(ts.root, "2026-10-04")
+	ts.updateState(folder, func(st *folderState) error {
+		st.Outputs["mp3"], st.Outputs["opus"] = outputMade{From: "a"}, outputMade{From: "b"}
+		return nil
+	})
+	if rec := ts.do(t, "POST", "/api/outputs/remove?path=2026-10-04&format=raw", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("not an output: %d", rec.Code)
+	}
+	rec := ts.do(t, "POST", "/api/outputs/remove?path=2026-10-04&format=mp3&format=flac", nil) // FLAC is not there: fine
+	if rec.Code != http.StatusOK {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	if fileExists(filepath.Join(folder, "2026-10-04.mp3")) || !fileExists(filepath.Join(folder, "2026-10-04.opus")) || !fileExists(filepath.Join(folder, "2026-10-04_raw.flac")) {
+		t.Error("only the MP3 should be gone")
+	}
+	if made := readState(folder).Outputs; len(made) != 1 || made["opus"].From != "b" {
+		t.Errorf("outputs in recording.json: %+v", made)
+	}
+	if info := decode[folderInfo](t, rec); len(info.Outputs) != 1 || info.Outputs[0].Format != "opus" {
+		t.Errorf("folder info: %+v", info.Outputs)
+	}
+	// Not while a run is busy.
+	ts.jobs.sem <- struct{}{}
+	defer func() { <-ts.jobs.sem }()
+	q := defaultRequest()
+	q.Sections = []span{{1, 2}}
+	snap := decode[jobSnapshot](t, ts.do(t, "POST", "/api/run?path=2026-10-04", q))
+	if rec := ts.do(t, "POST", "/api/outputs/remove?path=2026-10-04&format=opus", nil); rec.Code != http.StatusConflict {
+		t.Errorf("while busy: %d", rec.Code)
 	}
 	ts.do(t, "POST", "/api/jobs/"+snap.ID+"/cancel", nil)
 }

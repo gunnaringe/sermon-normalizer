@@ -2,11 +2,13 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gunnaringe/sermon-studio/normalizer"
@@ -18,7 +20,7 @@ const sermonB = `{"sections":[{"start":10,"end":50},{"start":60,"end":90}],"cuts
 // start is where the first section begins.
 func start(c *sermonSettings) float64 { return c.Sections[0].Start }
 
-// sermon.json keeps the saved version and the adjustments apart: the editor
+// recording.json keeps the saved version and the adjustments apart: the editor
 // keeps adjusting, Save makes them the saved version, Revert drops them.
 func TestSermonSavedAndAdjusted(t *testing.T) {
 	ts := newTestServer(t, normalizer.FFmpeg{})
@@ -71,7 +73,7 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 	if c != http.StatusOK || f.Saved == nil || start(f.Saved) != 20 || f.Adjusted == nil || start(f.Adjusted) != 10 || len(f.Adjusted.Sections) != 2 {
 		t.Fatalf("adjust again: %d %+v", c, f)
 	}
-	data, _ := os.ReadFile(filepath.Join(ts.root, folder, "sermon.json"))
+	data, _ := os.ReadFile(filepath.Join(ts.root, folder, "recording.json"))
 	if !strings.Contains(string(data), `"saved"`) || !strings.Contains(string(data), `"adjusted"`) {
 		t.Errorf("file: %s", data)
 	}
@@ -112,7 +114,7 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 	}
 
 	// One from before there were sections is ignored: the sermon is selected again.
-	os.WriteFile(filepath.Join(ts.root, folder, "sermon.json"), []byte(`{"saved":{"start":20,"end":80,"cuts":[]},"adjusted":null}`), 0o644)
+	os.WriteFile(filepath.Join(ts.root, folder, "recording.json"), []byte(`{"saved":{"start":20,"end":80,"cuts":[]},"adjusted":null}`), 0o644)
 	if got := info(); got != nil {
 		t.Errorf("old file: %+v", got)
 	}
@@ -129,8 +131,34 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 	if renamed == nil || renamed.Saved == nil || renamed.Adjusted == nil {
 		t.Errorf("after rename: %+v", renamed)
 	}
-	os.WriteFile(filepath.Join(ts.root, "2026/2026-10-11 Kveld/sermon.json"), []byte("{oops"), 0o644)
+	os.WriteFile(filepath.Join(ts.root, "2026/2026-10-11 Kveld/recording.json"), []byte("{oops"), 0o644)
 	if got := decode[folderInfo](t, ts.do(t, "GET", "/api/folder?path="+url.QueryEscape("2026/2026-10-11 Kveld"), nil)).Sermon; got != nil {
 		t.Errorf("damaged file: %+v", got)
+	}
+}
+
+// recording.json is changed by several things at once (the editor, the
+// analysis, finished runs): none may undo another's change.
+func TestStateUpdatesDoNotLoseChanges(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	folder := filepath.Join(ts.root, "2026-10-04")
+	os.MkdirAll(folder, 0o755)
+	var wg sync.WaitGroup
+	for i := range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ts.updateState(folder, func(st *folderState) error {
+				st.Outputs[fmt.Sprint(i)] = outputMade{From: "x"}
+				return nil
+			})
+		}()
+	}
+	wg.Wait()
+	if got := len(readState(folder).Outputs); got != 20 {
+		t.Errorf("%d of 20 changes kept", got)
+	}
+	if got := folderOfRecording(filepath.Join(folder, "original", "2026-10-04_raw.flac")); got != folder {
+		t.Errorf("folder of a recording in original/: %s", got)
 	}
 }

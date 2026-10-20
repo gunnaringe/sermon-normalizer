@@ -199,8 +199,12 @@ func TestIntegrationRun(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if strings.Join(names, ",") != "2026-10-04.mp3,original,x" { // the recording moved to original/, as FLAC
+	if strings.Join(names, ",") != "2026-10-04.mp3,original,recording.json,x" { // the recording moved to original/, as FLAC
 		t.Errorf("files %v", names)
+	}
+	// recording.json knows how the MP3 was made, and nothing else was made.
+	if made := readState(filepath.Join(ts.root, "2026-10-04")).Outputs; len(made) != 1 || made["mp3"].From == "" {
+		t.Errorf("outputs in recording.json: %+v", made)
 	}
 	if !fileExists(filepath.Join(ts.root, "2026-10-04", "original", "2026-10-04_raw.flac")) {
 		t.Error("the recording is not in original/")

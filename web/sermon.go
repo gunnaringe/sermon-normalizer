@@ -1,11 +1,9 @@
 package web
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
-	"path/filepath"
 	"reflect"
 	"time"
 
@@ -20,17 +18,14 @@ type sermonSettings struct {
 	FadeOut float64 `json:"fadeOut"`
 }
 
-// sermonFile is <folder>/sermon.json. The editor keeps the adjustments as you
-// make them; saving makes them the saved version, and reverting drops them.
+// sermonFile is the sermon's part of recording.json: the editor keeps the
+// adjustments as you make them; saving makes them the saved version, and
+// reverting drops them. It is also what the sermon API returns.
 type sermonFile struct {
 	Saved    *sermonSettings `json:"saved"`
 	SavedAt  *time.Time      `json:"savedAt,omitempty"`
 	Adjusted *sermonSettings `json:"adjusted"` // nil when it is the same as Saved
 }
-
-const sermonName = "sermon.json"
-
-func sermonPath(folder string) string { return filepath.Join(folder, sermonName) }
 
 // Validate checks the settings the way a run would. c must be normalized.
 func (c sermonSettings) Validate() error {
@@ -45,44 +40,16 @@ func (c sermonSettings) Validate() error {
 	return o.Validate()
 }
 
-// readSermon returns a folder's sermon.json, or nil if there is none (or it
-// cannot be read: the next change replaces it).
+// readSermon returns the sermon of a folder, or nil if nothing is kept.
 func readSermon(folder string) *sermonFile {
-	data, err := os.ReadFile(sermonPath(folder))
-	if err != nil {
+	f := readState(folder).sermonFile
+	if f.Saved == nil && f.Adjusted == nil {
 		return nil
-	}
-	var f sermonFile
-	if json.Unmarshal(data, &f) != nil {
-		return nil
-	}
-	for _, c := range []*sermonSettings{f.Saved, f.Adjusted} {
-		if c == nil {
-			continue
-		}
-		c.normalize()
-		if c.Validate() != nil {
-			return nil // also one from before sections: the sermon is selected again
-		}
 	}
 	return &f
 }
 
-// writeSermon replaces sermon.json (atomically).
-func writeSermon(folder string, f *sermonFile) error {
-	data, _ := json.MarshalIndent(f, "", "  ")
-	tmp := filepath.Join(folder, "."+sermonName+".partial")
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, sermonPath(folder)); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
-}
-
-// change reads the folder's sermon.json, applies fn and writes the result.
+// changeSermon changes the sermon in the folder's recording.json and returns it.
 func (s *Server) changeSermon(w http.ResponseWriter, r *http.Request, fn func(f *sermonFile) error) {
 	abs, ok := s.pathParam(w, r)
 	if !ok {
@@ -92,21 +59,15 @@ func (s *Server) changeSermon(w http.ResponseWriter, r *http.Request, fn func(f 
 		writeError(w, http.StatusBadRequest, errors.New("there is no such folder"))
 		return
 	}
-	s.sermonMu.Lock()
-	defer s.sermonMu.Unlock()
-	f := readSermon(abs)
-	if f == nil {
-		f = &sermonFile{}
-	}
-	if err := fn(f); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if err := writeSermon(abs, f); err != nil {
+	st, err := s.updateState(abs, func(st *folderState) error { return fn(&st.sermonFile) })
+	switch {
+	case errors.Is(err, errStateWrite):
 		writeError(w, http.StatusInternalServerError, errors.New("could not save in the folder"))
-		return
+	case err != nil:
+		writeError(w, http.StatusBadRequest, err)
+	default:
+		writeJSON(w, http.StatusOK, st.sermonFile)
 	}
-	writeJSON(w, http.StatusOK, f)
 }
 
 // PUT api/sermon keeps the adjustments the editor has made.

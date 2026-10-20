@@ -546,3 +546,40 @@ func TestIntegrationCuts(t *testing.T) {
 		t.Errorf("all cut: err = %v", err)
 	}
 }
+
+// The verdict on a recording's channels, and its format and metadata.
+func TestIntegrationVerdictAndProbe(t *testing.T) {
+	ff := requireFFmpeg(t)
+	speech := "0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t))"
+	for _, c := range []struct {
+		exprs string
+		want  ChannelVerdict
+	}{
+		{speech, ChannelVerdict{Kind: "mono"}},
+		{speech + "|" + speech, ChannelVerdict{Kind: "identical"}},
+		{speech + "|0.5*" + speech + "+0.05*sin(2*PI*330*t)", ChannelVerdict{Kind: "stereo"}},
+		{speech + "|0", ChannelVerdict{Kind: "one-sided", Quiet: "right"}},
+		{"0.001*" + speech + "|" + speech, ChannelVerdict{Kind: "one-sided", Quiet: "left", By: 60}},
+	} {
+		path := filepath.Join(t.TempDir(), "x.flac")
+		if _, err := ff.Run(context.Background(), "-y", "-f", "lavfi", "-i", "aevalsrc=exprs='"+c.exprs+"':s=48000:d=5",
+			"-c:a", "flac", "-sample_fmt", "s32", "-metadata", "title=Gudstjeneste", path); err != nil {
+			t.Fatal(err)
+		}
+		check, err := ff.CheckChannels(context.Background(), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := check.Verdict(); got != c.want {
+			t.Errorf("%s: got %+v, want %+v", c.exprs, got, c.want)
+		}
+		p, err := ff.ProbeFile(context.Background(), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Container != "flac" || p.Codec != "flac" || p.SampleRate != 48000 || p.Bits != 24 || !near(p.Duration, 5, 0.01) ||
+			p.Metadata["title"] != "Gudstjeneste" || p.Channels < 1 {
+			t.Errorf("probe: %+v", p)
+		}
+	}
+}
