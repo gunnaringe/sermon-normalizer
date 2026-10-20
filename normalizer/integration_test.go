@@ -565,6 +565,49 @@ func TestIntegrationPauses(t *testing.T) {
 	wantFiles(t, dir, date+".flac", date+".mp3", date+".opus", "original/"+date+"_raw.flac")
 }
 
+// The processing settings: with the compressor, stronger leveling and some room sound kept, the files
+// still reach the target and stay under the peak ceiling; no file keeps a temporary one behind.
+func TestIntegrationProcessing(t *testing.T) {
+	ff := requireFFmpeg(t)
+	dir := dateFolder(t)
+	service(t, ff, filepath.Join(dir, date+"_raw.wav"), 2)
+
+	opt := DefaultOptions()
+	opt.Start, opt.End = 10, 90
+	opt.NoiseReduction, opt.RoomSound = 10, 80
+	opt.Leveling, opt.Compression = "strong", "strong"
+	opt.TargetLUFS = -17
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
+		t.Fatal(err)
+	}
+	checkOutputsAs(t, ff, dir, 80, 1, -17)
+	wantFiles(t, dir, date+".flac", date+".mp3", date+".opus", "original/"+date+"_raw.flac")
+}
+
+// A sample is a few seconds of the recording with the processing, as an MP3 at the target loudness.
+func TestIntegrationSample(t *testing.T) {
+	ff := requireFFmpeg(t)
+	dir := t.TempDir()
+	raw := filepath.Join(dir, "raw.flac")
+	service(t, ff, raw, 2)
+	dst := filepath.Join(dir, "sample.mp3")
+	opt := DefaultOptions()
+	opt.Compression = "light"
+	if err := ff.Sample(context.Background(), raw, opt, 30, 12, dst); err != nil {
+		t.Fatal(err)
+	}
+	if pr := probeFile(t, dst); pr.channels != 1 || !near(pr.duration, 12, 0.2) {
+		t.Errorf("sample: %+v", pr)
+	}
+	m, err := ff.Measure(context.Background(), dst)
+	if err != nil || !near(m.LUFS, -19, 1) {
+		t.Errorf("sample: %.1f LUFS, %v", m.LUFS, err)
+	}
+	if files := listFiles(t, dir); len(files) != 2 { // raw.flac and sample.mp3: nothing left over
+		t.Errorf("files: %v", files)
+	}
+}
+
 // The verdict on a recording's channels, and its format and metadata.
 func TestIntegrationVerdictAndProbe(t *testing.T) {
 	ff := requireFFmpeg(t)

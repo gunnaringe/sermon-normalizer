@@ -393,6 +393,9 @@ type runRequest struct {
 	FadeIn         float64 `json:"fadeIn"`
 	FadeOut        float64 `json:"fadeOut"`
 	NoiseReduction int     `json:"noiseReduction"`
+	RoomSound      int     `json:"roomSound"`
+	Leveling       string  `json:"leveling"`
+	Compression    string  `json:"compression"`
 	TargetLUFS     float64 `json:"targetLufs"`
 	TruePeak       float64 `json:"truePeak"`
 	Mp3Bitrate     string  `json:"mp3Bitrate"`
@@ -410,7 +413,8 @@ func requestFrom(o normalizer.Options) runRequest {
 		cutting: cutting{Sections: []span{}, Cuts: []span{}},
 		Flac:    o.Outputs.Flac, Mp3: o.Outputs.Mp3, Opus: o.Outputs.Opus,
 		Stereo: o.Stereo, FadeIn: o.FadeIn, FadeOut: o.FadeOut,
-		NoiseReduction: o.NoiseReduction, TargetLUFS: o.TargetLUFS, TruePeak: o.TruePeak,
+		NoiseReduction: o.NoiseReduction, RoomSound: o.RoomSound, Leveling: o.Leveling, Compression: o.Compression,
+		TargetLUFS: o.TargetLUFS, TruePeak: o.TruePeak,
 		Mp3Bitrate: o.Mp3Bitrate, OpusBitrate: o.OpusBitrate,
 		Force: o.Force,
 	}
@@ -420,7 +424,8 @@ func (q runRequest) options() (normalizer.Options, error) {
 	o := normalizer.Options{
 		Outputs: normalizer.Outputs{Flac: q.Flac, Mp3: q.Mp3, Opus: q.Opus},
 		Stereo:  q.Stereo, FadeIn: q.FadeIn, FadeOut: q.FadeOut,
-		NoiseReduction: q.NoiseReduction, TargetLUFS: q.TargetLUFS, TruePeak: q.TruePeak,
+		NoiseReduction: q.NoiseReduction, RoomSound: q.RoomSound, Leveling: q.Leveling, Compression: q.Compression,
+		TargetLUFS: q.TargetLUFS, TruePeak: q.TruePeak,
 		Mp3Bitrate: strings.TrimSpace(q.Mp3Bitrate), OpusBitrate: strings.TrimSpace(q.OpusBitrate),
 		Force: q.Force,
 	}

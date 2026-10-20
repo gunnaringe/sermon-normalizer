@@ -23,7 +23,14 @@ type Options struct {
 	TargetLUFS     float64 // mono: -19, stereo: -16
 	TruePeak       float64
 	NoiseReduction int // afftdn nr in dB; 0 = off
-	Force          bool
+	// RoomSound is how much of the room's own sound (reverb, ambience) is kept when noise is taken
+	// out, 0 to 100: it raises the floor the noise reduction works down to.
+	RoomSound int
+	// Leveling evens out quiet speech and loud music: one of LevelingNames ("" = normal).
+	Leveling string
+	// Compression narrows the loudness range further: one of CompressionNames ("" = off).
+	Compression string
+	Force       bool
 	// OriginalName is the name (no extension) the recording is kept under in original/: the name it
 	// arrived with. "" = <date>_raw.
 	OriginalName string
@@ -189,7 +196,9 @@ func DefaultOptions() Options {
 		OpusBitrate:    mono.OpusBitrate,
 		TargetLUFS:     mono.TargetLUFS,
 		TruePeak:       -1.5,
-		NoiseReduction: 12,
+		NoiseReduction: 6,
+		Leveling:       "normal",
+		Compression:    "off",
 		Outputs:        AllOutputs,
 	}
 }
@@ -523,25 +532,77 @@ const EvenLevels = "dynaudnorm=f=250:g=15:p=0.9"
 
 // ListenLevels is EvenLevels for listening while cutting (previews, players):
 // up to 40 dB of gain instead of 20, as raw recordings can be very quiet.
-// The master does not need it: its loudnorm step sets the final level.
+// The master does not need it: its own gain step sets the final level.
 const ListenLevels = EvenLevels + ":m=100"
 
-// masterFilter is the filter chain for the master; length (seconds) is only
-// needed for a fade-out.
-func (p *Pipeline) masterFilter(length float64) string {
+// LevelingNames and CompressionNames are the strengths of the two, weakest first.
+var (
+	LevelingNames    = []string{"off", "gentle", "normal", "strong"}
+	CompressionNames = []string{"off", "light", "normal", "strong"}
+)
+
+var levelingFilters = map[string]string{
+	"off":    "",
+	"gentle": "dynaudnorm=f=500:g=31:p=0.8:m=5",
+	"normal": EvenLevels,
+	"strong": "dynaudnorm=f=150:g=9:p=0.95:m=20",
+}
+
+// The compressor runs on a recording already brought near the target loudness, so its
+// thresholds (linear) are about the level of speech there: light takes the loudest
+// parts down a little, strong more of the range.
+var compressionFilters = map[string]string{
+	"off":    "",
+	"light":  "acompressor=threshold=0.125:ratio=2:attack=20:release=250",
+	"normal": "acompressor=threshold=0.0631:ratio=2:attack=20:release=250",
+	"strong": "acompressor=threshold=0.0794:ratio=3:attack=20:release=250",
+}
+
+// LevelingName is the leveling, "normal" when none was chosen.
+func (o Options) LevelingName() string {
+	if o.Leveling == "" {
+		return "normal"
+	}
+	return o.Leveling
+}
+
+// CompressionName is the compression, "off" when none was chosen.
+func (o Options) CompressionName() string {
+	if o.Compression == "" {
+		return "off"
+	}
+	return o.Compression
+}
+
+// tidyFilter is the first part of the master chain: the channels that get published, the noise
+// taken out, the levels evened out. It does not set the level: that is done by measuring (finish).
+func (p *Pipeline) tidyFilter() string {
 	// Convert first, whatever the input has (mono, stereo, more), so the rest
 	// of the chain works on the channels that get published. A mono recording
 	// made stereo is the same signal on both sides.
 	f := []string{"aformat=channel_layouts=" + p.Opt.Channels()}
 	if p.Opt.NoiseReduction > 0 {
-		f = append(f, fmt.Sprintf("afftdn=nr=%d", p.Opt.NoiseReduction))
+		nr := fmt.Sprintf("afftdn=nr=%d", p.Opt.NoiseReduction)
+		if p.Opt.RoomSound > 0 {
+			nr += fmt.Sprintf(":rf=%.1f", -38+0.18*float64(p.Opt.RoomSound)) // the default floor is -38 dB
+		}
+		f = append(f, nr)
 	}
-	f = append(f,
-		EvenLevels,
-		fmt.Sprintf("loudnorm=I=%g:TP=%g:LRA=11", p.Opt.TargetLUFS, p.Opt.TruePeak),
+	if lv := levelingFilters[p.Opt.LevelingName()]; lv != "" {
+		f = append(f, lv)
+	}
+	return strings.Join(f, ",")
+}
+
+// finalFilter sets the level and ends the chain: gain (dB), a limiter that keeps the peaks under the
+// true-peak ceiling (with half a dB to spare for what resampling adds), and the fades, last, so nothing
+// lifts them again. length (seconds) is only needed for a fade-out.
+func (p *Pipeline) finalFilter(gain, length float64) string {
+	f := []string{
+		fmt.Sprintf("volume=%.2fdB", gain),
+		fmt.Sprintf("alimiter=limit=%.4f:attack=5:release=50:level=0", math.Pow(10, (p.Opt.TruePeak-0.5)/20)),
 		"aresample=48000",
-	)
-	// Fades come last: dynaudnorm and loudnorm would otherwise lift them again.
+	}
 	if p.Opt.FadeIn > 0 {
 		f = append(f, fmt.Sprintf("afade=t=in:d=%g", p.Opt.FadeIn))
 	}
@@ -549,6 +610,89 @@ func (p *Pipeline) masterFilter(length float64) string {
 		f = append(f, fmt.Sprintf("afade=t=out:st=%.3f:d=%g", length-p.Opt.FadeOut, p.Opt.FadeOut))
 	}
 	return strings.Join(f, ",")
+}
+
+// tidyName is the hidden temporary file a master is made from (in the folder of dst).
+func tidyName(dst, stage string) string {
+	return filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+"."+stage+".tidy.flac")
+}
+
+// renderMaster makes dst, the sermon with the processing of Opt, in three steps: the cut and the noise
+// and levels (the slow part) into a temporary file; the loudness of that, measured, to find the gain that
+// brings it to the target (with the compressor in between, if it is on); and the gain, the limiter and
+// the fades into dst, measured again, with a correction if the limiter took some of it back.
+// codec is for dst; length (seconds) is the sermon's, for the fade out and progress.
+func (p *Pipeline) renderMaster(ctx context.Context, dst string, length float64, codec []string) error {
+	tidy := tidyName(dst, "1")
+	p.cleanup = append(p.cleanup, tidy)
+	args, graph, err := p.cutInput(ctx)
+	if err != nil {
+		return err
+	}
+	if graph == "" {
+		args = append(args, "-map", "0:a:0", "-af", p.tidyFilter()) // not a cover picture or video
+	} else {
+		args = append(args, "-filter_complex", graph+";[cut]"+p.tidyFilter()+"[out]", "-map", "[out]")
+	}
+	args = append(args, "-c:a", "flac", "-sample_fmt", "s32")
+	if err := p.runTo(ctx, tidy, length, args...); err != nil {
+		return err
+	}
+
+	src := tidy
+	m, err := p.FF.Measure(ctx, tidy)
+	if err != nil {
+		return err
+	}
+	if m.LUFS < -70 {
+		return errors.New("the sermon is silent: there is nothing to bring to the target loudness")
+	}
+	gain := math.Min(p.Opt.TargetLUFS-m.LUFS, 70)
+	p.logf("Level after noise reduction and leveling: %.1f LUFS; gain %+.1f dB to reach %g.", m.LUFS, gain, p.Opt.TargetLUFS)
+	if comp := compressionFilters[p.Opt.CompressionName()]; comp != "" {
+		squeezed := tidyName(dst, "2")
+		p.cleanup = append(p.cleanup, squeezed)
+		if err := p.runTo(ctx, squeezed, length, "-i", tidy, "-af", fmt.Sprintf("volume=%.2fdB,%s", gain, comp), "-c:a", "flac", "-sample_fmt", "s32"); err != nil {
+			return err
+		}
+		if m, err = p.FF.Measure(ctx, squeezed); err != nil {
+			return err
+		}
+		src = squeezed
+		gain = math.Min(p.Opt.TargetLUFS-m.LUFS, 70)
+		p.logf("%s compression: %.1f LUFS; gain %+.1f dB to reach %g.", p.Opt.CompressionName(), m.LUFS, gain, p.Opt.TargetLUFS)
+	}
+	for try := 0; ; try++ {
+		out := append([]string{"-i", src, "-af", p.finalFilter(gain, length)}, codec...)
+		out = append(out, p.Opt.Tags.args()...)
+		if err := p.runTo(ctx, dst, length, out...); err != nil {
+			return err
+		}
+		got, err := p.FF.Measure(ctx, dst)
+		if err != nil {
+			return err
+		}
+		miss := p.Opt.TargetLUFS - got.LUFS
+		if math.Abs(miss) <= 0.3 || try == 2 {
+			return nil
+		}
+		// The limiter took some of the gain back: add it, and again.
+		p.logf("%.1f LUFS after the limiter; %+.1f dB more.", got.LUFS, miss)
+		gain += miss
+	}
+}
+
+// Sample renders seconds of the recording from start with the processing in o (no cuts, pauses or fades) as an
+// MP3 at dst, to hear what the settings do.
+func (f FFmpeg) Sample(ctx context.Context, raw string, o Options, start, seconds float64, dst string) error {
+	o.Start, o.End, o.Cuts, o.Pauses, o.FadeIn, o.FadeOut = start, start+seconds, nil, nil, 0, 0
+	p := &Pipeline{FF: f, Opt: o, Out: io.Discard, raw: raw}
+	defer func() {
+		for _, name := range p.cleanup {
+			os.Remove(name)
+		}
+	}()
+	return p.renderMaster(ctx, dst, seconds, []string{"-c:a", "libmp3lame", "-b:a", "96k"})
 }
 
 // pending reports whether an output file needs to be made.
@@ -592,21 +736,10 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		}
 		p.logf("Fade in %g s, fade out %g s (sermon is %s).", p.Opt.FadeIn, p.Opt.FadeOut, FormatTime(math.Round(length)))
 	}
-	args, graph, err := p.cutInput(ctx)
-	if err != nil {
-		return err
-	}
-	if graph == "" {
-		args = append(args, "-map", "0:a:0", "-af", p.masterFilter(length)) // not a cover picture or video
-	} else {
-		args = append(args, "-filter_complex", graph+";[cut]"+p.masterFilter(length)+"[out]", "-map", "[out]")
-	}
-	args = append(args, "-c:a", "flac", "-sample_fmt", "s32")
-	args = append(args, p.Opt.Tags.args()...)
 	if length == 0 && p.OnProgress != nil {
 		length, _ = p.sermonLength(ctx)
 	}
-	return p.runTo(ctx, p.master, length, args...)
+	return p.renderMaster(ctx, p.master, length, []string{"-c:a", "flac", "-sample_fmt", "s32"})
 }
 
 // checkStereo warns when stereo output would add nothing: the part that
@@ -746,7 +879,7 @@ func (p *Pipeline) report(ctx context.Context) error {
 			defer p.warnf("%s: true peak %.1f dBTP is above -1.", filepath.Base(f), m.TruePeak)
 		}
 		if math.Abs(m.LUFS-p.Opt.TargetLUFS) > 1.5 {
-			defer p.warnf("%s: %.1f LUFS is more than 1.5 from the target.", filepath.Base(f), m.LUFS)
+			defer p.warnf("%s: %.1f LUFS is more than 1.5 from the target (loud peaks in the recording can keep it from getting louder: try compression).", filepath.Base(f), m.LUFS)
 		}
 	}
 	return tw.Flush()

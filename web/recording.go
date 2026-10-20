@@ -231,10 +231,12 @@ func madeFrom(o normalizer.Options, format string) string {
 		Pauses                      []normalizer.Pause `json:",omitempty"` // omitted when there are none: older fingerprints stay as they were
 		Stereo                      bool
 		NoiseReduction              int
+		RoomSound                   int
+		Leveling, Compression       string
 		TargetLUFS, TruePeak        float64
 		Tags                        normalizer.Tags
 		Format, Bitrate             string
-	}{o.Start, o.End, o.FadeIn, o.FadeOut, o.Cuts, o.Pauses, o.Stereo, o.NoiseReduction, o.TargetLUFS, o.TruePeak, o.Tags, format, bitrateFor(o, format)}
+	}{o.Start, o.End, o.FadeIn, o.FadeOut, o.Cuts, o.Pauses, o.Stereo, o.NoiseReduction, o.RoomSound, o.LevelingName(), o.CompressionName(), o.TargetLUFS, o.TruePeak, o.Tags, format, bitrateFor(o, format)}
 	data, _ := json.Marshal(v)
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:8])

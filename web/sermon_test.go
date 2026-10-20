@@ -256,3 +256,36 @@ func TestCuttingPauses(t *testing.T) {
 		t.Error("a pause does not change the fingerprints")
 	}
 }
+
+// The sound (channels, noise, levels, loudness) is kept with the sermon and checked; a sermon without it
+// uses the defaults.
+func TestSermonSound(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	ts.file(t, "2026/2026-10-04/2026-10-04_raw.flac", "x")
+	put := func(body string) (int, sermonFile) {
+		rec := ts.do(t, "PUT", "/api/sermon?path=2026/2026-10-04", json.RawMessage(body))
+		var f sermonFile
+		json.Unmarshal(rec.Body.Bytes(), &f)
+		return rec.Code, f
+	}
+	const base = `"sections":[{"start":10,"end":50}],"cuts":[],"fadeIn":0,"fadeOut":0`
+	const good = `"stereo":false,"noiseReduction":6,"roomSound":40,"leveling":"gentle","compression":"light","targetLufs":-19,"truePeak":-1.5,"mp3Bitrate":"96k","opusBitrate":"48k"`
+	c, f := put(`{` + base + `,"sound":{` + good + `}}`)
+	if c != http.StatusOK || f.Adjusted == nil || f.Adjusted.Sound == nil || f.Adjusted.Sound.RoomSound != 40 || f.Adjusted.Sound.Compression != "light" {
+		t.Fatalf("with sound: %d %+v", c, f)
+	}
+	if c, f = put(`{` + base + `}`); c != http.StatusOK || f.Adjusted == nil || f.Adjusted.Sound != nil {
+		t.Errorf("without sound: %d %+v", c, f)
+	}
+	for name, sound := range map[string]string{
+		"leveling":    strings.Replace(good, `"gentle"`, `"loud"`, 1),
+		"compression": strings.Replace(good, `"light"`, `"crushed"`, 1),
+		"room sound":  strings.Replace(good, `"roomSound":40`, `"roomSound":101`, 1),
+		"target":      strings.Replace(good, `"targetLufs":-19`, `"targetLufs":3`, 1),
+		"noise":       strings.Replace(good, `"noiseReduction":6`, `"noiseReduction":98`, 1),
+	} {
+		if c, _ := put(`{` + base + `,"sound":{` + sound + `}}`); c != http.StatusBadRequest {
+			t.Errorf("bad %s: %d", name, c)
+		}
+	}
+}

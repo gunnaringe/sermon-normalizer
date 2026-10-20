@@ -352,9 +352,9 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
 const pill = (page, label) => page.locator(`.pill[data-format=${label.toLowerCase()}]`);
 const pick = (page, label) => pill(page, label).locator('button.pick');
 
-test('the page: Input file, Edit, Options, Output', async ({ page }) => {
+test('the page: Input file, Edit, Metadata, Processing, Output', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
-  await expect(page.locator('section.step > h2')).toHaveText(['Input file', 'Edit', 'Options', 'Output']);
+  await expect(page.locator('section.step > h2')).toHaveText(['Input file', 'Edit', 'Metadata added to the file', 'Processing', 'Output']);
 
   // Input file: the recording, where it came from, its channels, a download.
   const input = page.locator('.input-file');
@@ -364,7 +364,7 @@ test('the page: Input file, Edit, Options, Output', async ({ page }) => {
   await expect(input).toContainText('1:40');
   await expect(input.getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /download=1/);
 
-  // Options has the mono/stereo switch, which warns on this mono-in-effect recording.
+  // Processing has the mono/stereo switch, which warns on this mono-in-effect recording.
   const stereo = page.getByRole('switch', { name: 'Stereo' });
   await expect(stereo).not.toBeChecked();
   await expect(page.getByText(/stereo gives the same sound in bigger files/)).toBeHidden();
@@ -372,7 +372,8 @@ test('the page: Input file, Edit, Options, Output', async ({ page }) => {
   await expect(stereo).toBeChecked();
   await expect(page.getByText('⚠ The recording is mono (both channels are the same): stereo gives the same sound in bigger files. Choose mono.')).toBeVisible();
   await expect(page.getByLabel('Target loudness (LUFS)')).toHaveValue('-16'); // the stereo default
-  await page.locator('section.step').nth(2).screenshot({ path: path.join(shots, 'edit-options.png') });
+  await page.locator('section.step').nth(2).screenshot({ path: path.join(shots, 'edit-metadata.png') });
+  await page.locator('section.step').nth(3).screenshot({ path: path.join(shots, 'edit-processing.png') });
   await page.locator('label.switch').click();
   await expect(stereo).not.toBeChecked();
 
@@ -971,4 +972,46 @@ test('fades are set with the knobs on the waveform: drag, keys, kept', async ({ 
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });
   await expect(fadeKnob(page, 'fadeIn')).toHaveAttribute('aria-valuenow', String(want.fadeIn));
   await expect(fadeKnob(page, 'fadeOut')).toHaveAttribute('aria-valuenow', String(want.fadeOut));
+});
+
+
+test('processing: the choices are kept with the sermon, and a sample can be heard', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await editor(page, () => window.__editor.addSection(10, 90));
+  await page.locator('select[name=leveling]').selectOption('gentle');
+  await page.locator('select[name=compression]').selectOption('normal');
+  await page.locator('input[name=roomSound]').fill('40');
+  await page.locator('input[name=noiseReduction]').fill('8');
+  await page.locator('input[name=targetLufs]').fill('-17');
+  const sound = () => {
+    const st = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+    return (st.adjusted || st.saved)?.sound;
+  };
+  await expect.poll(sound, { timeout: 15_000 }).toMatchObject({ leveling: 'gentle', compression: 'normal', roomSound: 40, noiseReduction: 8, targetLufs: -17, stereo: false });
+
+  // Back after a reload, from the sermon rather than from what was last used.
+  await page.reload();
+  await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });
+  await expect(page.locator('select[name=leveling]')).toHaveValue('gentle');
+  await expect(page.locator('select[name=compression]')).toHaveValue('normal');
+  await expect(page.locator('input[name=roomSound]')).toHaveValue('40');
+  await expect(page.locator('input[name=targetLufs]')).toHaveValue('-17');
+
+  // A sample, with these settings, from the playhead.
+  await editor(page, () => window.__editor.ws.setTime(30));
+  await page.getByRole('button', { name: 'Hear a sample' }).click();
+  const player = page.getByLabel('The sample');
+  await expect(player).toBeVisible({ timeout: 60_000 });
+  await expect(player).toHaveAttribute('src', /^blob:/);
+  await expect.poll(() => player.evaluate((a) => a.duration), { timeout: 15_000 }).toBeGreaterThan(20);
+  await page.locator('section.step').nth(3).screenshot({ path: path.join(shots, 'edit-processing-sample.png') });
+
+  // A setting the server does not take is said so; the numbers must be filled in.
+  await page.locator('input[name=targetLufs]').fill('');
+  await expect(page.getByText('Fill in all numbers.')).toBeVisible();
+  await page.locator('input[name=targetLufs]').fill('-19');
+  await page.locator('select[name=leveling]').selectOption('normal');
+  await page.locator('select[name=compression]').selectOption('off');
+  await page.locator('input[name=roomSound]').fill('0');
+  await page.locator('input[name=noiseReduction]').fill('6');
 });

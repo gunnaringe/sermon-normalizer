@@ -403,3 +403,35 @@ func TestIntegrationInputTypes(t *testing.T) {
 		}
 	}
 }
+
+// A sample is a few seconds of the recording with the processing settings, as an MP3; it is refused for
+// bad settings, a missing recording and while another conversion is running.
+func TestIntegrationSample(t *testing.T) {
+	ff := requireFFmpeg(t)
+	ts := newTestServer(t, ff)
+	os.MkdirAll(filepath.Join(ts.root, "2026", "2026-10-04"), 0o755)
+	service(t, ff, filepath.Join(ts.root, "2026", "2026-10-04", "2026-10-04_raw.wav"))
+	if st := waitAnalysis(t, ts, "2026/2026-10-04"); st.State != "done" {
+		t.Fatalf("analysis: %+v", st)
+	}
+	const settings = `{"noiseReduction":6,"roomSound":30,"leveling":"normal","compression":"light","targetLufs":-19,"truePeak":-1.5,"mp3Bitrate":"96k","opusBitrate":"48k"}`
+	rec := ts.do(t, "POST", "/api/sample?path=2026/2026-10-04&at=25", json.RawMessage(settings))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "audio/mpeg" || rec.Body.Len() < 10_000 {
+		t.Fatalf("sample: %d %s %d bytes", rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
+	}
+	out := filepath.Join(t.TempDir(), "sample.mp3")
+	os.WriteFile(out, rec.Body.Bytes(), 0o644)
+	if d := duration(t, out); d < 29 || d > 31 {
+		t.Errorf("sample lasts %.1f s", d)
+	}
+	if rec := ts.do(t, "POST", "/api/sample?path=2026/2026-10-04&at=25", json.RawMessage(`{"leveling":"loud","targetLufs":-19,"truePeak":-1.5,"mp3Bitrate":"96k","opusBitrate":"48k"}`)); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad setting: %d", rec.Code)
+	}
+	if rec := ts.do(t, "POST", "/api/sample?path=2026/2099-01-01&at=0", json.RawMessage(settings)); rec.Code < 400 {
+		t.Errorf("no recording: %d", rec.Code)
+	}
+	// Nothing is left in the cache folder.
+	if files, _ := filepath.Glob(filepath.Join(ts.cfg.CacheDir, "sample-*")); len(files) != 0 {
+		t.Errorf("left over: %v", files)
+	}
+}
