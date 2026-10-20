@@ -36,6 +36,9 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await expect(detail.locator('audio')).toHaveCount(1); // one player, never the whole service
   await expect(detail.locator('audio')).toHaveAttribute('src', /opus|flac/); // no MP3 yet
   await expect(detail).toContainText('Length 0:20');
+  await expect(detail.getByRole('link', { name: 'Edit sermon' })).toBeVisible();
+  await expect(detail).not.toContainText('original'); // the whole service is not offered
+  await expect(row).not.toContainText('raw');
   await expect(detail.getByRole('link', { name: 'Download FLAC' })).toHaveAttribute('href', /download=1/);
   await expect(detail.getByRole('link', { name: 'Download Opus' })).toHaveClass(/on/);
   const mp3 = detail.getByRole('button', { name: 'Download MP3' });
@@ -63,6 +66,7 @@ test('a recording that is not processed warns, and still opens the editor', asyn
   const warning = page.getByRole('alert');
   await expect(warning).toContainText('full, unedited raw recording');
   await expect(page.locator('tr.detail-row audio')).toHaveCount(0);
+  await expect(page.locator('tr.detail-row')).not.toContainText('Download'); // nothing to download yet
   await expect(page).toHaveURL(/#\/folders\/2026$/);
   await page.screenshot({ path: path.join(shots, 'sermon-list-unprocessed.png') });
   await row.getByRole('link', { name: '2026-08-30' }).click();

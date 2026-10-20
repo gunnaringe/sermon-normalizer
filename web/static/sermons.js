@@ -17,10 +17,6 @@ function keptSeconds(s) {
 // the format the one player plays: what every browser handles first
 const PLAY_ORDER = ['mp3', 'opus', 'flac'];
 
-const original = (info) => info.raw
-  ? h('a', { class: 'button', href: fileURL(info.raw, true), title: info.raw.name + ', ' + formatSize(info.raw.size) }, 'Download the original recording')
-  : '';
-
 // sermonDetail returns the panel for a folder; it fills in when the folder
 // has been read, and again after a format was made.
 export function sermonDetail(entry) {
@@ -38,7 +34,7 @@ export function sermonDetail(entry) {
         h('strong', {}, 'Not processed. '),
         'This is the full, unedited raw recording of the whole service, not the sermon. ',
         'Open it in the editor to select the sermon and make the files.'),
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Open in the editor'), original(info)),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Open in the editor')),
     ];
   }
 
@@ -73,7 +69,7 @@ export function sermonDetail(entry) {
       h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': 'The sermon' }),
       h('p', { class: 'actions' }, downloads),
       status,
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Edit cuts'), original(info)),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, 'Edit sermon')),
     ];
   }
 

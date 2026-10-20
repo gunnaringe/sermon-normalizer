@@ -34,7 +34,6 @@ function badges(e) {
   if (e.converting) out.push(h('span', { class: 'badge busy' }, 'converting'));
   if (e.preparing) out.push(h('span', { class: 'badge busy' }, 'preparing'));
   if (e.raw && e.outputs.length === 0) out.push(h('span', { class: 'badge warn' }, 'not processed'));
-  else if (e.raw) out.push(h('span', { class: 'badge' }, 'raw'));
   for (const f of ['flac', 'mp3', 'opus']) {
     if (e.outputs.includes(f)) out.push(h('span', { class: 'badge on' }, '✓ ' + f));
   }
