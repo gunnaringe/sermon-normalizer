@@ -1,7 +1,7 @@
 // The app: a hash router. Every address starts with the church: #/<church> (the
 // recordings), #/<church>/recording/<path> (the recordings, that one opened),
 // #/<church>/folder/<path> (the editor), #/<church>/settings (the settings over the recordings). Settings also opens as an overlay from the gear.
-import { api, q, h, href, INPUT_TYPES, isInputType, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
+import { api, q, h, href, INPUT_TYPES, isInputType, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, debounce, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
@@ -171,7 +171,6 @@ function uploadBox() {
       h('p', {}, h('label', {}, t('Date'), ' ', date), ' ', h('span', { class: 'muted' }, guess.source)),
       h('p', {}, h('label', {}, t('Name'), ' ', sermon)),
       h('p', {}, button)));
-    suggestNames(sermon);
   }
 
   input.addEventListener('change', () => choose(input.files[0]));
@@ -254,30 +253,6 @@ async function settingsView(box, part) {
       status.textContent = t('Saved.');
     } catch (err) { status.textContent = err.message; }
   });
-  // Remembered sermon names: suggested when naming a sermon; delete one-offs here.
-  const names = await api('GET', 'api/names');
-  const namesBox = h('div', { class: 'panel' });
-  const saveNames = async () => {
-    try {
-      Object.assign(names, await api('PUT', 'api/names', names));
-    } catch (err) { alertDialog({ body: err.message }); }
-    showNames();
-  };
-  function showNames() {
-    namesBox.replaceChildren(
-      h('label', { class: 'check' }, h('input', {
-        type: 'checkbox', name: 'autocomplete', checked: names.enabled,
-        onchange: (e) => { names.enabled = e.target.checked; saveNames(); },
-      }), t('Suggest names')),
-      names.list.length
-        ? h('ul', { class: 'names' }, names.list.map((n) => h('li', {}, n, ' ',
-          h('button', { class: 'link', title: t('Remove {name}', { name: n }), 'aria-label': t('Remove {name}', { name: n }),
-            onclick: () => { names.list = names.list.filter((x) => x !== n); saveNames(); } }, '✕'))))
-        : h('p', { class: 'muted' }, names.enabled
-          ? t('No names yet. Names you use are saved here.') : t('Names are not saved.')));
-  }
-  showNames();
-
   // The church's name (kept in church.json in its folder).
   const tenants = await api('GET', 'api/tenants');
   const nameInput = h('input', { type: 'text', name: 'church', maxlength: 80, value: tenants.tenants.find((t) => t.id === currentTenant())?.name || '' });
@@ -339,9 +314,6 @@ async function settingsView(box, part) {
     h('p', { class: 'muted' }, t('Written into all generated recordings. You can change them for one recording in the editor. Placeholders:'), ' ',
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + tr(p.help) + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
     h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
-    h('h2', {}, t('Sermon names')),
-    h('p', { class: 'muted' }, t('Names you give recordings are suggested next time. Remove one-off names here.')),
-    namesBox,
     h('h2', {}, t('Waveform')),
     h('p', { class: 'muted' }, t('Saved in this browser only.')),
     h('div', { class: 'panel' }, h('label', { class: 'check' }, h('input', {

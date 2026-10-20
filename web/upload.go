@@ -127,7 +127,6 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		os.Chtimes(final, t, t)
 	}
 	s.markImported(folder)
-	s.learnName(sermon)
 	s.cfg.Logger.Printf("upload: received %s as %s", name, s.relPath(final))
 	s.analyses.state(final, true)
 	writeJSON(w, http.StatusCreated, map[string]any{"offset": size, "path": s.relPath(folder)})

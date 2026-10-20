@@ -41,7 +41,7 @@ The data dir has a folder per church (a church is a folder with a `Taler` folder
 data/norkirken-melhus/
   Taler/<year>/<date>[ <name>]/   the sermons
   Innboks/                        the inbox
-  church.json                     optional: name, default tags, remembered names (written by the app)
+  church.json                     optional: name, default tags (written by the app)
 ```
 
 The folder name is the church's id and, until it is renamed on the Settings page, its name. Add a

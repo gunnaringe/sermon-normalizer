@@ -120,10 +120,10 @@ func TestChurchFolders(t *testing.T) {
 		os.WriteFile(p, []byte(content), 0o644)
 	}
 	mk("norkirken-melhus/Taler/.keep", "")
-	mk("norkirken-melhus/church.json", `{"name":"Norkirken Melhus"}`)
-	mk("kirke-b/Taler/.keep", "") // no church.json: named after its folder
-	mk("cache/x", "")             // not a church
-	mk(".hidden/Taler/.keep", "") // not a church
+	mk("norkirken-melhus/church.json", `{"name":"Norkirken Melhus","names":{"enabled":true,"list":["Kveld"]}}`) // "names" is from the time of name suggestions: ignored
+	mk("kirke-b/Taler/.keep", "")                                                                               // no church.json: named after its folder
+	mk("cache/x", "")                                                                                           // not a church
+	mk(".hidden/Taler/.keep", "")                                                                               // not a church
 	a, err := NewApp(AppConfig{Base: Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}, DataDir: data})
 	if err != nil {
 		t.Fatal(err)

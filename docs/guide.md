@@ -117,9 +117,7 @@ Each can have a label, which shows on the waveform.
   `<year>/<date> <name>` and its files `<date> <name>_raw.flac`, `<date> <name>.mp3`... Without a name
   a date can hold one sermon. **Rename…** on a sermon's page changes its date or name (the folder and
   the files named after it, also in `original/`; files already made keep their tags). A recording
-  from the inbox that finds its date taken lands in `<date> 2`; rename it. Names you use are
-  remembered per church and suggested next time; **Settings → Sermon names** turns that off and
-  lists them, so a one-off can be removed.
+  from the inbox that finds its date taken lands in `<date> 2`; rename it.
 - **Inbox** (with `--inbox`): recordings that arrive by other means go into their date folder
   by themselves (see below); there is no inbox page. The recordings list shows a "converting" or
   "preparing" tag while a recording is made ready.

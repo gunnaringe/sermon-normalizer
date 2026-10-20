@@ -42,18 +42,6 @@ export async function api(method, url, body) {
   return data;
 }
 
-// suggestNames offers the church's remembered sermon names on a text input
-// that is already in the page (nothing happens if suggestions are off).
-export async function suggestNames(input) {
-  try {
-    const names = await api('GET', 'api/names');
-    if (!names.enabled || !names.list.length) return;
-    const id = 'names-' + Math.random().toString(36).slice(2);
-    input.setAttribute('list', id);
-    input.after(h('datalist', { id }, names.list.map((v) => h('option', { value: v }))));
-  } catch { /* suggestions are a convenience */ }
-}
-
 export const q = (path) => encodeURIComponent(path);
 
 // INPUT_TYPES are the types a recording may come as: normalizer.InputTypes

@@ -27,7 +27,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 
 - `cmd/sermon-studio/main.go`: flags, startup, shutdown. No logic.
 - `web/app.go`: `App` = the churches (tenants). A church is a folder in
-  `--data-dir`: `<id>/church.json` (name, tags, names; optional), `<id>/Taler`,
+  `--data-dir`: `<id>/church.json` (name, tags; optional), `<id>/Taler`,
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default
   = first), shared one-encode/one-decode limits. A `Server` is one church.
   `--root`/`--inbox` = one church without a folder (settings not saved).
@@ -43,8 +43,6 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   with a sandbox CSP); its version is `logo` in the church list, and the header shows it instead of the app's.
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in `original/`).
-- `web/namelist.go`: remembered sermon names per church (suggestions on/off + list, learned on
-  upload/rename; `GET/PUT api/names`), stored in `church.json` like the tags.
 - `web/recording.go`: `<folder>/recording.json`, the one state file per recording: `recording` (format, metadata,
   channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV, AIFF or video it was made from), `imported` (when it arrived: `markImported`; `recentImports` lists the last `newFor` on top of the first page), the sermon, and `outputs`
   (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock).
