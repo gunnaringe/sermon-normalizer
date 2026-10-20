@@ -19,7 +19,6 @@ function keptSeconds(s) {
 const PLAY_ORDER = ['mp3', 'opus', 'flac'];
 
 const MAX_LABELS = 10;
-let labelLists = 0;
 
 // sermonDetail returns the panel for a folder; it fills in when the folder
 // has been read, and again after a format was made. ctx.suggestions() lists
@@ -33,21 +32,38 @@ export function sermonDetail(entry, ctx = {}) {
     panel.replaceChildren(...(info.outputs.length ? processed(info) : unprocessed(info)));
   }
 
-  // The recording's own labels: chips with a cross, and a field to add one.
-  // Searched on the recordings page; separate from the tags written into files.
+  // The recording's own labels: pills with a cross, and a field to add one. The
+  // labels already used are suggested as you type (or all of them, on focus);
+  // a label is added by picking one, the + button, Enter, a comma, or leaving
+  // the field. Searched on the recordings page; separate from the tags written
+  // into files.
   function labelEditor() {
-    const listId = 'labels-' + ++labelLists;
     const box = h('div', { class: 'labels' });
     const input = h('input', { type: 'text', class: 'label-input', name: 'label', placeholder: 'Add a label', maxlength: 30,
-      'aria-label': 'Add a label', list: listId, autocomplete: 'off' });
-    const options = h('datalist', { id: listId });
+      'aria-label': 'Add a label', autocomplete: 'off', enterkeyhint: 'done' });
+    const add = h('button', { type: 'button', class: 'label-add', name: 'add-label', title: 'Add the label', 'aria-label': 'Add the label', hidden: true,
+      onclick: () => commit() }, '+');
+    const menu = h('ul', { class: 'suggest', role: 'listbox', hidden: true });
+    // Keep the focus in the field while a suggestion or the button is pressed.
+    for (const el of [menu, add]) el.addEventListener('mousedown', (e) => e.preventDefault());
+    const matches = () => {
+      const typed = input.value.trim().toLowerCase();
+      return (ctx.suggestions ? ctx.suggestions() : [])
+        .filter((l) => !entry.labels.includes(l) && l.toLowerCase().includes(typed)).slice(0, 8);
+    };
+    const drawMenu = () => {
+      const found = document.activeElement === input ? matches() : [];
+      menu.hidden = found.length === 0;
+      menu.replaceChildren(...found.map((l) => h('li', { role: 'option', onclick: () => save([...entry.labels, l]) }, l)));
+      add.hidden = !input.value.trim();
+    };
     const draw = () => {
-      options.replaceChildren(...(ctx.suggestions ? ctx.suggestions() : []).filter((l) => !entry.labels.includes(l)).map((l) => h('option', { value: l })));
       box.replaceChildren(
         ...entry.labels.map((l) => h('span', { class: 'chip own' }, l,
           h('button', { type: 'button', class: 'x', title: 'Remove ' + l, 'aria-label': 'Remove label ' + l,
             onclick: () => save(entry.labels.filter((x) => x !== l)) }, '×'))),
-        ...(entry.labels.length < MAX_LABELS ? [input, options] : []));
+        ...(entry.labels.length < MAX_LABELS ? [h('span', { class: 'label-add-box' }, input, add, menu)] : []));
+      drawMenu();
     };
     async function save(next) {
       try {
@@ -59,12 +75,26 @@ export function sermonDetail(entry, ctx = {}) {
         alertDialog({ body: err.message });
       }
       draw();
-      input.focus();
+      if (entry.labels.length < MAX_LABELS) input.focus();
     }
+    const commit = () => { if (input.value.trim()) return save([...entry.labels, input.value]); };
+    input.addEventListener('input', () => {
+      if (input.value.includes(',')) {
+        const [first, ...rest] = input.value.split(',');
+        input.value = first;
+        commit();
+        input.value = rest.join(',');
+        return;
+      }
+      drawMenu();
+    });
+    input.addEventListener('focus', drawMenu);
+    input.addEventListener('blur', () => { menu.hidden = true; if (input.value.trim()) commit(); });
     input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { input.value = ''; menu.hidden = true; return; }
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      if (input.value.trim()) save([...entry.labels, input.value]);
+      commit();
     });
     draw();
     return box;

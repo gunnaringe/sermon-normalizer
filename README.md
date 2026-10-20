@@ -115,8 +115,8 @@ cancels running jobs and waits for them to clean up.
 
 - **Recordings** (the one page, `#/<church>`): the upload, a search field, **Newly imported** (arrived in the last 7 days, newest
   first, with when), then the years, each folded open on its own (the newest at first; the browser remembers). A row opens the
-  recording's details in place. **Labels** are your own tags on a recording ("Easter", "guest speaker": up to 10, 30 characters; added
-  and removed in its details, kept as `labels` in `recording.json`, not written into the files). The search matches name, date and labels
+  recording's details in place. **Labels** are your own tags on a recording ("Easter", "guest speaker": up to 10, 30 characters; added with the + button, Enter or a comma, or picked from the labels already in use;
+  removed with the × on the pill, kept as `labels` in `recording.json`, not written into the files). The search matches name, date and labels
   in every year at once (all words must match); a label on a row searches for it. **Copy link** gives the address of one recording,
   `#/<church>/recording/<path>`, which opens the page with its year and row open and scrolled to.
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
