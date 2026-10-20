@@ -146,8 +146,10 @@ cancels running jobs and waits for them to clean up.
   or several sections (or both). Sections that come to overlap become one; *Remove* drops one.
 - **Cutting parts out:** with the sermon selected, *Cut out here* (or `c`) marks 10 s from the
   playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
-  dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut must
-  be between the start of the first section and the end of the last. *Hear join* plays 3 s either side of a cut as it will sound, and with
+  dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut outside
+  the sections is allowed (what is outside is left out anyway) but does nothing, and a warning by it says so (also when it is only
+  partly in a section). Every section and cut can have a **label** ("Intro", "Song"), shown on the waveform and kept
+  with the edit; labels change nothing in the files. *Hear join* plays 3 s either side of a cut as it will sound, and with
   *Play without the cuts* (on by default) playback jumps over the cuts and the gaps between sections. The outputs are made from
   what is left, joined with a 15 ms fade on each side so the join does not click; the length
   shown is that of the sections after the cuts.

@@ -197,13 +197,27 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   await page.waitForFunction(() => window.__editor.ws.getCurrentTime() > 45.2, null, { timeout: 15_000 });
   await page.keyboard.press(' ');
 
-  // A cut outside the sermon is flagged and the run refused with the reason.
+  // A cut outside the sermon is allowed, with a warning by it that it does nothing; Save is not blocked.
   await editor(page, () => window.__editor.addCut(92, 95));
   await expect(page.locator('.cut.outside')).toHaveCount(1);
-  await expect(page.locator('.error')).toContainText('inside the sermon');
+  await expect(page.locator('.cut.outside .cut-warn')).toContainText('does not have any effect as it is not in an included section');
+  await expect(page.locator('.error')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+  // One that sticks out of the sermon is partly in it.
+  await editor(page, () => window.__editor.addCut(85, 93));
+  await expect(page.locator('.cut.partly .cut-warn')).toContainText('is only partially part of a section');
+  await page.locator('.cut.partly').getByRole('button', { name: 'Remove' }).click();
+  // A label on a section and on a cut: kept with the edit.
+  await page.getByLabel('Sermon label').fill('Main part');
+  await page.getByLabel('Cut 1 label').fill('Song');
+  await expect.poll(() => {
+    const st = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+    const set = st.adjusted || st.saved;
+    return [set.sections[0].label, set.cuts[0].label];
+  }, { timeout: 10_000 }).toEqual(['Main part', 'Song']);
+  await page.screenshot({ path: path.join(shots, 'cuts-warnings.png'), fullPage: true });
   await page.locator('.cut.outside').getByRole('button', { name: 'Remove' }).click();
   await expect(page.locator('.cut')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   await page.screenshot({ path: path.join(shots, 'cuts.png'), fullPage: true });
 
   await page.locator('.cut').first().getByRole('button', { name: 'Remove' }).click();
