@@ -55,12 +55,12 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
 - `web/analysis.go`: WAV→FLAC conversion, then waveform peaks + normalized MP3
   preview, cached by path+size+mtime; `carry` moves the cache on import.
-- `web/upload.go`: chunked upload straight to a date folder.
+- `web/upload.go`: chunked upload straight to a date folder (the form is on top of every folder list, `uploadBox` in `app.js`).
 - `web/inbox.go`: inbox file names, date suggestion, `newRawFolder`.
 - `web/inboxwatch.go`: `ingest` moves settled inbox files straight to their date
   folder (convert + prepare happen there).
 - `web/share.go`: shares (codes for the public upload page), `<church>/shares.json`, the studio's
-  `api/shares` (only with `--share-listen`). `web/sharesite.go`: the public listener
+  `api/shares` (only with `--share-listen`; shown as the last section of Settings, `shares.js`). `web/sharesite.go`: the public listener
   (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
 - `web/static/`: plain JS, no build. `sermons.js` = a sermon's details inside the folder list (play, download,

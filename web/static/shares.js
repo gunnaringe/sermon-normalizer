@@ -1,6 +1,6 @@
 // Shares: codes that let people without a login send recordings to this
 // church's inbox from the public upload page. A code is shown once, when the
-// share is made.
+// share is made. A section of the settings; sharesView fills its box.
 import { api, h, formatSize, formatDate, formatDateTime } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
 
@@ -51,7 +51,7 @@ async function showCode(url, code) {
   ] });
 }
 
-export async function sharesView(view) {
+export async function sharesView(box) {
   const data = await api('GET', 'api/shares');
   const num = (name, attrs = {}) => h('input', { type: 'number', name, min: 0, step: 'any', ...attrs });
   const label = h('input', { type: 'text', name: 'label', maxlength: 80, placeholder: 'e.g. Recordings from the sound desk' });
@@ -74,7 +74,7 @@ export async function sharesView(view) {
         expires: parseExpiry(expires.value),
       });
       await showCode(data.url, made.code);
-      await sharesView(view);
+      await sharesView(box);
     } catch (err) { status.textContent = err.message; }
   } }, 'Make share');
 
@@ -85,7 +85,7 @@ export async function sharesView(view) {
     if (!ok) return;
     try {
       await api('POST', `api/shares/${encodeURIComponent(s.id)}/${action}`);
-      await sharesView(view);
+      await sharesView(box);
     } catch (err) { alertDialog({ body: err.message }); }
   };
 
@@ -100,8 +100,8 @@ export async function sharesView(view) {
     h('p', {}, s.state !== 'revoked' ? h('button', { name: 'revoke', onclick: act(s, 'revoke') }, 'Revoke') : '', ' ',
       h('button', { name: 'delete', onclick: act(s, 'delete') }, 'Delete'))));
 
-  view.replaceChildren(
-    h('h1', {}, 'Shares'),
+  box.replaceChildren(
+    h('h2', {}, 'Shares'),
     h('p', { class: 'muted' }, 'A share is a code that lets someone without a login send recordings to this church\'s inbox, ' +
       'on the upload page', data.url ? [' (', h('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.url), ')'] : '',
       '. From the inbox they go into their date folder like any other recording. Hand out the code or the link; ' +
@@ -115,6 +115,6 @@ export async function sharesView(view) {
       h('label', {}, 'Expires'), expires,
       h('div', { class: 'wide' }, create, ' ', status))
       : h('p', { class: 'error' }, 'This church has no inbox, so it cannot have shares.'),
-    h('h2', {}, 'Made'),
+    h('h3', {}, 'Made'),
     ...(rows.length ? rows : [h('p', { class: 'muted' }, 'No shares yet.')]));
 }

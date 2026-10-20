@@ -1102,7 +1102,7 @@ export async function editorView(view, path, config) {
       j.warnings.length ? h('div', {}, j.warnings.map((w) => h('p', { class: 'warn' }, '⚠ ' + w))) : '',
       j.error ? h('p', { class: 'error' }, j.error) : '',
       j.state === 'cancelled' ? h('p', {}, 'Cancelled. Nothing half-written was left behind.') : '',
-      j.state === 'done' ? h('p', {}, 'Done. Listen to and download the files from the folder list.') : '',
+      j.state === 'done' ? h('p', {}, 'Done. Listen to and download the files under Recordings.') : '',
       h('details', { open: running }, h('summary', {}, 'Log'), log),
       running ? h('button', { onclick: cancel }, 'Cancel') : ''));
     log.scrollTop = log.scrollHeight;

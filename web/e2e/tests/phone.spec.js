@@ -25,15 +25,14 @@ test('phone: every page fits the screen', async ({ page }) => {
   await page.goto('#/folders/2026');
   await expect(page.getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
   await fits(page, 'folder-list');
-  await page.goto('#/upload');
-  await expect(page.locator('.drop')).toBeVisible();
+  await expect(page.locator('.upload .drop')).toBeVisible();
+  await page.locator('.upload input[type=file]').setInputFiles(path.join(DATA, 'upload.flac'));
+  await expect(page.getByRole('button', { name: 'Upload' })).toBeVisible();
   await fits(page, 'upload');
   await page.goto('#/settings');
   await expect(page.getByRole('heading', { name: 'Default tags' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Shares' })).toBeVisible();
   await fits(page, 'settings');
-  await page.goto('#/shares');
-  await expect(page.getByRole('heading', { name: /Shares/ })).toBeVisible();
-  await fits(page, 'shares');
 });
 
 test('phone: the editor by touch', async ({ page }) => {

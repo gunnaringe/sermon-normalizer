@@ -1,4 +1,4 @@
-// The app: a hash router over three views (folders, a folder's editor, upload).
+// The app: a hash router over three views (folders with the upload, a folder's editor, settings with the shares).
 import { api, q, h, formatSize, formatDate, dateInput, crumbs, forTenant, currentTenant, setTenant, debounce, suggestNames, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
@@ -15,13 +15,14 @@ async function route() {
   const hash = decodeURIComponent(location.hash.slice(1)) || '/';
   const [, section, ...rest] = hash.split('/');
   const path = rest.join('/');
-  const nav = ['upload', 'shares', 'settings'].includes(section) ? section : 'folders';
-  for (const a of document.querySelectorAll('header nav a')) a.classList.toggle('active', a.dataset.nav === nav);
+  // Old addresses: the upload is on the folder list now, the shares in the settings.
+  if (section === 'upload') return location.replace('#/');
+  if (section === 'shares') return location.replace('#/settings/shares');
+  const nav = section === 'settings' ? section : 'folders';
+  for (const a of document.querySelectorAll('header [data-nav]')) a.classList.toggle('active', a.dataset.nav === nav);
   try {
     if (section === 'folder') teardown = await editorView(view, path, config);
-    else if (section === 'upload') uploadView();
-    else if (section === 'settings') teardown = await settingsView();
-    else if (section === 'shares') await sharesView(view);
+    else if (section === 'settings') teardown = await settingsView(path);
     else await foldersView(section === 'folders' ? path : '');
   } catch (err) {
     view.replaceChildren(h('p', { class: 'error' }, err.message));
@@ -39,7 +40,8 @@ function badges(e) {
 }
 
 // A date folder opens its details in the list, anywhere on its row. A
-// recording that is not processed only offers the editor there.
+// recording that is not processed only offers the editor there. The upload
+// sits on top of every list: a recording goes into its date folder anyway.
 async function foldersView(path) {
   const data = await api('GET', 'api/folders?path=' + q(path));
   const body = h('tbody');
@@ -69,10 +71,11 @@ async function foldersView(path) {
   }
   view.replaceChildren(
     data.path ? crumbs(data.path) : '',
-    h('h1', {}, data.path ? data.path.split('/').pop() : 'Folders'),
+    h('h1', {}, data.path ? data.path.split('/').pop() : 'Recordings'),
+    uploadBox(),
     data.entries.length
       ? h('table', { class: 'list' }, body)
-      : h('p', { class: 'muted' }, 'No folders here yet. ', h('a', { href: '#/upload' }, 'Upload a recording'),
+      : h('p', { class: 'muted' }, 'No recordings here yet. Upload one above',
         config.inbox ? ', or put one in the inbox folder.' : '.'));
 }
 
@@ -129,14 +132,16 @@ async function sendFile(file, date, sermon, onProgress) {
   }
 }
 
-function uploadView() {
+// uploadBox is a one-line drop zone; a chosen file opens the form for its
+// date and name below it.
+function uploadBox() {
   const input = h('input', { type: 'file', accept: '.wav,.flac,audio/wav,audio/flac', hidden: true });
   const chosen = h('div', {});
   const status = h('p', { class: 'muted' });
   const progress = h('progress', { max: 1, value: 0, hidden: true });
   const drop = h('div', { class: 'drop' },
-    'Drop the recording (.wav or .flac) here, or ',
-    h('a', { href: '#/upload', onclick: (e) => { e.preventDefault(); input.click(); } }, 'choose a file'), '.');
+    h('strong', {}, 'Upload a recording: '), 'drop the whole service (.wav or .flac) here, or ',
+    h('button', { class: 'link', type: 'button', onclick: () => input.click() }, 'choose a file'), '.');
 
   function choose(file) {
     if (!file) return;
@@ -167,7 +172,8 @@ function uploadView() {
     } }, 'Upload');
     status.textContent = '';
     chosen.replaceChildren(h('div', { class: 'panel' },
-      h('p', {}, h('strong', {}, file.name), ' · ', formatSize(file.size)),
+      h('p', {}, h('strong', {}, file.name), ' · ', formatSize(file.size), ' ',
+        h('button', { class: 'link', type: 'button', onclick: () => { chosen.replaceChildren(); status.textContent = ''; } }, 'cancel')),
       h('p', {}, h('label', {}, 'Date ', date), ' ', h('span', { class: 'muted' }, guess.source)),
       h('p', {}, h('label', {}, 'Name ', sermon), ' ', h('span', { class: 'muted' }, 'Only needed for a second sermon the same day.')),
       h('p', {}, button)));
@@ -182,16 +188,14 @@ function uploadView() {
     drop.classList.remove('over');
     choose(e.dataTransfer.files[0]);
   });
-  view.replaceChildren(
-    h('h1', {}, 'Upload a recording'),
-    h('p', { class: 'muted' }, 'The whole service goes straight into its date folder. A WAV is converted to FLAC, ' +
-      'and the waveform prepared, as soon as it is in; the page for the date opens when the upload is done.'),
-    drop, input, chosen, status, progress);
+  return h('div', { class: 'upload' }, drop, input, chosen, status, progress);
 }
 
-// settingsView edits the church's default tags: templates with placeholders,
-// shown filled in for today, with and without a sermon name.
-async function settingsView() {
+// settingsView edits the church: its name, default tags (templates with
+// placeholders, shown filled in for today, with and without a sermon name),
+// sermon names, and its shares when the public upload page is on.
+// #/settings/shares scrolls to the shares.
+async function settingsView(part) {
   const data = await api('GET', 'api/settings');
   const fields = [['title', 'Title'], ['artist', 'Artist'], ['album', 'Album']];
   const inputs = {};
@@ -262,6 +266,9 @@ async function settingsView() {
     } catch (err) { nameStatus.textContent = err.message; }
   } }, 'Save');
 
+  const shares = h('section', { id: 'shares' });
+  if (tenants.shares) await sharesView(shares);
+
   const view_ = h('div', {},
     h('h1', {}, 'Settings'),
     h('h2', {}, 'Church'),
@@ -279,8 +286,10 @@ async function settingsView() {
     h('div', { class: 'panel' }, h('label', { class: 'check' }, h('input', {
       type: 'checkbox', name: 'wheel-zoom-key', checked: wheelZoomNeedsKey(),
       onchange: (e) => setWheelZoomNeedsKey(e.target.checked),
-    }), 'Hold Ctrl (Cmd on a Mac) to zoom with the scroll wheel; without it, scrolling moves the page')));
+    }), 'Hold Ctrl (Cmd on a Mac) to zoom with the scroll wheel; without it, scrolling moves the page')),
+    tenants.shares ? shares : '');
   view.replaceChildren(view_);
+  if (part === 'shares') shares.scrollIntoView();
   preview();
   return () => {};
 }
@@ -289,7 +298,6 @@ async function settingsView() {
 async function churchPicker() {
   const select = document.getElementById('church');
   let data = await api('GET', 'api/tenants');
-  document.querySelector('[data-nav=shares]').hidden = !data.shares;
   if (!data.tenants.some((t) => t.id === currentTenant())) setTenant(data.default);
   const fill = () => {
     select.replaceChildren(...data.tenants.map((t) => h('option', { value: t.id, selected: t.id === currentTenant() }, t.name)),
@@ -320,12 +328,32 @@ async function churchPicker() {
 }
 
 // logoutButton shows Log out when the server knows the login proxy's logout.
+// The icon asks first: a click opens "Log out?", which logs out when clicked;
+// a click elsewhere, or a few seconds, closes it again.
 async function logoutButton() {
   const { logoutUrl } = await api('GET', 'api/session');
   if (!logoutUrl) return;
   const form = document.getElementById('logout');
+  const button = form.querySelector('button');
   form.action = logoutUrl;
   form.hidden = false;
+  let timer = null;
+  const close = () => {
+    clearTimeout(timer);
+    button.classList.remove('asking');
+    button.setAttribute('aria-label', 'Log out');
+  };
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (button.classList.contains('asking')) {
+      form.submit();
+      return;
+    }
+    button.classList.add('asking');
+    button.setAttribute('aria-label', 'Log out? Click again to log out');
+    timer = setTimeout(close, 5000);
+  });
+  document.addEventListener('click', close);
 }
 
 async function start() {
