@@ -121,12 +121,15 @@ cancels running jobs and waits for them to clean up.
 - **On a phone:** every page fits the screen. Drag a finger along the waveform to select (up and
   down still scrolls the page); the section edges are wider to grab; cut with *Cut out here* and
   zoom with the buttons.
-- **Saved version:** the sections, the cuts and the fades are kept in `sermon.json` in the date
+- **The page** has four parts: **Input file** (the recording: name, format, how it came, its
+  metadata, whether it is stereo or mono in effect, and *Download original*), **Edit** (the
+  waveform, sections, cuts and fades), **Options** (mono ↔ stereo, tags, sound) and **Output**.
+- **Saved version:** the sections, the cuts and the fades are kept in `recording.json` in the date
   folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
   the next time the sermon is opened. **Save…** (after a confirmation) makes them the *saved
   version*, which stays as it is while you adjust further; **Revert…** (after a confirmation)
-  throws the adjustments away and goes back to it. Both versions are in the file. **Run** uses
-  what is on the page; **Save and generate** saves it first.
+  throws the adjustments away and goes back to it. Both versions are in the file. **Regenerate**
+  saves what is on the page first.
 - **Several sections:** drag on an empty part of the waveform to add another section; the parts
   between sections are left out, as if cut. Use whichever feels natural: one section with cuts,
   or several sections (or both). Sections that come to overlap become one; *Remove* drops one.
@@ -137,12 +140,16 @@ cancels running jobs and waits for them to clean up.
   *Play without the cuts* (on by default) playback jumps over the cuts and the gaps between sections. The outputs are made from
   what is left, joined with a 15 ms fade on each side so the join does not click; the length
   shown is that of the sections after the cuts.
-- **Options and run:** the options below, checked as you change them; your choices carry over
-  to the next folder. **Run** makes the files that are missing; **Save and generate** (after a
-  confirmation) makes all of them again, replacing what is there. The run is followed live and keeps going if the browser is
-  closed. Cancelling leaves nothing half-written.
-- **Files:** each date's page lists its finished files to play and download, and links to
-  the sources (whole recording and cut).
+- **Options:** checked as you change them; your choices carry over to the next folder. Mono or
+  stereo is a switch; choosing stereo for a recording that is mono in effect (one channel,
+  identical channels, or one side silent) shows a warning.
+- **Output:** a pill per format (FLAC, MP3, Opus): click to choose it, green when the file is
+  there, with *Download*. `recording.json` keeps what each file was made from (sections, cuts,
+  fades, sound, tags, bitrate), so a file made from other settings than the page shows says
+  *will regenerate*; files made from the folder list count too. **Regenerate** saves the edit and
+  makes the chosen formats that are missing or out of date, asking first when that replaces a
+  file. The run is followed live and keeps going if the browser is closed. Cancelling leaves
+  nothing half-written.
 - **Upload:** pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)
@@ -232,7 +239,7 @@ apart. The browser only streams the preview; the cut is always made from the ori
 - MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or
   the loudness is off. They are always made from the master; without FLAC it is a temporary
   hidden file in the date folder, removed when the run ends.
-- Existing outputs are skipped by Run; Save and generate redoes them (and cuts again). Output is written to a `.partial` file and
+- Up-to-date outputs are kept; Regenerate redoes those that are out of date (and cuts again). Output is written to a `.partial` file and
   renamed when done, so an interrupted run never leaves a half-written file behind.
 - Mono is the usual choice for speech, and mono and stereo recordings both work either way.
   With stereo, the run warns if the source is mono or its two channels are identical or nearly
@@ -245,7 +252,7 @@ apart. The browser only streams the preview; the cut is always made from the ori
 
 A run moves the whole recording into `original/` in the date folder, as FLAC, so the date folder
 ends up with the finished files, the saved cuts and that one folder. No cut file is made: the
-outputs are made straight from the original, using the sections and cuts (`sermon.json`),
+outputs are made straight from the original, using the sections and cuts (`recording.json`),
 so there is nothing else to keep in step.
 
 ```
@@ -253,7 +260,8 @@ so there is nothing else to keep in step.
   2026-10-04.flac
   2026-10-04.mp3
   2026-10-04.opus
-  sermon.json                   the saved and adjusted sections, cuts and fades
+  recording.json                what the recording is, the saved and adjusted sections, cuts
+                                and fades, and how each file was made
   original/
     2026-10-04_raw.flac         the whole recording
 ```
@@ -261,4 +269,4 @@ so there is nothing else to keep in step.
 - A WAV is converted to FLAC in `original/`, the audio is verified with MD5, and **the WAV is
   deleted only if the audio is identical**. A FLAC is moved; across disks it is copied, verified
   and only then deleted.
-- A recording already in `original/` is never replaced by Run; Save and generate replaces it.
+- A recording already in `original/` is never replaced by a run that only adds files; one that redoes files replaces it.

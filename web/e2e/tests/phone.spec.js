@@ -23,7 +23,7 @@ test('phone: every page fits the screen', async ({ page }) => {
   await expect(page.getByRole('link', { name: '2026/' })).toBeVisible();
   await fits(page, 'folders');
   await page.goto('#/folders/2026');
-  await expect(page.getByRole('link', { name: '2026-10-04' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
   await fits(page, 'folder-list');
   await page.goto('#/upload');
   await expect(page.locator('.drop')).toBeVisible();
@@ -37,7 +37,7 @@ test('phone: every page fits the screen', async ({ page }) => {
 });
 
 test('phone: the editor by touch', async ({ page }) => {
-  fs.rmSync(path.join(DATA, 'root/2026/2026-10-04/sermon.json'), { force: true });
+  fs.rmSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), { force: true });
   await page.goto('#/folder/2026/2026-10-04');
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });
   await fits(page, 'editor-empty');
@@ -63,6 +63,6 @@ test('phone: the editor by touch', async ({ page }) => {
   await page.getByRole('button', { name: 'Cut out here' }).tap();
   await expect(page.getByLabel('Cut 1 from')).toBeVisible();
   await page.getByRole('button', { name: '+', exact: true }).tap();
-  await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeEnabled();
   await fits(page, 'editor');
 });

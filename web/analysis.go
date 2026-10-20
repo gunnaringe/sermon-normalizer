@@ -179,9 +179,11 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 		a.mu.Lock()
 		a.pending[flac] = st
 		a.mu.Unlock()
-		defer func() {
+		defer func() { // on failure; on success it goes as the FLAC takes over below
 			a.mu.Lock()
-			delete(a.pending, flac)
+			if a.pending[flac] == st {
+				delete(a.pending, flac)
+			}
 			a.mu.Unlock()
 		}()
 		wav := sourceFile{Name: filepath.Base(raw)}
@@ -208,6 +210,7 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 		}
 		a.mu.Lock()
 		a.current[newKey] = st
+		delete(a.pending, flac)
 		*keys = append(*keys, newKey)
 		st.Stage, st.Progress, st.Key = "analyze", 0, newKey
 		a.mu.Unlock()
@@ -225,7 +228,7 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 	if err := writePeaks(filepath.Join(dir, "peaks.json.gz"), data); err != nil {
 		return err
 	}
-	a.lookAt(ctx, raw)
+	a.lookLater(raw, key) // after this: the waveform is ready, the folder no longer busy
 	return nil
 }
 
@@ -240,8 +243,9 @@ func (a *analyses) lookAt(ctx context.Context, raw string) {
 	}
 }
 
-// lookLater looks at a recording that was analysed before recording.json
-// knew about it, in the background and one decode at a time; once per key.
+// lookLater looks at a recording in the background, one decode at a time and
+// once per key: after its analysis, or when it was analysed before
+// recording.json knew about it.
 func (a *analyses) lookLater(raw, key string) {
 	a.mu.Lock()
 	if a.looking[key] {

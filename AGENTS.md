@@ -41,7 +41,10 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/namelist.go`: remembered sermon names per church (suggestions on/off + list, learned on
   upload/rename; `GET/PUT api/names`), stored in `church.json` like the tags.
-- `web/sermon.go`: `<folder>/sermon.json` = `saved` (the version the user saved) + `adjusted`
+- `web/recording.go`: `<folder>/recording.json`, the one state file per recording: `recording` (format, metadata,
+  channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV), the sermon, and `outputs`
+  (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock).
+- `web/sermon.go`: the sermon part of it: `saved` (the version the user saved) + `adjusted`
   (what the editor keeps as you edit; null when equal to saved): sections, cuts, fades.
   `cutting` (`folders.go`) turns sections + cuts into the pipeline's Start/End/Cuts (gaps become cuts).
   `PUT api/sermon` (adjust), `POST api/sermon/save`, `POST api/sermon/revert`; returned as
@@ -74,7 +77,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 ## Rules that matter
 
 - Outputs go through `FFmpeg.RunTo` (`.partial`, renamed on success); existing
-  outputs are skipped by Run; Save and generate (Force in the API) redoes them.
+  outputs are skipped by a run; Regenerate (Force in the API) redoes the stale ones it turns on.
 - Delete a source only after its copy is verified identical (`SameAudio` for
   WAV→FLAC, byte MD5 for copies). A run moves the whole recording into
   `<date>/original/` (WAV → verified FLAC); the outputs are cut straight from it
@@ -83,7 +86,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   ~100 s timeout). Start background work on `s.ctx` under `s.wg`.
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.
 - Messages from `normalizer` show in the web UI: use the form's names
-  (Start, Save and generate, mono), not flags. English everywhere.
+  (Start, Regenerate, mono), not flags. English everywhere.
 - The public upload page is on the internet without a login: add nothing to `ShareHandler`
   that reads files or reaches the studio; `TestSharePublicIsSeparate` checks this.
 - Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`

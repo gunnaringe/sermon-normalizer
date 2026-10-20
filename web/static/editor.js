@@ -13,6 +13,25 @@ const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between wo
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+// describeCodec names a recording's format the way people know it.
+function describeCodec(fmt) {
+  if (!fmt) return '';
+  const c = fmt.codec || '';
+  if (c.startsWith('pcm_')) return 'WAV';
+  return { flac: 'FLAC', mp3: 'MP3', opus: 'Opus', vorbis: 'Ogg Vorbis', aac: 'AAC', alac: 'ALAC' }[c] || (c || fmt.container || '').toUpperCase();
+}
+
+// describeFormat is a recording's format on one line: "FLAC · 48 kHz · 24-bit · 2 channels · 1,412 kb/s".
+function describeFormat(fmt) {
+  return [
+    describeCodec(fmt),
+    fmt.sampleRate ? `${fmt.sampleRate / 1000} kHz` : '',
+    fmt.bits ? `${fmt.bits}-bit` : '',
+    fmt.channels === 1 ? '1 channel' : `${fmt.channels} channels`,
+    fmt.bitrate ? `${fmt.bitrate.toLocaleString('en')} kb/s` : '',
+  ].filter(Boolean).join(' · ');
+}
+
 // savedOptions are the choices of the last run, except per-run ones.
 function savedOptions(config) {
   const opts = { ...config.defaults.mono };
@@ -60,15 +79,18 @@ export async function editorView(view, path, config) {
   const cutList = h('div', { class: 'cuts' });
   const cutHint = h('p', { class: 'muted' });
   const skipBox = h('input', { type: 'checkbox', checked: true });
-  const recordingLine = h('p', { class: 'muted' });
-  const showRecording = (raw) => {
-    recordingLine.textContent = raw ? `Recording: ${raw.name} · ${formatSize(raw.size)}` : 'No raw recording in this folder.';
-  };
-  showRecording(info.raw);
-  const filesSection = h('section', {});
+  const inputPanel = h('div', { class: 'panel input-file' });
+  const channelWarning = h('p', { class: 'notice', role: 'status' });
+  const pills = h('div', { class: 'pills', role: 'group', 'aria-label': 'Formats' });
+  const outputNote = h('p', { class: 'muted' });
   const checkOut = h('div', {});
-  const runButton = h('button', { class: 'primary', disabled: true, title: 'Make the files that are missing', onclick: () => run() }, 'Run');
-  const generateButton = h('button', { disabled: true, title: 'Save the cuts and make all the files again', onclick: generate }, 'Save and generate');
+  const regenerateButton = h('button', { class: 'primary', disabled: true, onclick: regenerate }, 'Regenerate');
+  // The fades are part of the edit; they sit with the sections and cuts.
+  const fadeInput = (key, label) => h('label', { class: 'fade' }, h('span', { class: 'name' }, label), h('input', {
+    type: 'number', name: key, value: opts[key], step: 0.5, min: 0,
+    oninput: (e) => { opts[key] = e.target.value === '' ? NaN : Number(e.target.value); changed(); },
+  }));
+  const fades = h('div', { class: 'toolbar' }, fadeInput('fadeIn', 'Fade in (s)'), fadeInput('fadeOut', 'Fade out (s)'));
   const saveNote = h('span', { class: 'muted' });
   const versionOut = h('div', {});
   const saveButton = h('button', { disabled: true, title: 'Make the current settings the saved version', onclick: saveVersion }, 'Save…');
@@ -100,34 +122,91 @@ export async function editorView(view, path, config) {
     crumbs(path.split('/').slice(0, -1).join('/'), info.date),
     h('h1', {}, info.date, ' ', renameButton),
     renamePanel,
-    recordingLine,
-    filesSection,
-    waveSection,
-    h('h2', {}, 'Options'),
-    optionsForm(),
-    h('div', { class: 'panel' }, checkOut, h('p', {}, runButton, ' ', generateButton)),
-    jobPanel,
+    h('section', { class: 'step', 'aria-labelledby': 'step-input' }, h('h2', { id: 'step-input' }, 'Input file'), inputPanel),
+    h('section', { class: 'step', 'aria-labelledby': 'step-edit' }, h('h2', { id: 'step-edit' }, 'Edit'), waveSection),
+    h('section', { class: 'step', 'aria-labelledby': 'step-options' }, h('h2', { id: 'step-options' }, 'Options'), optionsForm()),
+    h('section', { class: 'step', 'aria-labelledby': 'step-output' }, h('h2', { id: 'step-output' }, 'Output'),
+      h('div', { class: 'panel' },
+        pills, outputNote, checkOut,
+        h('p', {}, regenerateButton)),
+      jobPanel),
   );
 
-  // ---- files: the outputs to listen to and download, and the sources ----
+  // ---- input file: what the recording is ----
   const fileURL = (f, download) => forTenant('api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path));
-  let lastOutputs = info.outputs.map((o) => o.name); // the files a new run would replace
-  function showFiles(inf) {
-    lastOutputs = inf.outputs.map((o) => o.name);
-    const outputs = inf.outputs.map((o) => h('div', { class: 'out' },
-      h('strong', {}, o.name), h('span', { class: 'muted' }, formatSize(o.size)),
-      h('audio', { controls: true, preload: 'none', src: fileURL(o) }),
-      h('a', { href: fileURL(o, true) }, 'Download')));
-    filesSection.replaceChildren(
-      outputs.length ? h('div', { class: 'outputs' }, outputs) : '',
-      inf.raw ? h('p', { class: 'muted' }, 'Original: ', h('a', { href: fileURL(inf.raw, true) }, inf.raw.name), ` (the whole recording, ${formatSize(inf.raw.size)})`) : '');
+
+  function showInput() {
+    const raw = info.raw, rec = info.recording, from = info.convertedFrom;
+    if (!raw) {
+      inputPanel.replaceChildren(h('p', {}, 'No recording in this folder yet.'));
+      return;
+    }
+    const fmt = rec && rec.format;
+    const rows = [
+      ['File', [raw.name, h('span', { class: 'muted' }, ' · ' + formatSize(raw.size))]],
+      ['Format', fmt ? describeFormat(fmt) : h('span', { class: 'muted' }, 'Reading…')],
+      ['Length', fmt ? formatTime(fmt.duration, 0) : h('span', { class: 'muted' }, '…')],
+      ['Source', from
+        ? `${describeCodec(fmt) || 'FLAC'}, converted from the original ${describeCodec(from.format) || 'WAV'} ` +
+          `(${from.name}, ${formatSize(from.size)}); verified identical`
+        : (fmt ? `${describeCodec(fmt)} as it was received` : '…')],
+      ['Channels', channelsText()],
+    ];
+    const md = fmt && fmt.metadata ? Object.entries(fmt.metadata) : [];
+    inputPanel.replaceChildren(
+      h('dl', { class: 'facts' }, rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
+      md.length ? h('details', { class: 'metadata' }, h('summary', {}, `Metadata in the file (${md.length})`),
+        h('dl', { class: 'facts' }, md.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : '',
+      h('p', {}, h('a', { class: 'button', href: fileURL(raw, true) }, 'Download original')));
+    showChannelWarning();
   }
-  async function refreshFiles() {
+
+  // verdict is what the recording's channels are, for people.
+  function verdict(v) {
+    return {
+      mono: 'Mono (one channel)',
+      stereo: 'Stereo',
+      identical: 'Mono (the stereo channels are identical)',
+      more: 'More than two channels',
+      'one-sided': `Mono (the ${v.quiet} side is ${v.quietBy ? v.quietBy + ' dB quieter' : 'silent'})`,
+    }[v.kind] || v.kind;
+  }
+
+  function channelsText() {
+    const rec = info.recording;
+    if (!rec) return h('span', { class: 'muted' }, 'Checking…');
+    return rec.channels ? verdict(rec.channels) : h('span', { class: 'muted' }, rec.error || 'Not known');
+  }
+
+  // A recording that is mono in effect gains nothing from stereo, or worse.
+  function showChannelWarning() {
+    const v = info.recording && info.recording.channels;
+    const mono = v && ['mono', 'identical', 'one-sided'].includes(v.kind);
+    channelWarning.textContent = opts.stereo && mono
+      ? `⚠ The recording is ${verdict(v).toLowerCase()}: stereo gives ` +
+        (v.kind === 'one-sided' ? 'the sermon on one side only' : 'the same sound in bigger files') + '. Choose mono.'
+      : '';
+    channelWarning.hidden = !channelWarning.textContent;
+  }
+
+  // refreshInfo reads the folder again: the recording and the outputs change
+  // with conversion, analysis and runs.
+  async function refreshInfo() {
     const inf = await api('GET', 'api/folder?path=' + q(path));
-    showRecording(inf.raw);
-    showFiles(inf);
+    if (!alive) return;
+    Object.assign(info, { raw: inf.raw, recording: inf.recording, convertedFrom: inf.convertedFrom, outputs: inf.outputs });
+    showInput();
+    renderOutputs();
   }
-  showFiles(info);
+  showInput();
+  // The facts come with the waveform's preparation: look again until they are there.
+  const waitForFacts = async () => {
+    while (alive && info.raw && !info.recording) {
+      await new Promise((r) => setTimeout(r, 2000));
+      if (alive) await refreshInfo().catch(() => {});
+    }
+  };
+  waitForFacts();
 
   // ---- waveform ----
   async function prepareWaveform() {
@@ -147,7 +226,7 @@ export async function editorView(view, path, config) {
       return;
     }
     if (info.raw && /\.wav$/i.test(info.raw.name)) { // it became FLAC meanwhile
-      await refreshFiles();
+      await refreshInfo();
       check();
     }
     const peaks = await api('GET', 'api/peaks?path=' + q(path));
@@ -199,11 +278,14 @@ export async function editorView(view, path, config) {
             h('label', { class: 'check', title: 'Playback jumps over the parts that are cut out and the gaps between sections' }, skipBox, ' Play without the cuts')),
           cutHint,
           cutList),
+        h('div', { class: 'group' },
+          h('strong', {}, 'Fades'),
+          fades),
         h('div', { class: 'group wide' },
           h('strong', {}, 'Saved version'),
           versionOut,
           h('div', { class: 'toolbar' }, saveButton, revertButton, saveNote),
-          h('p', { class: 'muted' }, 'The sections, cuts and fades are kept in the folder as you change them. Save makes them the saved version; Revert goes back to it. Run uses what is on the page.'))),
+          h('p', { class: 'muted' }, 'The sections, cuts and fades are kept in the folder as you change them. Save makes them the saved version; Revert goes back to it. Regenerate saves them and makes the files.'))),
       h('p', { class: 'touch-hint' },
         'Drag a finger along the waveform to select the sermon, and on an empty part to add another section. ' +
         'Drag the edges to adjust. To cut a part out, put the playhead there and use Cut out here. Grey marks silences.'),
@@ -801,14 +883,6 @@ export async function editorView(view, path, config) {
   // ---- options ----
   function optionsForm() {
     const field = (key, label, input) => h('label', {}, h('span', { class: 'name' }, label), input);
-    const check = (key, label) => h('label', { class: 'check' }, h('input', {
-      type: 'checkbox', name: key, checked: opts[key],
-      onchange: (e) => {
-        if (key === 'stereo') followChannels(e.target.checked);
-        opts[key] = e.target.checked;
-        changed();
-      },
-    }), label);
     const num = (key, label, step) => field(key, label, h('input', {
       type: 'number', name: key, value: opts[key], step,
       oninput: (e) => { opts[key] = e.target.value === '' ? NaN : Number(e.target.value); changed(); },
@@ -821,17 +895,28 @@ export async function editorView(view, path, config) {
       type: 'text', name: key, value: tags[key], maxlength: 200,
       oninput: (e) => { tags[key] = e.target.value; changed(); },
     }));
-    const form = h('div', { class: 'panel' },
+    // Mono or stereo: a switch between the two, not a box to tick.
+    const stereo = h('input', {
+      type: 'checkbox', role: 'switch', name: 'stereo', checked: opts.stereo, 'aria-label': 'Stereo',
+      onchange: (e) => {
+        followChannels(e.target.checked);
+        opts.stereo = e.target.checked;
+        showChannelWarning();
+        changed();
+      },
+    });
+    const channels = h('div', { class: 'channels' },
+      h('span', { class: 'name' }, 'Channels'),
+      h('label', { class: 'switch' }, h('span', { class: 'side off' }, 'Mono'), stereo, h('span', { class: 'track', 'aria-hidden': 'true' }), h('span', { class: 'side on' }, 'Stereo')));
+    return h('div', { class: 'panel' },
       h('div', { class: 'options' },
-        h('div', {}, h('strong', {}, 'Outputs'), check('flac', 'FLAC master'), check('mp3', 'MP3'), check('opus', 'Opus')),
-        h('div', {}, h('strong', {}, 'Sound'), check('stereo', 'Stereo (off = mono)'), num('fadeIn', 'Fade in (s)', 0.5), num('fadeOut', 'Fade out (s)', 0.5)),
+        h('div', {}, h('strong', {}, 'Sound'), channels, channelWarning),
         info.tags ? h('div', {}, h('strong', {}, 'Tags'), tag('title', 'Title'), tag('artist', 'Artist'), tag('album', 'Album'))
           : h('div', {}, h('strong', {}, 'Tags'), h('span', { class: 'muted' }, info.tagsError || 'No tags'))),
       h('details', {}, h('summary', {}, 'More sound options'),
         h('div', { class: 'options' },
           num('noiseReduction', 'Noise reduction (dB)', 1), num('targetLufs', 'Target loudness (LUFS)', 0.5),
           num('truePeak', 'Max true peak (dBTP)', 0.1), text('mp3Bitrate', 'MP3 bitrate'), text('opusBitrate', 'Opus bitrate'))));
-    return form;
   }
 
   // followChannels moves the loudness and bitrates to the new defaults when
@@ -868,7 +953,9 @@ export async function editorView(view, path, config) {
       return;
     }
     try {
-      showCheck(await api('POST', 'api/check?path=' + q(path), req));
+      // All three are checked: whether each is there and up to date does not
+      // depend on which are chosen.
+      showCheck(await api('POST', 'api/check?path=' + q(path), { ...req, flac: true, mp3: true, opus: true }));
     } catch (e) {
       showCheck({ error: e.message });
     }
@@ -885,47 +972,77 @@ export async function editorView(view, path, config) {
     checkOut.replaceChildren(
       res.error ? h('p', { class: 'error' }, res.error) : '',
       ...(res.notices || []).map((n) => h('p', { class: 'notice' }, n)));
-    updateRunButton();
+    renderOutputs();
   }
 
   function busy() { return job && (job.state === 'queued' || job.state === 'running'); }
-  function updateRunButton() {
-    runButton.disabled = generateButton.disabled = Boolean(lastCheck.error) || busy();
+
+  // ---- output: the formats, what is there, and what Regenerate makes ----
+  const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
+
+  // outputState is a format's file: there or not, and whether Regenerate
+  // would make it again (stale: made from other settings; unknown: no record).
+  function outputState(format) {
+    const file = info.outputs.find((o) => o.format === format) || null;
+    const st = (lastCheck.outputs || {})[format];
+    return { file, stale: Boolean(file && st && (st.stale || !st.known)), unknown: Boolean(file && st && !st.known) };
   }
 
-  // generate makes every file again, after asking: it replaces what is there.
-  async function generate() {
+  // toMake is what Regenerate makes: the chosen formats that are missing or out of date.
+  const toMake = () => FORMATS.map(([f]) => f).filter((f) => opts[f] && (!outputState(f).file || outputState(f).stale));
+
+  function renderOutputs() {
+    pills.replaceChildren(...FORMATS.map(([format, label]) => {
+      const { file, stale, unknown } = outputState(format);
+      const chosen = Boolean(opts[format]);
+      const note = !file ? (chosen ? 'will be made' : 'not made')
+        : stale ? (chosen ? 'will regenerate' : unknown ? 'settings not known' : 'out of date')
+          : 'up to date';
+      return h('div', { 'data-format': format, class: 'pill' + (file ? ' exists' : '') + (chosen ? ' chosen' : '') + (stale ? ' stale' : '') },
+        h('button', {
+          class: 'pick', 'aria-pressed': String(chosen), title: chosen ? `Leave ${label} out` : `Make ${label} too`,
+          onclick: () => { opts[format] = !opts[format]; saveOptions(opts); renderOutputs(); },
+        }, h('span', { class: 'box', 'aria-hidden': 'true' }, chosen ? '☑' : '☐'), ' ', label, file ? ' ✓' : ''),
+        h('span', { class: 'state' + (chosen && (stale || !file) ? ' will' : '') }, note),
+        file ? h('a', { class: 'button small', href: fileURL(file, true), title: `${file.name}, ${formatSize(file.size)}` }, 'Download') : '');
+    }));
+    const make = toMake();
+    const chosen = FORMATS.filter(([f]) => opts[f]).length;
+    outputNote.textContent = lastCheck.error ? ''
+      : !chosen ? 'Choose at least one format.'
+        : make.length ? 'Regenerate saves the edit and makes: ' + make.map((f) => FORMATS.find(([x]) => x === f)[1]).join(', ') + '.'
+          : 'Everything chosen is up to date.';
+    regenerateButton.disabled = Boolean(lastCheck.error) || busy() || !make.length;
+  }
+
+  // regenerate saves the edit, then makes the chosen formats that are missing
+  // or out of date; it asks first when that replaces files.
+  async function regenerate() {
     await persistAdjusted();
-    const existing = lastOutputs;
-    const changes = Boolean(sermon.adjusted) || !sermon.saved; // the page differs from the saved version
-    const ok = await confirmDialog({
-      title: 'Save and generate?',
-      body: [
-        h('p', {}, 'The sermon is cut and processed again from the recording, with the sections, cuts and fades shown here.'),
-        changes ? h('p', {}, sermon.saved ? 'They replace the saved version.' : 'They become the saved version.') : '',
-        existing.length
-          ? [h('p', {}, 'These files are replaced:'), h('ul', {}, existing.map((n) => h('li', {}, n)))]
-          : h('p', {}, 'No files are made yet, so nothing is replaced.'),
-      ],
-      confirm: 'Save and generate',
-      danger: existing.length > 0,
-    });
-    if (!ok) return;
+    const make = toMake();
+    if (!make.length) return;
+    const replaced = make.map(outputState).filter((x) => x.file).map((x) => x.file.name);
+    const changes = Boolean(sermon.adjusted) || !sermon.saved;
+    if (replaced.length || changes) {
+      const ok = await confirmDialog({
+        title: 'Regenerate?',
+        body: [
+          h('p', {}, 'The sermon is cut and processed from the recording, with the sections, cuts and fades shown here.'),
+          changes ? h('p', {}, sermon.saved ? 'They replace the saved version.' : 'They become the saved version.') : '',
+          replaced.length ? [h('p', {}, 'These files are replaced:'), h('ul', {}, replaced.map((n) => h('li', {}, n)))] : '',
+        ],
+        confirm: 'Regenerate',
+        danger: replaced.length > 0,
+      });
+      if (!ok) return;
+    }
+    regenerateButton.disabled = true;
     try {
       if (sermon.adjusted) sermon = await api('POST', 'api/sermon/save?path=' + q(path));
       renderVersion();
-    } catch (e) {
-      showCheck({ ...lastCheck, error: e.message });
-      return;
-    }
-    await run(true);
-  }
-
-  async function run(force = false) {
-    runButton.disabled = generateButton.disabled = true;
-    try {
-      await persistAdjusted();
-      job = await api('POST', 'api/run?path=' + q(path), request(force));
+      const req = request(replaced.length > 0);
+      for (const [f] of FORMATS) req[f] = make.includes(f);
+      job = await api('POST', 'api/run?path=' + q(path), req);
       showJob(job);
       follow(job.id);
     } catch (e) {
@@ -942,8 +1059,7 @@ export async function editorView(view, path, config) {
       if (!busy()) {
         events.close();
         events = null;
-        check(); // existing outputs changed
-        refreshFiles().catch(() => {});
+        refreshInfo().then(check).catch(() => {}); // the outputs changed
       }
     };
   }
@@ -963,11 +1079,11 @@ export async function editorView(view, path, config) {
       j.warnings.length ? h('div', {}, j.warnings.map((w) => h('p', { class: 'warn' }, '⚠ ' + w))) : '',
       j.error ? h('p', { class: 'error' }, j.error) : '',
       j.state === 'cancelled' ? h('p', {}, 'Cancelled. Nothing half-written was left behind.') : '',
-      j.state === 'done' ? h('p', {}, 'The files are listed at the top of the page.') : '',
+      j.state === 'done' ? h('p', {}, 'Done: the files are under Output, and in the folder list.') : '',
       h('details', { open: running }, h('summary', {}, 'Log'), log),
       running ? h('button', { onclick: cancel }, 'Cancel') : ''));
     log.scrollTop = log.scrollHeight;
-    updateRunButton();
+    renderOutputs();
   }
 
   async function cancel() {
@@ -991,6 +1107,7 @@ export async function editorView(view, path, config) {
     waveSection.replaceChildren(h('p', {}, 'Nothing to cut yet: upload a recording, or put <date>_raw.wav in the folder.'));
   }
   renderVersion();
+  renderOutputs();
   check();
   return teardown;
 }
