@@ -24,7 +24,7 @@ func (s *Server) handleMake(w http.ResponseWriter, r *http.Request) {
 	}
 	sf := readSermon(abs)
 	if sf == nil || sf.Saved == nil {
-		writeError(w, http.StatusBadRequest, errors.New("this sermon is not saved yet: open it in the editor, select the sermon and use Save"))
+		writeError(w, http.StatusBadRequest, errors.New("this sermon is not saved yet: open it in the editor and press Save"))
 		return
 	}
 	q := requestFrom(normalizer.DefaultOptions())

@@ -123,7 +123,7 @@ export async function editorView(view, path, config) {
     renamePanel.replaceChildren(
       h('label', {}, 'Date ', date), ' ', h('label', {}, 'Name ', name), ' ', save, ' ',
       h('button', { onclick: () => { renamePanel.hidden = true; } }, 'Cancel'), ' ', msg,
-      h('p', { class: 'muted' }, 'The folder and the files named after it are renamed. Files already made keep their tags.'));
+      h('p', { class: 'muted' }, 'The folder and its files are renamed. Files already made keep their tags.'));
     renamePanel.hidden = false;
     suggestNames(name);
   } }, 'Rename…');
@@ -148,7 +148,7 @@ export async function editorView(view, path, config) {
   function showInput() {
     const raw = info.raw, rec = info.recording, from = info.convertedFrom;
     if (!raw) {
-      inputPanel.replaceChildren(h('p', {}, 'No recording in this folder yet.'));
+      inputPanel.replaceChildren(h('p', {}, 'No recording yet.'));
       return;
     }
     const fmt = rec && rec.format;
@@ -176,7 +176,7 @@ export async function editorView(view, path, config) {
     return {
       mono: 'Mono (one channel)',
       stereo: 'Stereo',
-      identical: 'Mono (the stereo channels are identical)',
+      identical: 'Mono (both channels are the same)',
       more: 'More than two channels',
       'one-sided': `Mono (the ${v.quiet} side is ${v.quietBy ? v.quietBy + ' dB quieter' : 'silent'})`,
     }[v.kind] || v.kind;
@@ -295,12 +295,12 @@ export async function editorView(view, path, config) {
           h('strong', {}, 'Saved version'),
           versionOut,
           h('div', { class: 'toolbar' }, saveButton, revertButton, saveNote),
-          h('p', { class: 'muted' }, 'The sections, cuts and fades are kept in the folder as you change them. Save makes them the saved version; Revert goes back to it. Regenerate saves them and makes the files.'))),
+          h('p', { class: 'muted' }, 'Your changes are kept as you make them. Save makes them the saved version. Revert goes back to it. Regenerate saves them and makes the files.'))),
       h('p', { class: 'touch-hint' },
-        'Drag a finger along the waveform to select the sermon, and on an empty part to add another section. ' +
-        'Drag the edges to adjust. To cut a part out, put the playhead there and use Cut out here. Grey marks silences.'),
+        'Drag along the waveform to select the sermon. Drag on an empty part to add another section. ' +
+        'Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.'),
       h('p', { class: 'keys' },
-        'Drag on the waveform to select the sermon; drag on an empty part to add another section, or hold ', h('kbd', {}, 'shift'), ' and drag to cut out a part. Drag the edges to adjust. Grey marks silences. Keys: ',
+        'Drag on the waveform to select the sermon. Drag on an empty part to add another section, or hold ', h('kbd', {}, 'shift'), ' and drag to cut out a part. Drag the edges to adjust. Grey marks silence. Keys: ',
         h('kbd', {}, 'space'), ' play · ', h('kbd', {}, 's'), '/', h('kbd', {}, 'e'), ' start/end at the playhead · ', h('kbd', {}, 'c'), ' cut out here · ',
         h('kbd', {}, '['), '/', h('kbd', {}, ']'), ' silences · ', h('kbd', {}, '←'), '/', h('kbd', {}, '→'), ' 1 s (shift 0.1 s) · ',
         h('kbd', {}, '+'), '/', h('kbd', {}, '-'), ' zoom · ', h('kbd', {}, 'p'), ' play sermon. ',
@@ -584,7 +584,7 @@ export async function editorView(view, path, config) {
       x.info.textContent = 'length ' + formatTime(r.end - r.start, 1);
     }
     sectionHint.textContent = sections.length
-      ? 'Drag on an empty part of the waveform to add another section; the parts between sections are left out.'
+      ? 'Drag on an empty part of the waveform to add another section. Parts between sections are left out.'
       : 'Drag on the waveform to select the sermon, or set its start and end at the playhead (s, e).';
   }
 
@@ -684,7 +684,7 @@ export async function editorView(view, path, config) {
       c.row.classList.toggle('outside', outside);
       c.info.textContent = (outside ? 'outside the sermon · ' : '') + 'length ' + formatTime(r.end - r.start, 1);
     }
-    cutHint.textContent = !sections.length ? 'Select the sermon first; then cut out the parts of it that should go, such as a song.'
+    cutHint.textContent = !sections.length ? 'Select the sermon first. Then cut out parts you do not want, such as a song.'
       : cuts.length ? '' : 'Nothing cut out. Use the button, press c, or shift-drag on the waveform.';
     if (addCutButton) addCutButton.disabled = !sections.length;
     const parts = sections.length > 1 ? `${sections.length} sections` : '';
@@ -1042,7 +1042,7 @@ export async function editorView(view, path, config) {
       const ok = await confirmDialog({
         title: 'Regenerate?',
         body: [
-          make.length ? h('p', {}, 'The sermon is cut and processed from the recording, with the sections, cuts and fades shown here.') : '',
+          make.length ? h('p', {}, 'The sermon is made from the recording, with the sections, cuts and fades shown here.') : '',
           changes ? h('p', {}, sermon.saved ? 'They replace the saved version.' : 'They become the saved version.') : '',
           replaced.length ? [h('p', {}, 'These files are replaced:'), h('ul', {}, replaced.map((n) => h('li', {}, n)))] : '',
           deleted.length ? [h('p', {}, 'These files are deleted:'), h('ul', {}, deleted.map((n) => h('li', {}, n)))] : '',
@@ -1127,7 +1127,7 @@ export async function editorView(view, path, config) {
       if (alive) waveSection.replaceChildren(h('p', { class: 'error' }, e.message));
     });
   } else {
-    waveSection.replaceChildren(h('p', {}, 'Nothing to cut yet: upload a recording, or put <date>_raw.wav in the folder.'));
+    waveSection.replaceChildren(h('p', {}, 'Nothing to cut yet. Upload a recording first.'));
   }
   renderVersion();
   renderOutputs();

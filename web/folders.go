@@ -413,9 +413,9 @@ func (s *Server) check(abs string, q runRequest) plan {
 		return fail(err)
 	}
 	if n := q.idleCuts(); n == 1 {
-		pl.Notices = append(pl.Notices, "A cut is between two sections, outside the sermon: it leaves nothing out.")
+		pl.Notices = append(pl.Notices, "This cut is between two sections, so it changes nothing.")
 	} else if n > 1 {
-		pl.Notices = append(pl.Notices, fmt.Sprintf("%d cuts are between sections, outside the sermon: they leave nothing out.", n))
+		pl.Notices = append(pl.Notices, fmt.Sprintf("%d cuts are between sections, so they change nothing.", n))
 	}
 	paths, err := normalizer.NewPaths(abs)
 	if err != nil {

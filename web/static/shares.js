@@ -45,7 +45,7 @@ async function showCode(url, code) {
     navigator.clipboard.writeText(text).then(() => { e.target.textContent = 'copied'; });
   } }, 'copy');
   await alertDialog({ title: 'Share made', body: [
-    'The code is shown only now: copy it, or the link, before closing.', h('br'), h('br'),
+    'The code is shown only once. Copy it, or the link, before you close this.', h('br'), h('br'),
     h('span', { class: 'share-code' }, code), ' ', copy(code),
     ...(link ? [h('br'), h('br'), h('span', { class: 'share-link' }, link), ' ', copy(link)] : []),
   ] });
@@ -102,10 +102,9 @@ export async function sharesView(box) {
 
   box.replaceChildren(
     h('h2', {}, 'Shares'),
-    h('p', { class: 'muted' }, 'A share is a code that lets someone without a login send recordings to this church\'s inbox, ' +
-      'on the upload page', data.url ? [' (', h('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.url), ')'] : '',
-      '. From the inbox they go into their date folder like any other recording. Hand out the code or the link; ' +
-      'the code is shown once, when the share is made.'),
+    h('p', { class: 'muted' }, 'A share is a code that lets someone without a login send recordings on the upload page', data.url ? [' (', h('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.url), ')'] : '',
+      '. The recordings arrive in this church like any other. Give people the code or the link. ' +
+      'The code is shown only once, when you make the share.'),
     data.inbox ? h('div', { class: 'panel share-form' },
       h('label', { for: 'share-label' }, 'Name'), Object.assign(label, { id: 'share-label' }),
       h('span', {}, 'File types'), h('span', {}, types.map((c) => h('label', { class: 'check' }, c, ' ' + c.value + ' '))),
@@ -114,7 +113,7 @@ export async function sharesView(box) {
       h('label', {}, 'In all (GB)'), total,
       h('label', {}, 'Expires'), expires,
       h('div', { class: 'wide' }, create, ' ', status))
-      : h('p', { class: 'error' }, 'This church has no inbox, so it cannot have shares.'),
+      : h('p', { class: 'error' }, 'Shares need an inbox folder, and this church has none.'),
     h('h3', {}, 'Made'),
     ...(rows.length ? rows : [h('p', { class: 'muted' }, 'No shares yet.')]));
 }
