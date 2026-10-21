@@ -34,6 +34,7 @@ async function clearProposed(page, timeout = 60_000) {
   if ((await sectionHint(page).textContent()).startsWith('The sermon is set to')) {
     await page.locator('.section').getByRole('button', { name: 'Remove' }).click();
     await expect(sectionHint(page)).toContainText('Drag on the waveform to select the sermon');
+    await page.evaluate(() => window.scrollTo(0, 0)); // the click scrolled; the waveform must be on screen for the mouse
   }
 }
 

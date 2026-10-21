@@ -590,6 +590,14 @@ export async function editorView(view, path, config) {
     check();
   }
 
+  // adopt makes that start the user's own: from here on it is kept like any edit, even when a change
+  // leaves it as it was.
+  function adopt() {
+    proposed = false;
+    lastSent = '';
+    syncSections();
+  }
+
   // ---- sections: the parts of the recording that make the sermon ----
 
   // rebuild replaces a list's rows. Removing a focused field makes the browser
@@ -1222,10 +1230,7 @@ export async function editorView(view, path, config) {
   }, 250);
 
   function changed() {
-    if (proposed && !restoring) {
-      proposed = false;
-      syncSections();
-    }
+    if (proposed && !restoring) adopt();
     saveOptions(opts);
     check();
     saveSoon();
@@ -1290,11 +1295,7 @@ export async function editorView(view, path, config) {
   // missing or out of date. The edit is saved even when the files cannot be
   // made now: the recordings page shows them as out of date.
   async function save() {
-    if (proposed) { // the start the page made has not been kept yet
-      lastSent = '';
-      proposed = false;
-      syncSections();
-    }
+    if (proposed) adopt(); // the start the page made has not been kept yet
     await persistAdjusted();
     const make = toMake(), del = toDelete();
     const replaced = make.map(outputState).filter((x) => x.file).map((x) => x.file.name);
