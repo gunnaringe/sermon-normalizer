@@ -271,4 +271,4 @@ The interface is in English, Norwegian bokmål and Norwegian nynorsk. It follows
 automatic (the device's light or dark), light or dark. Both are kept in the browser. The public upload page follows the
 browser too and has a language choice in its header. Messages from the server are translated where they are known
 (`web/static/locales.js`); the tags written into files (like the `{weekday}` name) are not translated. The footer links to
-the source on GitHub.
+the source on GitHub and to **About**: why Sermon Studio was made, and where to write with a question or just to say hi.
