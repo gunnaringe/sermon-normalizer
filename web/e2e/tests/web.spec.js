@@ -184,6 +184,7 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   await expect(cutOut).toContainText('Play or move the playhead to where the cut ends');
   expect(await cuts()).toEqual([]); // not a cut until it is ended
   await editor(page, () => window.__editor.ws.setTime(40));
+  await page.locator('section.step').nth(1).screenshot({ path: path.join(shots, 'cut-open.png') });
   await cutOut.getByRole('button', { name: 'End the cut here' }).click();
   expect((await cuts())[0].start).toBeCloseTo(30, 1);
   expect((await cuts())[0].end).toBeCloseTo(40, 1);
