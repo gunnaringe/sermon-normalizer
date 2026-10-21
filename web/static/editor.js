@@ -5,7 +5,7 @@ import RegionsPlugin from './vendor/wavesurfer/plugins/regions.esm.js';
 import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
-import { confirmDialog } from './dialog.js';
+import { confirmDialog, infoDialog } from './dialog.js';
 import { t, tn, tr, lang } from './i18n.js';
 import { api, q, h, href, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
 
@@ -328,11 +328,8 @@ export async function editorView(view, path, config) {
       h('p', { class: 'touch-hint' },
         t('Drag along the waveform to select the sermon. Drag on an empty part to add another section. Drag the edges to adjust. To cut a part out, press Cut out here where it starts and End the cut here where it ends. Grey marks silence.')),
       h('p', { class: 'keys' },
-        kbdText(t('Drag on the waveform to select the sermon. Drag on an empty part to add another section, or hold <kbd>shift</kbd> and drag to cut out a part. Drag the edges to adjust. Grey marks silence. Keys:')), ' ',
-        kbdText(t('<kbd>space</kbd> play · <kbd>s</kbd>/<kbd>e</kbd> start/end at the playhead · <kbd>c</kbd> cut out here · <kbd>x</kbd> split · <kbd>[</kbd>/<kbd>]</kbd> silences · <kbd>←</kbd>/<kbd>→</kbd> 1 s (shift 0.1 s) · <kbd>+</kbd>/<kbd>-</kbd> zoom · <kbd>p</kbd> play sermon.')), ' ',
-        kbdText(wheelZoomNeedsKey()
-          ? t('<kbd>ctrl</kbd>+scroll zooms at the mouse, <kbd>shift</kbd>+scroll moves along (Settings › Waveform).')
-          : t('Scroll zooms at the mouse, <kbd>shift</kbd>+scroll moves along (Settings › Waveform).'))),
+        kbdText(t('Drag on the waveform to select the sermon. Drag on an empty part to add another section, or hold <kbd>shift</kbd> and drag to cut out a part. Drag the edges to adjust. Grey marks silence.')), ' ',
+        h('button', { type: 'button', class: 'link', title: t('All the keys of the editor (?)'), onclick: showKeys }, t('Keys…'))),
     );
     renderCuts();
 
@@ -513,6 +510,7 @@ export async function editorView(view, path, config) {
         '<': () => nudge(-step / 10),
         '>': () => nudge(step / 10),
         Escape: () => { if (!cancelCut()) select(null); },
+        '?': showKeys,
       };
       const fn = keys[e.key];
       if (fn) {
@@ -704,6 +702,34 @@ export async function editorView(view, path, config) {
     showLabel(second);
     sections.push(second);
     tidySections();
+  }
+
+  // showKeys lists every key of the editor, and what the mouse wheel does.
+  function showKeys() {
+    const row = (keys, what) => h('tr', {}, h('th', { scope: 'row' }, kbdText(keys)), h('td', {}, what));
+    infoDialog({
+      title: t('Keys'),
+      body: [
+        h('table', { class: 'keys-table' }, h('tbody', {},
+          row(t('<kbd>space</kbd>'), t('Play or pause')),
+          row('<kbd>p</kbd>', t('Play the whole sermon, as it will be published')),
+          row('<kbd>s</kbd> / <kbd>e</kbd>', t('The section at the playhead starts or ends there')),
+          row('<kbd>x</kbd>', t('Split the section at the playhead')),
+          row('<kbd>c</kbd>', t('Start a cut at the playhead; again: end it there')),
+          row('<kbd>[</kbd> / <kbd>]</kbd>', t('The previous or next silence')),
+          row('<kbd>←</kbd> / <kbd>→</kbd>', t('1 s back or on (shift: 0.1 s)')),
+          row('<kbd>Home</kbd> / <kbd>End</kbd>', t('The start or the end of the recording')),
+          row('<kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd>', t('Zoom in, out, or all the way out')),
+          row('<kbd>Delete</kbd>', t('Remove the selected section or cut')),
+          row('<kbd>,</kbd> / <kbd>.</kbd>', t('Move the edge of the selected one that is nearest the playhead by 0.1 s (shift: 0.01 s)')),
+          row('<kbd>Esc</kbd>', t('Let go of the selection, or of a cut being made')),
+          row('<kbd>ctrl</kbd>+<kbd>z</kbd> / <kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>z</kbd>', t('Undo or redo')),
+          row('<kbd>?</kbd>', t('This list')))),
+        h('p', { class: 'muted' }, kbdText(wheelZoomNeedsKey()
+          ? t('<kbd>ctrl</kbd>+scroll zooms at the mouse, <kbd>shift</kbd>+scroll moves along (Settings › Waveform).')
+          : t('Scroll zooms at the mouse, <kbd>shift</kbd>+scroll moves along (Settings › Waveform).'))),
+      ],
+    });
   }
 
   // ---- the selected section or cut: clicked on the waveform, or its row in use; the row and the region are marked ----

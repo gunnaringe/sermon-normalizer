@@ -153,7 +153,10 @@ test('scroll zooms at the mouse, sideways moves along; settings can make it need
   await page.goto('#/settings');
   await page.getByLabel(/holding Ctrl/).check();
   await openEditor(page, '2026/2026-10-04');
-  await expect(page.getByText('+scroll zooms at the mouse')).toBeVisible();
+  await page.getByRole('button', { name: 'Keys…' }).click(); // the Keys list says so
+  await expect(page.getByRole('dialog', { name: 'Keys' })).toContainText('+scroll zooms at the mouse');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.scrollTo(0, 0)); // the click scrolled; the mouse must be over the waveform again
   await page.mouse.move(mx, my);
   await page.mouse.wheel(0, -300);
   await page.waitForTimeout(200);
@@ -1045,6 +1048,21 @@ test('a section or cut is selected by a click or its row; double-click zooms; De
   expect(view.left).toBeGreaterThan(8);
   expect(view.left).toBeLessThan(10.5);
   expect(await selected()).toEqual({ kind: 'section', start: 10, end: 30 });
+});
+
+test('the keys are listed in a dialog: Keys… or ?', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await page.getByRole('button', { name: 'Keys…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Keys' });
+  await expect(dialog).toContainText('Undo or redo');
+  await expect(dialog).toContainText('Start a cut at the playhead; again: end it there');
+  await dialog.screenshot({ path: path.join(shots, 'keys.png') });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await page.locator('body').press('?');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
 });
 
 test('split a section, put in a pause, and choose what Play plays', async ({ page }) => {
