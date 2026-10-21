@@ -318,6 +318,11 @@ tr.row.target { animation: target 2.5s ease-out; }
 .tags label { display: grid; grid-template-columns: 6em minmax(12em, 28em); align-items: center; gap: 0.2rem 0.8rem; padding: 0.3rem 0; }
 .tags label .muted { grid-column: 2; font-size: 0.9em; }
 .tags input[type=text], .tags select { width: 100%; }
+.processing-defaults label { grid-template-columns: 11em auto; }
+.processing-defaults label > span:last-child { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.4rem; }
+.processing-defaults label .muted { grid-column: auto; }
+.processing-defaults input, .processing-defaults input[type=text] { width: 7.5em; }
+.processing-defaults select { width: auto; min-width: 7.5em; }
 .options .tag input[type=text] { width: 14em; }
 button.link { border: 0; background: none; box-shadow: none; color: var(--accent); font-size: 0.9rem; padding: 0 0.3rem; cursor: pointer; }
 

@@ -27,7 +27,7 @@ func (s *Server) handleMake(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("this sermon is not saved yet: open it in the editor and press Save"))
 		return
 	}
-	q := requestFrom(normalizer.DefaultOptions())
+	q := s.processing().start() // for one saved before the studio kept its sound
 	q.cutting = sf.Saved.cutting
 	q.FadeIn, q.FadeOut = sf.Saved.FadeIn, sf.Saved.FadeOut
 	sf.Saved.Sound.applyTo(&q)

@@ -45,7 +45,10 @@ type Config struct {
 
 	Meta     *Meta            // default tags; nil = DefaultMeta
 	SaveMeta func(Meta) error // stores changed default tags; nil = kept in memory only
-
+	// Processing is the default processing; nil = the built-in. SaveProcessing
+	// stores a change (nil = back to the built-in); nil = kept in memory only.
+	Processing     *processing
+	SaveProcessing func(*processing) error
 }
 
 // limits keeps the heavy work to one at a time, across all churches.
@@ -71,6 +74,7 @@ type Server struct {
 	analyses *analyses
 	inbox    *inboxWatcher
 	meta     metaStore
+	proc     procStore
 	ingestMu sync.Mutex // one inbox file moves at a time
 	stateMu  sync.Mutex // recording.json is read, changed and written as one step
 
@@ -107,6 +111,7 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Meta != nil {
 		s.meta.meta = *cfg.Meta
 	}
+	s.proc = procStore{proc: cfg.Processing, save: cfg.SaveProcessing}
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
 	if cfg.Inbox != "" {
@@ -160,6 +165,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/settings", s.handleSettings)
 	mux.HandleFunc("PUT /api/settings", s.handleSettingsPut)
+	mux.HandleFunc("PUT /api/processing", s.handleProcessingPut)
 	mux.HandleFunc("POST /api/meta/preview", s.handleMetaPreview)
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("GET /api/folder", s.handleFolder)
@@ -278,13 +284,20 @@ func (s *Server) pathParam(w http.ResponseWriter, r *http.Request) (string, bool
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"inbox": s.cfg.Inbox != "",
-		"chunk": MaxChunk,
-		"defaults": map[string]any{
-			"mono":   requestFrom(normalizer.DefaultOptions()),
-			"stereo": stereoDefaults(),
-		},
+		"inbox":    s.cfg.Inbox != "",
+		"chunk":    MaxChunk,
+		"defaults": s.defaults(),
 	})
+}
+
+// defaults are what a recording starts with (start), the same in mono and
+// in stereo, the church's processing they come from, and the built-in one.
+func (s *Server) defaults() map[string]any {
+	p := s.processing()
+	return map[string]any{
+		"start": p.start(), "mono": p.request(false), "stereo": p.request(true),
+		"processing": p, "builtin": builtinProcessing(),
+	}
 }
 
 func stereoDefaults() runRequest {
