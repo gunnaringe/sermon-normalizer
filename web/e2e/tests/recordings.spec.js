@@ -120,3 +120,24 @@ test('a link opens the recordings page at one recording; Copy link makes it', as
   await page.goto('#/first-church/recording/2030/nothing');
   await expect(page.getByText('That recording was not found.')).toBeVisible();
 });
+
+test('labels added quickly, while the server is slow, are all kept', async ({ page }) => {
+  // Each label change answers late: a second label is added before the first is saved.
+  await page.route('**/api/labels?**', async (route) => {
+    if (route.request().method() === 'PUT') await new Promise((r) => setTimeout(r, 400));
+    await route.continue();
+  });
+  await page.goto('');
+  const sermon = page.locator('.year tr.row', { hasText: '2025-12-21' });
+  await page.locator('button.year-head', { hasText: '2025' }).click();
+  await sermon.locator('button.sermon-name').click();
+  const detail = page.locator('tr.detail-row');
+  const add = detail.getByLabel('Add a label');
+  await add.fill('One');
+  await add.press('Enter');
+  await add.fill('Two');
+  await add.press('Enter');
+  await expect(detail.locator('.chip.own')).toHaveText(['One×', 'Two×']);
+  for (const name of ['One', 'Two']) await detail.getByRole('button', { name: `Remove label ${name}` }).click();
+  await expect(detail.locator('.chip.own')).toHaveCount(0);
+});

@@ -55,7 +55,7 @@ test('the recordings page shows the years and the recordings with their status',
   await expect(page.locator('button.year-head', { hasText: '2026' })).toHaveAttribute('aria-expanded', 'true'); // the newest year is open
   const row = page.locator('.year tr', { hasText: '2026-10-04' });
   await expect(row).toContainText('to do');
-  await row.click();
+  await row.locator('button.sermon-name').click(); // not the middle of the row: earlier tests may have put labels there
   await expect(row.locator('xpath=following-sibling::tr[1]').getByRole('link', { name: 'Open in the editor' })).toBeVisible();
   await row.getByRole('button', { name: 'Show details' }).click();
   await expect(page.locator('tr.detail-row')).toHaveCount(0);

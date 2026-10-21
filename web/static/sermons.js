@@ -56,30 +56,44 @@ export function sermonDetail(entry, ctx = {}) {
     const drawMenu = () => {
       const found = document.activeElement === input ? matches() : [];
       menu.hidden = found.length === 0;
-      menu.replaceChildren(...found.map((l) => h('li', { role: 'option', onclick: () => save([...entry.labels, l]) }, l)));
+      menu.replaceChildren(...found.map((l) => h('li', { role: 'option', onclick: () => { input.value = ''; save((ls) => [...ls, l]); } }, l)));
       add.hidden = !input.value.trim();
     };
     const draw = () => {
       box.replaceChildren(
         ...entry.labels.map((l) => h('span', { class: 'chip own' }, l,
           h('button', { type: 'button', class: 'x', title: t('Remove {name}', { name: l }), 'aria-label': t('Remove label {name}', { name: l }),
-            onclick: () => save(entry.labels.filter((x) => x !== l)) }, '×'))),
+            onclick: () => save((ls) => ls.filter((x) => x !== l)) }, '×'))),
         ...(entry.labels.length < MAX_LABELS ? [h('span', { class: 'label-add-box' }, input, add, menu)] : []));
       drawMenu();
     };
-    async function save(next) {
-      try {
-        const e = await api('PUT', 'api/labels?path=' + q(entry.path), { labels: next });
-        entry.labels = e.labels;
-        if (ctx.changed) ctx.changed();
-        input.value = '';
-      } catch (err) {
-        alertDialog({ body: err.message });
-      }
-      draw();
-      if (entry.labels.length < MAX_LABELS) input.focus();
+    // save makes a change to the labels. Changes are sent one after the other, each to the labels as the one
+    // before left them: a label added while another is being saved is not lost. typed goes back in the
+    // field if the change fails.
+    let queue = Promise.resolve();
+    function save(change, typed = '') {
+      queue = queue.then(async () => {
+        try {
+          const e = await api('PUT', 'api/labels?path=' + q(entry.path), { labels: change(entry.labels) });
+          entry.labels = e.labels;
+          if (ctx.changed) ctx.changed();
+        } catch (err) {
+          if (typed && !input.value) input.value = typed;
+          alertDialog({ body: err.message });
+        }
+        draw();
+        if (entry.labels.length < MAX_LABELS) input.focus();
+      });
+      return queue;
     }
-    const commit = () => { if (input.value.trim()) return save([...entry.labels, input.value]); };
+    // commit adds what is typed; the field is free for the next one at once.
+    const commit = () => {
+      const typed = input.value;
+      if (!typed.trim()) return;
+      input.value = '';
+      drawMenu();
+      return save((ls) => [...ls, typed], typed);
+    };
     input.addEventListener('input', () => {
       if (input.value.includes(',')) {
         const [first, ...rest] = input.value.split(',');
