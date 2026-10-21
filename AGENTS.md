@@ -18,7 +18,10 @@ scripts/fetch-sample.sh && scripts/test.sh guide   # redo docs/img (the guide's 
 scripts/check-links.sh                # relative links and pictures in the Markdown files
 ```
 
-ffmpeg is not on the dev host; `all`/`e2e` run in podman. Don't run `go test -v`
+ffmpeg is not on the dev host; `all`/`e2e` run in podman, in images with ffmpeg that `test.sh` builds
+once (`scripts/test-images/`, retagged when the file or the base image changes). The browser tests keep
+`node_modules` until the lock file changes, and the test recordings in `web/e2e/fixtures/made/` (delete the
+folder to make them again). Don't run `go test -v`
 over the whole tree, and don't paste whole files into output: read the part you
 need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 — look at them only when changing visible UI.

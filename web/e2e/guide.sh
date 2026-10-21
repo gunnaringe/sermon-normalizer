@@ -3,7 +3,7 @@
 # Runs inside the Playwright image; start it with: scripts/test.sh guide
 set -eu
 
-apt-get update -qq >/dev/null && apt-get install -y -qq ffmpeg >/dev/null
+command -v ffmpeg >/dev/null || { apt-get update -qq >/dev/null && apt-get install -y -qq ffmpeg >/dev/null; } # in scripts/test.sh's image already
 speech=fixtures/jfk-inaugural.ogg
 [ -s "$speech" ] || { echo "no $speech: run scripts/fetch-sample.sh first" >&2; exit 1; }
 
@@ -38,5 +38,7 @@ for i in $(seq 50); do
 	sleep 0.1
 done
 
-npm ci --silent --no-audit --no-fund
+# node_modules is kept between runs (it is in the mounted folder): installed again only when the lock file changes.
+lock=$(sha256sum package-lock.json | cut -c1-64)
+[ "$(cat node_modules/.lock-sha 2>/dev/null)" = "$lock" ] || { npm ci --silent --no-audit --no-fund && echo "$lock" >node_modules/.lock-sha; }
 DATA="$data" OUT=/out npx playwright test --config guide/playwright.config.js --reporter=line "$@" || { echo "---- server log (end) ----"; tail -n 50 "$data/server.log"; exit 1; }
