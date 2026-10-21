@@ -107,8 +107,8 @@ export async function editorView(view, path, config) {
   const outputNote = h('p', { class: 'muted' });
   const checkOut = h('div', {});
   const saveButton = h('button', { class: 'primary', disabled: true, title: t('Make this the saved version and make the files'), onclick: save }, t('Save'));
-  const saveNote = h('span', { class: 'muted' });
-  const versionOut = h('div', {});
+  const saveNote = h('span', { class: 'muted', role: 'status' });
+  const versionOut = h('strong', {});
   const revertButton = h('button', { disabled: true, title: t('Throw away the adjustments and go back to the saved version'), onclick: revertVersion }, t('Revert…'));
   const jobPanel = h('section', {});
 
@@ -132,6 +132,13 @@ export async function editorView(view, path, config) {
     renamePanel.hidden = false;
   } }, t('Rename…'));
 
+  // The bar under the page: what the edit is (saved or not), what Save does, Revert and Save. It sticks to
+  // the bottom of the window, so Save is at hand wherever the page is scrolled.
+  const saveBar = h('div', { class: 'save-bar' },
+    h('div', { class: 'save-state' }, versionOut, ' ', saveNote),
+    h('div', { class: 'save-what' }, outputNote, checkOut),
+    h('div', { class: 'save-actions' }, revertButton, saveButton));
+
   let processingEl = processingPanel();
   view.replaceChildren(
     h('div', { class: 'crumbs' }, h('a', { href: href('recording', path) }, t('← Recordings'))),
@@ -142,10 +149,9 @@ export async function editorView(view, path, config) {
     h('section', { class: 'step', 'aria-labelledby': 'step-metadata' }, h('h2', { id: 'step-metadata' }, t('Metadata added to the file')), metadataPanel()),
     h('section', { class: 'step', 'aria-labelledby': 'step-processing' }, h('h2', { id: 'step-processing' }, t('Processing')), processingEl),
     h('section', { class: 'step', 'aria-labelledby': 'step-output' }, h('h2', { id: 'step-output' }, t('Output')),
-      h('div', { class: 'panel' },
-        pills, outputNote, checkOut,
-        h('p', {}, saveButton)),
+      h('div', { class: 'panel' }, pills),
       jobPanel),
+    saveBar,
   );
 
   // ---- input file: what the recording is ----
@@ -172,11 +178,17 @@ export async function editorView(view, path, config) {
       [t('Channels'), channelsText()],
     ];
     const md = fmt && fmt.metadata ? Object.entries(fmt.metadata) : [];
-    inputPanel.replaceChildren(
-      h('dl', { class: 'facts' }, rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
-      md.length ? h('details', { class: 'metadata' }, h('summary', {}, t('Metadata in the file ({n})', { n: md.length })),
-        h('dl', { class: 'facts' }, md.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : '',
-      h('p', {}, h('a', { class: 'button', href: fileURL(raw, true) }, t('Download original'))));
+    const open = inputPanel.querySelector('details.input-more')?.open || false;
+    inputPanel.replaceChildren(h('div', { class: 'input-line' },
+      h('details', { class: 'input-more', open },
+        h('summary', { title: t('Show the details of the recording') },
+          h('strong', {}, raw.name), ' · ', formatSize(raw.size),
+          ' · ', fmt ? formatTime(fmt.duration, 0) : h('span', { class: 'muted' }, t('Reading…')),
+          ' · ', channelsText()),
+        h('dl', { class: 'facts' }, rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
+        md.length ? h('details', { class: 'metadata' }, h('summary', {}, t('Metadata in the file ({n})', { n: md.length })),
+          h('dl', { class: 'facts' }, md.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : ''),
+      h('a', { class: 'button', href: fileURL(raw, true) }, t('Download original'))));
     showChannelWarning();
   }
 
@@ -310,12 +322,7 @@ export async function editorView(view, path, config) {
           h('div', { class: 'toolbar' },
             addCutButton),
           cutHint,
-          cutList),
-        h('div', { class: 'group wide' },
-          h('strong', {}, t('Saved version')),
-          versionOut,
-          h('div', { class: 'toolbar' }, revertButton, saveNote),
-          h('p', { class: 'muted' }, t('Your changes are kept as you make them. Save, under Output, makes them the saved version and makes the files. Revert goes back to the saved version.')))),
+          cutList)),
       h('p', { class: 'touch-hint' },
         t('Drag along the waveform to select the sermon. Drag on an empty part to add another section. Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.')),
       h('p', { class: 'keys' },
@@ -981,12 +988,16 @@ export async function editorView(view, path, config) {
     set.fadeIn || set.fadeOut ? t('fade {in} s in, {out} s out', { in: set.fadeIn, out: set.fadeOut }) : t('no fades'),
   ].join(', ');
 
+  // renderVersion shows in the bar whether the edit is saved; the versions themselves are in its tooltip.
   function renderVersion() {
     const { saved, adjusted } = sermon;
     const at = sermon.savedAt ? ' ' + formatDateTime(sermon.savedAt) : '';
-    versionOut.replaceChildren(
-      saved ? h('p', {}, h('strong', {}, t('Saved') + at + ': '), describe(saved)) : h('p', { class: 'muted' }, t('Nothing is saved yet.')),
-      adjusted ? h('p', {}, h('strong', {}, t('Adjusted, not saved:') + ' '), describe(adjusted)) : '');
+    versionOut.textContent = adjusted ? t('Adjusted, not saved') : saved ? t('Saved') + at : t('Nothing is saved yet.');
+    versionOut.className = adjusted ? 'unsaved' : '';
+    versionOut.title = [
+      saved ? t('Saved') + at + ': ' + describe(saved) : t('Nothing is saved yet.'),
+      adjusted ? t('Adjusted, not saved:') + ' ' + describe(adjusted) : '',
+    ].filter(Boolean).join('\n');
     revertButton.disabled = !adjusted || !saved;
     renderOutputs();
   }

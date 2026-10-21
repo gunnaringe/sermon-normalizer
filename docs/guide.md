@@ -42,7 +42,7 @@ Each can have a label, which shows on the waveform.
 
 ## Saving and the files
 
-![Output: choose the formats, Save](img/07-output.png)
+![Output: choose the formats; Save is in the bar at the bottom](img/07-output.png)
 
 ![Processing, followed live](img/08-processing.png)
 
@@ -73,12 +73,14 @@ Each can have a label, which shows on the waveform.
 - **On a phone:** every page fits the screen. Drag a finger along the waveform to select (up and
   down still scrolls the page); the section edges are wider to grab; cut with *Cut out here* and
   zoom with the buttons.
-- **The page** has five parts: **Input file** (the recording: name, format, how it came, its
-  metadata, whether it is stereo or mono in effect, and *Download original*), **Edit** (the
+- **The page** has five parts: **Input file** (one line with the recording's name, size, length and whether it is
+  stereo or mono in effect, which opens to its format, how it came and its metadata; and *Download original*), **Edit** (the
   waveform, sections, cuts and fades), **Metadata added to the file** (title, artist, album), **Processing** and **Output**.
+  Under them, a **bar** sticks to the bottom of the window: whether the edit is saved (hover it to see both versions),
+  what Save will do, **Revert…** and **Save**.
 - **Saved version:** the sections, the cuts and the fades are kept in `recording.json` in the date
   folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
-  the next time the sermon is opened. **Save** (under Output) makes them the *saved version*,
+  the next time the sermon is opened. **Save** (in the bar) makes them the *saved version*,
   which stays as it is while you adjust further, and makes the files; **Revert…** (after a
   confirmation) throws the adjustments away and goes back to it. Both versions are in the file.
 - **Several sections:** drag on an empty part of the waveform to add another section; the parts
@@ -104,7 +106,7 @@ Each can have a label, which shows on the waveform.
   shown is that of the sections after the cuts.
 - **Metadata added to the file:** title, artist and album, from the church's defaults (Settings), for this recording; a field you
   empty is left out of the files.
-- **Processing:** how the sermon is made into files, kept with the sermon (*Saved version*; *Revert* brings them back too).
+- **Processing:** how the sermon is made into files, kept with the sermon (with the saved version; *Revert* brings them back too).
   *Channels* (mono ↔ stereo; stereo for a recording that is mono in effect shows a warning). *Noise*: reduction in dB, and
   **Keep room sound** (how much of the room's own sound, such as its reverb, is kept: less reduction or more room sound sounds more natural).
   *Levels*: **Leveling** (off, gentle, normal, strong) and **Compression** (off, light, normal, strong). *Loudness*: the target

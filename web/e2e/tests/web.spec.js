@@ -344,7 +344,7 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
   await setFade(page, 'fadeIn', 0);
   await expect.poll(() => read().adjusted?.cuts.length).toBe(1);
   expect(read().saved.cuts).toHaveLength(2);
-  await expect(page.getByText('Adjusted, not saved:')).toBeVisible();
+  await expect(page.locator('.save-bar')).toContainText('Adjusted, not saved');
   await page.screenshot({ path: path.join(shots, 'version.png'), fullPage: true });
 
   // Revert asks first, then everything is back as it was saved.
