@@ -109,6 +109,6 @@ and the public upload page are in [docs/running.md](docs/running.md).
 
 ## License
 
-[Apache 2.0](LICENSE). The documentation's example recording is President Kennedy's inaugural address
+[Apache 2.0](LICENSE), except the signature font on the About page (see [NOTICE](NOTICE)). The documentation's example recording is President Kennedy's inaugural address
 (1961), a US government work in the public domain
 ([source](https://commons.wikimedia.org/wiki/File:JFK_inaugural_address.ogg)).

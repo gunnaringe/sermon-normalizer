@@ -1,0 +1,11 @@
+Sermon Studio
+Copyright Gunnar Inge Gjøvik Sortland
+
+Licensed under the Apache License 2.0 (LICENSE), except:
+
+- web/static/fonts/signature.woff2 is the author's own handwriting, cut down to
+  the letters of the author's name, for the signature on the About page. It is
+  not covered by the Apache License: it may be used only to show that name in
+  Sermon Studio and its copies, unchanged.
+- web/static/vendor/wavesurfer/ is wavesurfer.js, under its own licence (see
+  that folder).
