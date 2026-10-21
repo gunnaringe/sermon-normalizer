@@ -1,7 +1,8 @@
 // The app: a hash router. Every address starts with the church: #/<church> (the
 // recordings), #/<church>/recording/<path> (the recordings, that one opened),
 // #/<church>/folder/<path> (the editor), #/<church>/settings (the settings over the recordings), #/<church>/shares (the
-// shares, the same way). Both also open as an overlay from their icon in the header.
+// shares, the same way), #/<church>/about (what the studio is). They also open as an overlay from their icon in the
+// header, or the link in the footer.
 import { api, q, h, href, INPUT_TYPES, isInputType, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, debounce, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
@@ -17,10 +18,10 @@ let churches = { tenants: [], default: '', canAdd: false, shares: false };
 let teardown = null; // cleanup of the current view (player, event stream, keys)
 let shown = '';      // the page in the view, so the settings overlay can open over it without redoing it
 let page = null;     // the recordings page when it is shown: { open(path) }
-let overlay = null;  // the settings or shares over the page: { section, dialog }
+let overlay = null;  // the settings, shares or about over the page: { section, dialog }
 
 // Addresses from before the church was in them: the first part names a page.
-const OLD = { folder: 'folder', folders: '', settings: 'settings', shares: 'shares', upload: '' };
+const OLD = { folder: 'folder', folders: '', settings: 'settings', shares: 'shares', about: 'about', upload: '' };
 
 async function route() {
   if (teardown) teardown();
@@ -53,7 +54,7 @@ async function route() {
     if (section === 'folder') {
       shown = '';
       teardown = await editorView(view, path, config);
-    } else if (section === '' || section === 'recording' || section === 'settings' || section === 'shares') {
+    } else if (['', 'recording', 'settings', 'shares', 'about'].includes(section)) {
       if (shown !== church) {
         shown = '';
         page = await foldersView();
@@ -62,6 +63,7 @@ async function route() {
       if (section === 'recording') page.open(path);
       if (section === 'settings') await openSettings(path);
       if (section === 'shares') await openShares();
+      if (section === 'about') await openAbout();
     } else {
       shown = '';
       view.replaceChildren(h('p', { class: 'error' }, t('No such page.')));
@@ -194,7 +196,7 @@ function uploadBox() {
   return h('div', { class: 'upload' }, drop, input, chosen, status, progress);
 }
 
-// openOverlay shows the settings or the shares as an overlay on the page, closed with the cross, Esc or a
+// openOverlay shows the settings, the shares or about as an overlay on the page, closed with the cross, Esc or a
 // click outside. Opened from an address (#/<church>/settings), closing it goes back to #/<church>.
 async function openOverlay(section, title, closeLabel, fill) {
   if (overlay && overlay.section === section && overlay.dialog.open) return;
@@ -229,6 +231,28 @@ const openShares = () => openOverlay('shares', t('Shares'), t('Close shares'), a
   body.replaceChildren(box);
   await sharesView(box);
 });
+const openAbout = () => openOverlay('about', t('About Sermon Studio'), t('Close about'), (body) => aboutView(body));
+
+const REPO = 'https://github.com/gunnaringe/sermon-studio';
+const EMAIL = 'sermons@apphub.casa';
+const AUTHOR = 'Gunnar Inge Gjøvik Sortland';
+const HOME = 'https://gunnaringe.sort.land';
+
+// aboutView tells why the studio was made and where to find more, or the one who made it.
+function aboutView(box) {
+  const link = (url, text) => h('a', { href: url, target: '_blank', rel: 'noopener' }, text);
+  const [before, after] = t('Questions, or just want to say hi? Write to {email}.', { email: '\0' }).split('\0');
+  box.replaceChildren(h('div', { class: 'about' },
+    h('p', {}, t('I made Sermon Studio for my own church. Every Sunday the service is recorded, and someone has to cut out the sermon, even out the sound and publish it, often late in the evening in a busy week. I wanted a way to do that which is easy and quick: open the recording, mark the sermon, press Save.')),
+    h('p', {}, t('It is free and open source. If it can help your church too, you are welcome to use it.')),
+    h('p', {}, before, h('a', { href: 'mailto:' + EMAIL }, EMAIL), after),
+    h('p', { class: 'about-author' }, '— ' + AUTHOR + ' · ', link(HOME, HOME.replace('https://', ''))),
+    h('ul', { class: 'about-links' },
+      h('li', {}, link(REPO, t('Source code on GitHub'))),
+      h('li', {}, link(REPO + '/blob/main/docs/guide.md', t('User guide'))),
+      h('li', {}, link(REPO + '/issues', t('Report a problem or suggest an idea'))),
+      h('li', {}, link(REPO + '/blob/main/LICENSE', t('Licence: Apache 2.0'))))));
+}
 
 // settingsView edits the church: its name, default tags (templates with
 // placeholders, shown filled in for today, with and without a sermon name),
@@ -363,6 +387,7 @@ const brand = document.querySelector('header .brand');
 const nameText = document.getElementById('church-name');
 const gear = document.querySelector('[data-nav=settings]');
 const sharesIcon = document.querySelector('[data-nav=shares]');
+const aboutLink = document.querySelector('[data-nav=about]');
 
 function fillPicker() {
   const cur = currentTenant();
@@ -372,6 +397,7 @@ function fillPicker() {
   gear.href = href('settings');
   sharesIcon.href = href('shares');
   sharesIcon.hidden = !churches.shares;
+  aboutLink.href = href('about');
   const single = churches.tenants.length === 1 && !churches.canAdd;
   select.hidden = single;
   nameText.hidden = !single;
@@ -418,6 +444,13 @@ sharesIcon.addEventListener('click', (e) => {
   if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
   e.preventDefault();
   openShares();
+});
+
+// About in the footer, the same way.
+aboutLink.addEventListener('click', (e) => {
+  if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  openAbout();
 });
 
 // countActive puts the number of uploads and downloads going on now on the shares icon; asked again every

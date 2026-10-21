@@ -32,6 +32,9 @@ test('phone: every page fits the screen', async ({ page }) => {
   await page.goto('#/shares');
   await expect(page.getByRole('heading', { name: 'Shares' })).toBeVisible();
   await fits(page, 'shares');
+  await page.goto('#/about');
+  await expect(page.getByRole('heading', { name: 'About Sermon Studio' })).toBeVisible();
+  await fits(page, 'about');
 });
 
 test('phone: the editor by touch', async ({ page }) => {

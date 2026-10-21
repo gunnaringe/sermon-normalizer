@@ -78,6 +78,9 @@
 body {
   margin: 0;
   min-height: 100vh;
+  /* a column, so the footer sits at the bottom of the window on a short page */
+  display: flex;
+  flex-direction: column;
   font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   color: var(--fg);
@@ -142,7 +145,8 @@ header .brand img { height: 28px; width: auto; max-width: 9rem; object-fit: cont
 footer { padding: 0 1.5rem 1.5rem; text-align: center; font-size: 0.85rem; }
 footer a { color: var(--muted); text-decoration: none; padding: 0.3rem 0.8rem; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); transition: color 0.15s, border-color 0.15s; }
 footer a:hover { color: var(--accent); border-color: var(--accent); }
-main { max-width: 1200px; margin: 0 auto; padding: 1.2rem 1.5rem 4rem; }
+footer a + a { margin-left: 0.4rem; }
+main { flex: 1 0 auto; width: 100%; max-width: 1200px; margin: 0 auto; padding: 1.2rem 1.5rem 4rem; }
 
 h1 { font-size: 1.7rem; font-weight: 750; letter-spacing: -0.02em; margin: 0.2rem 0 1rem; }
 h2 { font-size: 1.1rem; font-weight: 650; letter-spacing: -0.01em; margin: 1.6rem 0 0.6rem; }
@@ -347,6 +351,10 @@ button.link { border: 0; background: none; box-shadow: none; color: var(--accent
 .settings-head .close { min-width: 40px; min-height: 40px; font-size: 1.1rem; border: 0; box-shadow: none; background: none; color: var(--muted); cursor: pointer; border-radius: 6px; }
 .settings-head .close:hover { color: var(--fg); background: var(--bg); }
 .settings { padding: 0.2rem 1.4rem 1.4rem; }
+.about { max-width: 38rem; }
+.about-author { color: var(--muted); }
+.about-links { padding-left: 1.2rem; }
+.about-links li + li { margin-top: 0.3rem; }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.1rem; }
 
 main.narrow { max-width: 44rem; }

@@ -773,6 +773,43 @@ test('shares: their own overlay from the header icon, with the number of uploads
   await page.locator('header').screenshot({ path: path.join(shots, 'header-shares-count.png') });
 });
 
+// footerAtBottom checks that the footer sits at the bottom of the window on a page with little on it.
+async function footerAtBottom(page) {
+  const gap = await page.evaluate(() => innerHeight - document.querySelector('footer').getBoundingClientRect().bottom);
+  expect(Math.abs(gap)).toBeLessThan(2);
+}
+
+test('about: from the footer, over the page; the footer is at the bottom of a short page', async ({ page }) => {
+  await page.goto('#/no-such-church');
+  await expect(page.getByText('No such church: no-such-church')).toBeVisible();
+  await footerAtBottom(page);
+  await page.screenshot({ path: path.join(shots, 'footer-short-page.png') });
+  await page.goto('http://localhost:8081/');
+  await expect(page.getByRole('heading', { name: 'Enter your code' })).toBeVisible();
+  await footerAtBottom(page);
+  await expect(page.locator('footer a')).toHaveCount(1); // the share page is for people outside: no about
+
+  await page.goto('#/first-church');
+  const dialog = page.getByRole('dialog', { name: 'About Sermon Studio' });
+  await page.locator('footer').getByRole('link', { name: 'About' }).click();
+  await expect(dialog.getByText('I made Sermon Studio for my own church.')).toBeVisible();
+  await expect(dialog.getByRole('link', { name: 'sermons@apphub.casa' })).toHaveAttribute('href', 'mailto:sermons@apphub.casa');
+  await expect(dialog.getByText('Gunnar Inge Gjøvik Sortland')).toBeVisible();
+  await expect(dialog.getByRole('link', { name: 'Gunnar Inge Gjøvik Sortland' })).toHaveCount(0); // the name is not a link
+  await expect(dialog.getByRole('link', { name: 'gunnaringe.sort.land' })).toHaveAttribute('href', 'https://gunnaringe.sort.land');
+  await expect(dialog.getByRole('link', { name: 'User guide' })).toHaveAttribute('href', /docs\/guide\.md$/);
+  await expect(page).toHaveURL(/#\/first-church$/); // still on the page it was opened over
+  await dialog.screenshot({ path: path.join(shots, 'about.png') });
+  await dialog.getByRole('button', { name: 'Close about' }).click();
+  await expect(dialog).toBeHidden();
+  // Its address opens it too, and closing goes back to the recordings.
+  await page.goto('#/about');
+  await expect(page).toHaveURL(/#\/first-church\/about$/);
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/#\/first-church$/);
+});
+
 test('addresses: the church comes first; old ones are moved', async ({ page }) => {
   await page.goto('');
   await expect(page).toHaveURL(/#\/first-church$/);
