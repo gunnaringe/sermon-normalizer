@@ -70,7 +70,7 @@ func TestLocales(t *testing.T) {
 
 	used := map[string]string{} // text → where
 	// Words chosen in the code by name, not written in a t() call.
-	for _, k := range []string{"revoked", "expired", "used up", "full", "left", "right"} {
+	for _, k := range []string{"paused", "expired", "used up", "full", "left", "right"} {
 		used[k] = "shares.js and editor.js (by name)"
 	}
 	err = fs.WalkDir(static, "static", func(path string, d fs.DirEntry, err error) error {

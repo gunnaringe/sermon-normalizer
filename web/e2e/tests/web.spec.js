@@ -885,21 +885,28 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await other.getByRole('button', { name: 'Continue' }).click();
   await expect(other.getByRole('alert')).toContainText('unknown code');
 
-  // Revoked: the code no longer works.
-  page.once('dialog', () => {});
-  await page.locator('.share', { hasText: 'Sound desk' }).getByRole('button', { name: 'Revoke' }).click();
-  await page.getByRole('dialog', { name: 'Revoke share' }).getByRole('button', { name: 'Revoke' }).click();
-  await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('revoked');
+  // Paused: the code does not work until the share is resumed.
+  const desk = page.locator('.share', { hasText: 'Sound desk' });
+  await desk.getByRole('button', { name: 'Pause' }).click();
+  await expect(desk).toContainText('paused');
+  await page.screenshot({ path: path.join(shots, 'share-paused.png') });
   await up.reload();
-  await expect(up.getByRole('alert')).toContainText('withdrawn');
+  await expect(up.getByRole('alert')).toContainText('paused');
+  await desk.getByRole('button', { name: 'Resume' }).click();
+  await expect(desk).toContainText('open');
+  await up.goto('about:blank'); // the page forgot the refused code; the same one works again
+  await up.goto(link);
+  await expect(up.getByText('2 more files')).toBeVisible();
+  await desk.getByRole('button', { name: 'Pause' }).click();
+  await expect(desk).toContainText('paused');
 
-  // An ended share can be cleaned away, one by one or all at once.
-  await expect(page.getByRole('button', { name: 'Remove 1 ended' })).toBeVisible();
-  await page.screenshot({ path: path.join(shots, 'share-ended.png') });
-  await page.locator('.share', { hasText: 'Sound desk' }).getByRole('button', { name: 'Remove', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Remove share' }).getByRole('button', { name: 'Remove' }).click();
-  await expect(page.locator('.share', { hasText: 'Sound desk' })).toHaveCount(0);
+  // Removing the ended ones leaves a paused share; it can be removed alone.
   await expect(page.getByRole('button', { name: /ended/ })).toHaveCount(0);
+  await desk.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Remove share' }).getByRole('button', { name: 'Remove' }).click();
+  await expect(desk).toHaveCount(0);
+  await up.reload();
+  await expect(up.getByRole('alert')).toContainText('unknown code');
 });
 
 test('a recording being imported shows that, not what is left to do', async ({ page }) => {
