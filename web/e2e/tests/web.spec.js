@@ -739,11 +739,38 @@ test('settings: an overlay over the page, closed by the cross, Esc or a click ou
   await expect(page.locator('.year').getByRole('button', { name: '2026-10-04', exact: true })).toBeVisible();
 
   // The address opens it over the recordings; closing goes back to them.
-  await page.goto('#/first-church/settings/shares');
-  await expect(dialog.getByRole('heading', { name: 'Shares' })).toBeInViewport();
+  await page.goto('#/first-church/settings');
+  await expect(dialog.getByRole('heading', { name: 'Default tags' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close settings' }).click();
   await expect(page).toHaveURL(/#\/first-church$/);
   await expect(dialog).toBeHidden();
+});
+
+test('shares: their own overlay from the header icon, with the number of uploads and downloads going on', async ({ page }) => {
+  await page.goto('#/first-church');
+  const icon = page.locator('header [data-nav=shares]');
+  await expect(icon).toBeVisible();
+  await expect(icon.locator('.count')).toBeHidden(); // nothing going on
+  const dialog = page.getByRole('dialog', { name: 'Shares' });
+  await icon.click();
+  await expect(dialog.getByRole('heading', { name: 'New upload share' })).toBeVisible();
+  await expect(page).toHaveURL(/#\/first-church$/); // still on the page it was opened over
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close shares' }).click();
+  await expect(dialog).toBeHidden();
+  // Its address, and where it was in the settings before, open it too; closing goes back to the recordings.
+  await page.goto('#/first-church/settings/shares');
+  await expect(page).toHaveURL(/#\/first-church\/shares$/);
+  await expect(dialog.getByRole('heading', { name: 'Made' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/#\/first-church$/);
+
+  // An upload going on shows on the icon.
+  await page.route('**/api/shares/active*', (route) => route.fulfill({ json: { active: 2 } }));
+  await page.reload();
+  await expect(icon.locator('.count')).toHaveText('2');
+  await expect(icon).toHaveAttribute('title', 'Shares: 2 uploads or downloads going on');
+  await page.locator('header').screenshot({ path: path.join(shots, 'header-shares-count.png') });
 });
 
 test('addresses: the church comes first; old ones are moved', async ({ page }) => {
@@ -755,7 +782,7 @@ test('addresses: the church comes first; old ones are moved', async ({ page }) =
   await expect(page).toHaveURL(/#\/first-church\/folder\/2026\/2026-10-04$/);
   await expect(page.getByRole('heading', { name: '2026-10-04' })).toBeVisible();
   await page.goto('#/shares');
-  await expect(page).toHaveURL(/#\/first-church\/settings\/shares$/);
+  await expect(page).toHaveURL(/#\/first-church\/shares$/);
   await page.goto('#/no-such-church/folder/x');
   await expect(page.getByText('No such church: no-such-church')).toBeVisible();
 });
@@ -822,8 +849,8 @@ test('header: several churches: a quiet dropdown', async ({ page }) => {
 });
 
 test('shares: make a code in the studio, send a recording with the link', async ({ page, context }) => {
-  await page.goto('#/shares'); // the old address leads to the shares in the settings
-  await expect(page).toHaveURL(/#\/first-church\/settings\/shares$/);
+  await page.goto('#/shares'); // the old address leads to the shares
+  await expect(page).toHaveURL(/#\/first-church\/shares$/);
   await expect(page.getByRole('heading', { name: 'Shares' })).toBeInViewport();
   await page.locator('input[name=label]').fill('Sound desk');
   await page.locator('input[name=maxUploads]').fill('3');
@@ -850,7 +877,7 @@ test('shares: make a code in the studio, send a recording with the link', async 
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
   await dialog.getByRole('button', { name: 'OK' }).click();
   await expect(page.locator('.share', { hasText: 'Sound desk' })).toContainText('open');
-  await page.locator('#shares').screenshot({ path: path.join(shots, 'settings-shares.png') });
+  await page.locator('#shares').screenshot({ path: path.join(shots, 'shares.png') });
 
   // The church's own logo, if it has one, is shown once the code is in (and not before).
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#b00020"/></svg>';
@@ -967,7 +994,7 @@ test('download shares: share a finished sermon from its row, download it on the 
   await down.screenshot({ path: path.join(shots, 'share-download.png') });
 
   // Used up: under Ended in the studio, removed automatically after the days the church chose.
-  await page.goto('#/first-church/settings/shares');
+  await page.goto('#/first-church/shares');
   const endedGroup = page.locator('details.share-group.ended');
   await expect(endedGroup.locator('> summary')).toHaveText(/^Ended \(\d+\)$/);
   await endedGroup.locator('> summary').click();
@@ -978,8 +1005,8 @@ test('download shares: share a finished sermon from its row, download it on the 
   await expect(row).toContainText(/Removed automatically on \d{4}-\d{2}-\d{2}\./);
   await row.locator('summary', { hasText: 'Downloads' }).click();
   await expect(row.locator('table')).toContainText('2025-12-24 Christmas.mp3');
-  await page.locator('#shares h3', { hasText: 'Made' }).evaluate((el) => el.scrollIntoView({ block: 'start' }));
-  await page.screenshot({ path: path.join(shots, 'settings-shares-groups.png') });
+  await page.locator('#shares h2', { hasText: 'Made' }).evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: path.join(shots, 'shares-groups.png') });
   await page.locator('select[name=ended-days]').selectOption({ label: 'never' });
   await expect(endedGroup).toContainText('Ended shares are kept until you remove them.');
   await expect(row).not.toContainText('Removed automatically');

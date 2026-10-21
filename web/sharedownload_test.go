@@ -122,7 +122,7 @@ func TestShareDownload(t *testing.T) {
 		t.Errorf("one already counted still works when used up: %d", c)
 	}
 	list := decode[struct{ Shares []shareView }](t, do(st.studio, "GET", "/api/shares", ""))
-	if s := list.Shares[0]; s.Kind != "download" || s.Count != 2 || len(s.Log) != 2 || s.Log[0].Name != "2026-10-18 Advent.flac" || s.Downloading != 2 || s.Missing {
+	if s := list.Shares[0]; s.Kind != "download" || s.Count != 2 || len(s.Log) != 2 || s.Log[0].Name != "2026-10-18 Advent.flac" || s.Resumable != 2 || s.Downloading != 0 || s.Missing {
 		t.Errorf("in the studio: %+v", s)
 	}
 	// A wrong ticket counts as a wrong code; an expired one has ended.
@@ -255,19 +255,12 @@ func TestShareDownloadOutlastsTheWriteTimeout(t *testing.T) {
 	srv.Start()
 	defer srv.Close()
 
-	req, _ := http.NewRequest("POST", srv.URL+"/api/share/downloads", strings.NewReader(`{"format":"mp3"}`))
-	req.Header.Set("Share-Code", code)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
+	// Counted in-process: only the file goes through the listener with the short timeout.
+	c, addr := st.download(code, "1.1.1.1", "mp3")
+	if c != http.StatusCreated {
+		t.Fatalf("download: %d", c)
 	}
-	var out struct{ URL string }
-	json.NewDecoder(resp.Body).Decode(&out)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("download: %d", resp.StatusCode)
-	}
-	resp, err = http.Get(srv.URL + "/" + out.URL)
+	resp, err := http.Get(srv.URL + "/" + addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,5 +277,45 @@ func TestShareDownloadOutlastsTheWriteTimeout(t *testing.T) {
 	}
 	if got != int64(len(big)) {
 		t.Errorf("got %d of %d bytes", got, len(big))
+	}
+}
+
+// The number on the shares icon: uploads going on (a chunk now or in the last minutes) and files being sent.
+func TestSharesActive(t *testing.T) {
+	st, code := downloadTest(t, `{"kind":"download","recording":"2026/2026-10-18 Advent","formats":["mp3"],"label":"Advent"}`)
+	active := func() int {
+		return decode[struct{ Active int }](t, do(st.studio, "GET", "/api/shares/active", "")).Active
+	}
+	if n := active(); n != 0 {
+		t.Errorf("nothing going on: %d", n)
+	}
+	up, _ := st.makeShare(`{"label":"Sound desk","allTypes":true}`)
+	id := decode[struct{ ID string }](t, st.start(up, "1.1.1.1", "x.wav", 8192)).ID
+	if w := st.call("PUT", "/api/share/uploads/"+id+"?offset=0", up, "1.1.1.1", wav(4096)); w.Code != http.StatusOK {
+		t.Fatalf("chunk: %d %s", w.Code, w.Body)
+	}
+	if n := active(); n != 1 {
+		t.Errorf("an upload going on: %d", n)
+	}
+	old := time.Now().Add(-time.Hour)
+	os.Chtimes(filepath.Join(st.church, "Innboks", ".share-"+id+".partial"), old, old)
+	if n := active(); n != 0 {
+		t.Errorf("an upload that stopped an hour ago: %d", n)
+	}
+	// A file being sent counts while it is.
+	_, addr := st.download(code, "1.1.1.1", "mp3")
+	st.app.shareMu.Lock()
+	shareID := st.app.tenants[0].shares[0].ID
+	st.app.share.sending[shareID]++ // as during a long response
+	st.app.shareMu.Unlock()
+	if n := active(); n != 1 {
+		t.Errorf("a download going on: %d", n)
+	}
+	st.fetch(addr, "")
+	st.app.shareMu.Lock()
+	n := st.app.share.sending[shareID]
+	st.app.shareMu.Unlock()
+	if n != 1 {
+		t.Errorf("a finished response is not counted down: %d", n)
 	}
 }

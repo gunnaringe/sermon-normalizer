@@ -119,7 +119,7 @@ test('settings and a share for people without a login', async ({ page, context }
   await page.goto('#/settings');
   await expect(page.getByRole('heading', { name: 'Default tags' })).toBeVisible();
   await shot(page, '12-settings');
-  await page.goto('#/settings/shares');
+  await page.goto('#/shares');
   await page.locator('input[name=label]').fill('Sound desk');
   await page.locator('input[name=maxUploads]').fill('5');
   await page.locator('input[name=expires]').fill('2026-12-31');
@@ -128,7 +128,7 @@ test('settings and a share for people without a login', async ({ page, context }
   const link = await dialog.locator('.share-link').textContent();
   await shot(page, '13-share-made');
   await dialog.getByRole('button', { name: 'OK' }).click();
-  await shot(page, '14-shares', page.locator('#shares'));
+  await shot(page, '14-shares');
 
   // The public page: no login, the code from the link or typed.
   const visitor = await context.newPage();

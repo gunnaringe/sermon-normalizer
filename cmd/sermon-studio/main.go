@@ -41,7 +41,7 @@ func run() error {
 	trashDays := flag.Int("trash-days", web.DefaultTrashDays, "keep a deleted recording in the trash for this many days")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
 	ffBin := flag.String("ffmpeg", "ffmpeg", "path to ffmpeg")
-	shareListen := flag.String("share-listen", "", "address for the public upload page, where recordings are sent with a code made in the studio (Settings → Shares); \"\" = off")
+	shareListen := flag.String("share-listen", "", "address for the public share page, where recordings are sent and finished sermons downloaded with a code made in the studio (Shares, in the header); \"\" = off")
 	shareURL := flag.String("share-url", "", "the upload page's public address (e.g. https://upload-sermons.example.org/), for share links")
 	shareIPHeader := flag.String("share-ip-header", "", "header the proxy puts the client's address in (Cloudflare: CF-Connecting-IP); used for rate limits")
 	var limits web.RateLimits

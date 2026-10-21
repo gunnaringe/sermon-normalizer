@@ -609,6 +609,11 @@ export const nb = {
   "An ended share is removed automatically {n} days after it ended.": "En avsluttet deling fjernes automatisk {n} dager etter at den ble avsluttet.",
   "Ended shares are kept until you remove them.": "Avsluttede delinger beholdes til du fjerner dem.",
   "choose how long ended shares are kept from the list": "velg fra listen hvor lenge avsluttede delinger beholdes",
+  "Close shares": "Lukk delinger",
+  "Shares: {n} upload or download going on": "Delinger: {n} opplasting eller nedlasting pågår",
+  "Shares: {n} uploads or downloads going on": "Delinger: {n} opplastinger eller nedlastinger pågår",
+  "All shares": "Alle delinger",
+  "New upload share": "Ny opplastingsdeling",
 };
 
 export const nn = {
@@ -1218,4 +1223,9 @@ export const nn = {
   "An ended share is removed automatically {n} days after it ended.": "Ei avslutta deling blir fjerna automatisk {n} dagar etter at ho vart avslutta.",
   "Ended shares are kept until you remove them.": "Avslutta delingar blir haldne til du fjernar dei.",
   "choose how long ended shares are kept from the list": "vel frå lista kor lenge avslutta delingar blir haldne",
+  "Close shares": "Lukk delingar",
+  "Shares: {n} upload or download going on": "Delingar: {n} opplasting eller nedlasting går føre seg",
+  "Shares: {n} uploads or downloads going on": "Delingar: {n} opplastingar eller nedlastingar går føre seg",
+  "All shares": "Alle delingar",
+  "New upload share": "Ny opplastingsdeling",
 };

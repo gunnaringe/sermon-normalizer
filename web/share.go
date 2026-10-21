@@ -299,7 +299,8 @@ type shareView struct {
 	Recording    string   `json:"recording,omitempty"` // a download share's
 	Formats      []string `json:"formats,omitempty"`
 	MaxDownloads int      `json:"maxDownloads"`
-	Downloading  int      `json:"downloading"`       // downloads that can still be resumed
+	Downloading  int      `json:"downloading"`       // files being sent now
+	Resumable    int      `json:"resumable"`         // counted downloads that can still be fetched or resumed
 	Missing      bool     `json:"missing,omitempty"` // its recording is not there (in the trash)
 
 	Ended    *time.Time `json:"ended,omitempty"`    // when it ended (expired, used up, full)
@@ -320,7 +321,7 @@ func (sh *Share) view(now time.Time) shareView {
 		v.Kind, v.Types, v.MaxFileSize, v.Recording, v.Formats, v.MaxDownloads = kindDownload, []string{}, 0, sh.Recording, sh.Formats, sh.MaxDownloads
 		for _, tk := range sh.Tickets {
 			if now.Before(tk.Expires) {
-				v.Downloading++
+				v.Resumable++
 			}
 		}
 	} else {
@@ -365,6 +366,7 @@ func (a *App) handleShares(w http.ResponseWriter, r *http.Request) {
 		}
 		v := sh.view(now)
 		v.Missing = sh.Kind == kindDownload && found[sh] == ""
+		v.Downloading = a.share.sending[sh.ID]
 		if e := sh.endedAt(now); !e.IsZero() {
 			v.Ended = &e
 			if days > 0 {
@@ -381,6 +383,39 @@ func (a *App) handleShares(w http.ResponseWriter, r *http.Request) {
 		"inbox": t.srv.cfg.Inbox != "", "defaultFileSize": defaultShareFileSize,
 		"endedDays": days, "endedDaysChoices": endedSharesChoices,
 	})
+}
+
+// activeFor is how long after its last chunk an upload counts as going on, for the header's number.
+const activeFor = 2 * time.Minute
+
+// handleSharesActive is how many uploads and downloads of the church's shares are going on now, for the
+// number on the shares icon: GET api/shares/active → {active}. An upload counts while a chunk is being
+// received or came in the last activeFor; one that stopped (the page was closed) does not.
+func (a *App) handleSharesActive(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	a.shareMu.Lock()
+	type upload struct {
+		path string
+		busy bool
+	}
+	var uploads []upload
+	n := 0
+	for _, sh := range t.shares {
+		n += a.share.sending[sh.ID]
+		for uid := range sh.Pending {
+			uploads = append(uploads, upload{partialPath(t, uid), a.share.busy[uid]})
+		}
+	}
+	a.shareMu.Unlock()
+	for _, u := range uploads {
+		if st, err := os.Stat(u.path); u.busy || (err == nil && time.Since(st.ModTime()) < activeFor) {
+			n++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"active": n})
 }
 
 // handleEndedSharesDays sets how long the church keeps a share that has ended: PUT api/shares/ended-days {days}

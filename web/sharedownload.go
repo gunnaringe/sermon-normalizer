@@ -352,6 +352,16 @@ func (a *App) handleShareDownloadFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errors.New("this file is not there now; ask the church that gave you the code"))
 		return
 	}
+	a.shareMu.Lock()
+	a.share.sending[sh.ID]++
+	a.shareMu.Unlock()
+	defer func() {
+		a.shareMu.Lock()
+		if a.share.sending[sh.ID]--; a.share.sending[sh.ID] <= 0 {
+			delete(a.share.sending, sh.ID)
+		}
+		a.shareMu.Unlock()
+	}()
 	// The listener's write timeout is for short requests; a sermon to a slow phone takes longer.
 	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(downloadWriteFor))
 	w.Header().Set("Content-Type", downloadTypes[tk.Format])

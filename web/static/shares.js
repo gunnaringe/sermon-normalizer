@@ -1,8 +1,8 @@
 // Shares: codes that let people without a login send recordings to this
 // church's inbox from the public share page, or download one sermon (made on
 // the recording, sermons.js). A code is shown once, when the share is made.
-// A section of the settings; sharesView fills its box.
-import { api, h, formatSize, formatDate, formatDateTime } from './util.js';
+// They have their own overlay (the icon in the header); sharesView fills its box.
+import { api, h, href, formatSize, formatDate, formatDateTime } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
 import { t, tn } from './i18n.js';
 
@@ -124,11 +124,11 @@ export async function sharesView(box) {
   } }, t('Make share'));
 
   box.replaceChildren(
-    h('h2', {}, t('Shares')),
     h('p', { class: 'muted' }, t('A share is a code that lets someone without a login send recordings on the upload page'), data.url ? [' (', h('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.url), ')'] : '',
       '. ' + t('The recordings arrive in this church like any other. Give people the code or the link.') + ' ' +
       t('The code is shown only once, when you make the share.') + ' ' +
       t('To let someone download a finished sermon, use Share for download… on the recording.')),
+    h('h2', {}, t('New upload share')),
     data.inbox ? h('div', { class: 'panel share-form' },
       h('label', { for: 'share-label' }, t('Name')), Object.assign(label, { id: 'share-label' }),
       h('span', {}, t('File types')), h('span', {}, h('label', { class: 'check' }, allTypes, ' ' + t('All supported audio')), h('br'), typeList),
@@ -138,7 +138,7 @@ export async function sharesView(box) {
       h('label', {}, t('Expires')), expires,
       h('div', { class: 'wide' }, create, ' ', status))
       : h('p', { class: 'error' }, t('Shares need an inbox folder, and this church has none.')),
-    h('h3', {}, t('Made')),
+    h('h2', {}, t('Made')),
     keepEnded(data, refresh),
     ...shareGroups(data, refresh));
 }
@@ -160,7 +160,8 @@ function keepEnded(data, refresh) {
 export async function recordingShares(path, box) {
   const data = await api('GET', 'api/shares?recording=' + encodeURIComponent(path));
   const refresh = () => recordingShares(path, box);
-  box.replaceChildren(...(data.shares.length ? [h('h4', {}, t('Shared for download')), ...shareGroups(data, refresh, { compact: true })] : []));
+  box.replaceChildren(...(data.shares.length ? [h('h4', {}, t('Shared for download'), ' ', h('a', { class: 'all-shares', href: href('shares') }, t('All shares'))),
+    ...shareGroups(data, refresh, { compact: true })] : []));
 }
 
 // shareGroups are the shares in two folds: the open and paused ones, and the ended ones (expired, used
@@ -177,7 +178,7 @@ function shareGroups(data, refresh, { compact = false } = {}) {
   const pause = (s) => act(async () => {
     if (s.uploading && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
       body: t('Uploads in progress with the code of "{label}" stop. It takes uploads again when you resume it.', { label: s.label }) })) return false;
-    if (s.downloading && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
+    if (s.resumable && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
       body: t('Downloads that have started with the code of "{label}" stop. It gives downloads again when you resume it.', { label: s.label }) })) return false;
     await api('POST', `api/shares/${encodeURIComponent(s.id)}/pause`);
   });

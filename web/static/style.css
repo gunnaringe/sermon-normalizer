@@ -115,6 +115,11 @@ header .icon { box-shadow: none; display: inline-flex; align-items: center; gap:
 header .icon svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 header .icon:hover, header .icon.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 header .icon .ask { display: none; }
+/* the number of uploads and downloads going on, on the shares icon */
+header .shares-icon { position: relative; }
+header .shares-icon .count { position: absolute; top: -0.35rem; right: -0.45rem; min-width: 1.1rem; height: 1.1rem; padding: 0 0.25rem;
+  border-radius: 999px; background: var(--accent); color: #fff; font-size: 0.68rem; font-weight: 700; line-height: 1.1rem; text-align: center; }
+header .shares-icon .count[hidden] { display: none; }
 header .icon.asking { color: var(--error); border-color: var(--error); padding: 0.3rem 0.6rem; }
 header .icon.asking .ask { display: inline; }
 header button.link { background: none; box-shadow: none; border: 0; padding: 0; font: inherit; color: var(--muted); cursor: pointer; }
@@ -363,6 +368,7 @@ details.share-group > summary { color: var(--fg); font-weight: 600; margin: 0.8r
 .share.compact { padding-top: 0.2rem; padding-bottom: 0.2rem; }
 .share.compact p { margin: 0.4rem 0; }
 .recording-shares h4 { margin: 1rem 0 0; }
+.recording-shares .all-shares { font-weight: 400; font-size: 0.9em; margin-left: 0.5rem; }
 
 /* Touch screens and phones: no keyboard, fingers instead of a mouse. */
 @media (pointer: coarse), (max-width: 640px) {

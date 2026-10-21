@@ -182,7 +182,8 @@ finished sermon, on a separate, public share page, with a code. A share is one o
 
 ### Sending recordings
 
-People without a login send recordings to a church's inbox with a code. **Settings → Shares** in the studio makes one: a name, the file
+People without a login send recordings to a church's inbox with a code. **Shares** in the studio (the share icon in the
+header, next to the gear) makes one: a name, the file
 types (all supported audio, or some of them), the max file size, and optionally how many files, how much
 in all and an expiry. The code (`XXXX-XXXX-XXXX-XXXX`, 80 bits) and a link with it (`<share-url>#code=...`)
 are shown once, with a Share button for the link (hold the code to copy it); the church keeps only a hash,
@@ -192,7 +193,8 @@ resume it, so the same code works again. A paused share, or one that has ended (
 can be removed, with its list of uploads; its code then works no more, and the files it brought stay.
 **Remove ended** removes all the ended ones at once, not the paused ones.
 
-The list has two folds: **Open** (open and paused shares) and **Ended** (expired, used up or full),
+The share icon shows how many uploads and downloads are going on now (an upload counts while chunks
+arrive), checked every 30 seconds. The list has two folds: **Open** (open and paused shares) and **Ended** (expired, used up or full),
 folded. An ended share is removed automatically some days after it ended: 30 unless you choose 7, 90,
 365 or never (**Remove ended shares after**, kept per church in `church.json`). It ended at its expiry,
 or at the upload or download that used it up; a paused share is never removed automatically. Each
@@ -215,7 +217,7 @@ removed once they have sat untouched for a day; the server looks every hour.
 **Share for download…** on a finished sermon (in its row on the recordings page) makes a code that lets
 someone without a login download it: a name, which of the files that have been made (MP3 to begin with),
 and optionally how many downloads and an expiry. The code and the link are shown once, as for uploads,
-and the share is listed in **Settings → Shares** with its downloads (file, size, address, time); it is
+and the share is listed under **Shares** with its downloads (file, size, address, time); it is
 paused, resumed and removed the same way. The sermon's row lists its own download shares too, under
 **Shared for download**, where they can be paused and removed as well.
 
