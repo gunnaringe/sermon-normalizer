@@ -70,8 +70,9 @@ Each can have a label, which shows on the waveform.
   selection and can be typed in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed).
   The sermon can be **several sections** (below). **Cut out:** parts of the sermon that should
   go, such as a song in the middle (below).
-  Keys: `space` play, `s`/`e` start/end at the playhead (of the section there, or the next/previous one), `c` cut out here, `[`/`]` previous/next
-  silence, ←/→ 1 s (shift 0.1 s), `p` play the sermon.
+  Keys: `space` play, `s`/`e` start/end at the playhead (of the section there, or the next/previous one), `c` start or end a cut, `x` split,
+  `[`/`]` previous/next silence, ←/→ 1 s (shift 0.1 s), `p` play the sermon, `ctrl+z` undo; *Keys…* under the waveform (or `?`)
+  lists them all.
 - **On a phone:** every page fits the screen. Drag a finger along the waveform to select (up and
   down still scrolls the page); the section edges are wider to grab; cut with *Cut out here* and *End the cut here*, and
   zoom with the buttons.

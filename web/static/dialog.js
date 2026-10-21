@@ -45,6 +45,11 @@ export function alertDialog({ title = t('Something went wrong'), body }) {
   return ask({ title, body: h('p', {}, body), buttons: [{ label: t('OK'), value: 'ok', class: 'primary' }] });
 }
 
+// infoDialog shows any content (a table, several paragraphs) with one button.
+export function infoDialog({ title, body }) {
+  return ask({ title, body, buttons: [{ label: t('OK'), value: 'ok', class: 'primary' }] });
+}
+
 // promptDialog asks for a line of text and resolves with it, or null if cancelled.
 export function promptDialog({ title, label, value = '', placeholder = '', confirm = t('OK'), maxlength = 200 }) {
   const input = h('input', { type: 'text', value, placeholder, maxlength, 'aria-label': label || title });
