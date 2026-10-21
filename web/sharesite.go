@@ -322,6 +322,8 @@ func magicOK(name string, head []byte) bool {
 		return at(0, "OggS")
 	case ".wma": // ASF
 		return at(0, "\x30\x26\xB2\x75\x8E\x66\xCF\x11")
+	case ".caf": // Apple's Core Audio Format
+		return at(0, "caff")
 	case ".mka", ".mkv", ".webm": // EBML
 		return at(0, "\x1A\x45\xDF\xA3")
 	}

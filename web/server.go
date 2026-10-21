@@ -331,7 +331,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	types := map[string]string{".flac": "audio/flac", ".mp3": "audio/mpeg", ".opus": "audio/ogg", ".wav": "audio/wav",
 		// what else a recording may be kept as (normalizer.InputTypes)
 		".mka": "audio/x-matroska", ".aiff": "audio/aiff", ".aif": "audio/aiff", ".m4a": "audio/mp4", ".aac": "audio/aac",
-		".ogg": "audio/ogg", ".wma": "audio/x-ms-wma", ".mp4": "video/mp4", ".mov": "video/quicktime",
+		".ogg": "audio/ogg", ".wma": "audio/x-ms-wma", ".caf": "audio/x-caf", ".mp4": "video/mp4", ".mov": "video/quicktime",
 		".mkv": "video/x-matroska", ".webm": "video/webm"}
 	ctype, known := types[strings.ToLower(filepath.Ext(abs))]
 	if !known {

@@ -339,7 +339,7 @@ func TestIntegrationInboxWatcher(t *testing.T) {
 	}
 }
 
-// Recordings of other types: an MP3 with a cover picture and an M4A are kept
+// Recordings of other types: an MP3 with a cover picture, an M4A and a CAF are kept
 // as they are, an AIFF becomes FLAC and a video's sound is copied out as it
 // arrives; each is cut into an MP3 that has the sound and nothing else.
 func TestIntegrationInputTypes(t *testing.T) {
@@ -361,6 +361,7 @@ func TestIntegrationInputTypes(t *testing.T) {
 		{".mp3", ".mp3", []string{"-i", src, "-i", cover, "-map", "0:a", "-map", "1:v", "-c:a", "libmp3lame", "-b:a", "96k",
 			"-c:v", "png", "-disposition:v", "attached_pic"}},
 		{".m4a", ".m4a", []string{"-i", src, "-c:a", "aac", "-b:a", "96k"}},
+		{".caf", ".caf", []string{"-i", src, "-c:a", "alac"}},
 		{".aiff", ".flac", []string{"-i", src, "-c:a", "pcm_s16be"}},
 		{".mp4", ".mka", []string{"-f", "lavfi", "-i", "testsrc=s=160x120:r=5:d=100", "-i", src, "-map", "0:v", "-map", "1:a",
 			"-c:v", "mpeg4", "-c:a", "aac", "-b:a", "96k"}},
