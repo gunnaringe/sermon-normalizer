@@ -240,8 +240,21 @@ const EMAIL = 'sermon-studio@apphub.casa';
 
 // aboutView tells why the studio was made, where to write, and where to find more; signed by hand (fonts/signature.woff2), a link
 // to the author's page.
+const ABOUT_ICONS = { // Feather icons (MIT), drawn with the text colour
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  guide: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  ideas: '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+  licence: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+};
+
 function aboutView(box) {
   const link = (url, text) => h('a', { href: url, target: '_blank', rel: 'noopener' }, text);
+  const chip = (icon, url, text, title) => {
+    const a = link(url, text);
+    a.insertAdjacentHTML('afterbegin', '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' + ABOUT_ICONS[icon] + '</svg>');
+    if (title) a.title = title;
+    return h('li', {}, a);
+  };
   const [before, after] = t('Questions, or just want to say hi? Write to {email}.', { email: '\0' }).split('\0');
   box.replaceChildren(h('div', { class: 'about' },
     h('p', {}, t('I made Sermon Studio for my own church. Every Sunday the service is recorded, and someone has to cut out the sermon, even out the sound and publish it, often late in the evening in a busy week. I wanted a way to do that which is easy and quick: open the recording, mark the sermon, press Save.')),
@@ -249,10 +262,10 @@ function aboutView(box) {
     h('p', {}, before, h('a', { href: 'mailto:' + EMAIL }, EMAIL), after),
     h('p', {}, h('a', { class: 'signature', href: HOME, target: '_blank', rel: 'noopener', title: HOME.replace('https://', '') }, AUTHOR)),
     h('ul', { class: 'about-links' },
-      h('li', {}, link(REPO, t('Source code on GitHub'))),
-      h('li', {}, link(REPO + '/blob/main/docs/guide.md', t('User guide'))),
-      h('li', {}, link(REPO + '/issues', t('Report a problem or suggest an idea'))),
-      h('li', {}, link(REPO + '/blob/main/LICENSE', t('Licence: Apache 2.0'))))));
+      chip('code', REPO, t('Source code'), t('Source code on GitHub')),
+      chip('guide', REPO + '/blob/main/docs/guide.md', t('User guide')),
+      chip('ideas', REPO + '/issues', t('Problems and ideas'), t('Report a problem or suggest an idea')),
+      chip('licence', REPO + '/blob/main/LICENSE', t('Licence: Apache 2.0')))));
 }
 
 // settingsView edits the church: its name, default tags (templates with
