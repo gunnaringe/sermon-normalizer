@@ -32,8 +32,9 @@ Sermon Studio does it in the browser. Drop in the recording, mark what to keep, 
 ## What it does
 
 **Cut on a waveform.** See the whole service, jump between silences, drag out the parts to keep.
-Keep one section or several, cut out a cough or a song in the middle, and label them. Hear the
-join before you commit. Nothing is ever cut from the original.
+Keep one section or several, cut out a cough or a song in the middle, and label them. Cut while you
+listen: press once where a part starts and again where it ends. Hear the join before you commit, and
+undo any step. Nothing is ever cut from the original.
 
 <p align="center"><img src="docs/img/05-sections-list.png" alt="Sections and cuts, with labels and exact times" width="760"></p>
 

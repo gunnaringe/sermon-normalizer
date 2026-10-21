@@ -7,8 +7,8 @@ import path from 'node:path';
 const DATA = process.env.DATA;
 const OUT = process.env.OUT;
 const shot = async (page, name, target = page) => {
-  // The header sticks to the top of the window: in a picture of one part of the page it would sit on top of it.
-  const style = target !== page ? await page.addStyleTag({ content: 'header { position: static !important; }' }) : null;
+  // The header and the Save bar stick to the window: in a picture of one part of the page they would sit on top of it.
+  const style = target !== page ? await page.addStyleTag({ content: 'header, .save-bar { position: static !important; }' }) : null;
   await page.waitForTimeout(400); // a dialog fades in
   await target.screenshot({ path: path.join(OUT, name + '.png') });
   await style?.evaluate((el) => el.remove());
