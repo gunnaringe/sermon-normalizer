@@ -41,7 +41,7 @@ const yearOf = (e) => e.name.slice(0, 4);
 // recordingsView fills view with the page: top (the upload) first, then the
 // search and the list. It returns { open(path) }, which opens one recording
 // (what a link to it does). emptyNote is shown when there is none yet.
-export async function recordingsView(view, { top, church, emptyNote }) {
+export async function recordingsView(view, { top, church, emptyNote, shares = false }) {
   const data = await api('GET', 'api/recordings');
   const all = data.recordings;
   const newMs = data.newFor * 1000;
@@ -86,6 +86,7 @@ export async function recordingsView(view, { top, church, emptyNote }) {
         detail = h('tr', { class: 'detail-row' }, h('td', { colspan: 2 }, sermonDetail(e, {
           suggestions,
           trashDays: data.trashDays,
+          shares,
           deleted: () => { all.splice(all.indexOf(e), 1); render(); },
           changed: () => { for (const draw of chips.get(e.path) || []) draw(); },
         })));

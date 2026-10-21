@@ -19,10 +19,11 @@ import (
 	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
-// Shares let people without a login send recordings to a church's inbox:
-// an admin makes a share in the studio and hands out its code (or a link
-// with the code in the fragment); the public upload page (ShareHandler, on
-// its own listener) takes the code and nothing else. The code is only shown
+// Shares let people without a login send recordings to a church's inbox, or
+// download one finished sermon (a download share, sharedownload.go): an admin
+// makes a share in the studio and hands out its code (or a link with the code
+// in the fragment); the public share page (ShareHandler, on its own listener)
+// takes the code and nothing else. The code is only shown
 // when it is made; a church keeps the SHA-256 of it in <church>/shares.json.
 
 const sharesFile = "shares.json"
@@ -48,8 +49,9 @@ const (
 // Share is one code and what it allows.
 type Share struct {
 	ID          string     `json:"id"`
-	Hash        string     `json:"hash"` // SHA-256 of the code, hex
-	Hint        string     `json:"hint"` // the code's last four characters, to tell shares apart
+	Kind        string     `json:"kind,omitempty"` // "" = uploads to the inbox, kindDownload = downloads of one recording
+	Hash        string     `json:"hash"`           // SHA-256 of the code, hex
+	Hint        string     `json:"hint"`           // the code's last four characters, to tell shares apart
 	Label       string     `json:"label"`
 	Created     time.Time  `json:"created"`
 	Expires     *time.Time `json:"expires,omitempty"`
@@ -60,15 +62,23 @@ type Share struct {
 	AllTypes    bool       `json:"allTypes,omitempty"` // every type the inbox takes, also ones added later
 	Paused      bool       `json:"paused,omitempty"`   // takes no uploads until resumed
 
+	// A download share: the recording (its path, kept up to date, and its id in recording.json), the
+	// formats it gives, and how many downloads it allows (0 = no limit). Count and Log are its downloads.
+	Recording    string                     `json:"recording,omitempty"`
+	RecordingID  string                     `json:"recordingId,omitempty"`
+	Formats      []string                   `json:"formats,omitempty"`
+	MaxDownloads int                        `json:"maxDownloads,omitempty"`
+	Tickets      map[string]*downloadTicket `json:"tickets,omitempty"` // by ticket id
+
 	Count   int                       `json:"count"` // finished uploads
 	Bytes   int64                     `json:"bytes"`
 	Log     []ShareUpload             `json:"log,omitempty"`
 	Pending map[string]*pendingUpload `json:"pending,omitempty"` // by upload id
 }
 
-// ShareUpload is a finished upload, as listed to the admin.
+// ShareUpload is a finished upload, or a download of a download share, as listed to the admin.
 type ShareUpload struct {
-	Name string    `json:"name"` // as it arrived in the inbox
+	Name string    `json:"name"` // as it arrived in the inbox; the file downloaded
 	Size int64     `json:"size"`
 	IP   string    `json:"ip"`
 	Time time.Time `json:"time"`
@@ -85,13 +95,44 @@ type pendingUpload struct {
 	Started  time.Time `json:"started"`
 }
 
+// defaultEndedSharesDays is how long a share that has ended is kept, unless the church chose otherwise;
+// endedSharesChoices are what it can choose (0 = keep them).
+const defaultEndedSharesDays = 30
+
+var endedSharesChoices = []int{7, 30, 90, 365, 0}
+
+// endedSharesDays is how many days the church keeps a share that has ended; 0 = until it is removed by hand.
+func (a *App) endedSharesDays(t *tenant) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if d := t.cfg.EndedSharesDays; d != nil {
+		return *d
+	}
+	return defaultEndedSharesDays
+}
+
+// endedAt is when a share ended: its expiry, or its last upload or download when that used it up or
+// filled it. Zero while it is open or only paused.
+func (sh *Share) endedAt(now time.Time) time.Time {
+	switch sh.state(now) {
+	case "expired":
+		return *sh.Expires
+	case "used up", "full":
+		if n := len(sh.Log); n > 0 {
+			return sh.Log[n-1].Time
+		}
+		return sh.Created
+	}
+	return time.Time{}
+}
+
 // state says whether a share takes uploads: "" if it does, else why not. A
 // paused share that has also ended says how it ended: resuming would not open it.
 func (sh *Share) state(now time.Time) string {
 	switch {
 	case sh.Expires != nil && now.After(*sh.Expires):
 		return "expired"
-	case sh.MaxUploads > 0 && sh.Count >= sh.MaxUploads:
+	case sh.MaxUploads > 0 && sh.Count >= sh.MaxUploads, sh.MaxDownloads > 0 && sh.Count >= sh.MaxDownloads:
 		return "used up"
 	case sh.MaxTotal > 0 && sh.Bytes >= sh.MaxTotal:
 		return "full"
@@ -239,6 +280,7 @@ func (a *App) findShare(code string) (*tenant, *Share) {
 // shareView is a share as the admin sees it.
 type shareView struct {
 	ID          string        `json:"id"`
+	Kind        string        `json:"kind"`
 	Hint        string        `json:"hint"`
 	Label       string        `json:"label"`
 	Created     time.Time     `json:"created"`
@@ -253,6 +295,16 @@ type shareView struct {
 	Bytes       int64         `json:"bytes"`
 	Uploading   int           `json:"uploading"`
 	Log         []ShareUpload `json:"log"`
+
+	Recording    string   `json:"recording,omitempty"` // a download share's
+	Formats      []string `json:"formats,omitempty"`
+	MaxDownloads int      `json:"maxDownloads"`
+	Downloading  int      `json:"downloading"`       // files being sent now
+	Resumable    int      `json:"resumable"`         // counted downloads that can still be fetched or resumed
+	Missing      bool     `json:"missing,omitempty"` // its recording is not there (in the trash)
+
+	Ended    *time.Time `json:"ended,omitempty"`    // when it ended (expired, used up, full)
+	RemoveAt *time.Time `json:"removeAt,omitempty"` // when it is removed by itself, if the church does that
 }
 
 func (sh *Share) view(now time.Time) shareView {
@@ -262,8 +314,20 @@ func (sh *Share) view(now time.Time) shareView {
 	if log == nil {
 		log = []ShareUpload{}
 	}
-	return shareView{sh.ID, sh.Hint, sh.Label, sh.Created, sh.Expires, sh.MaxUploads, sh.MaxFileSize,
-		sh.MaxTotal, sh.types(), sh.AllTypes, sh.state(now), sh.Count, sh.Bytes, n, log}
+	v := shareView{ID: sh.ID, Kind: sh.Kind, Hint: sh.Hint, Label: sh.Label, Created: sh.Created, Expires: sh.Expires,
+		MaxUploads: sh.MaxUploads, MaxFileSize: sh.MaxFileSize, MaxTotal: sh.MaxTotal, Types: sh.types(), AllTypes: sh.AllTypes,
+		State: sh.state(now), Count: sh.Count, Bytes: sh.Bytes, Uploading: n, Log: log}
+	if sh.Kind == kindDownload {
+		v.Kind, v.Types, v.MaxFileSize, v.Recording, v.Formats, v.MaxDownloads = kindDownload, []string{}, 0, sh.Recording, sh.Formats, sh.MaxDownloads
+		for _, tk := range sh.Tickets {
+			if now.Before(tk.Expires) {
+				v.Resumable++
+			}
+		}
+	} else {
+		v.Kind = kindUpload
+	}
+	return v
 }
 
 // adminTenant is the church of a request to the studio's share API.
@@ -281,18 +345,102 @@ func (a *App) handleShares(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// ?recording=<path>: only the download shares of that recording
+	only, one := "", r.URL.Query().Has("recording")
+	if one {
+		abs, err := t.srv.resolve(r.URL.Query().Get("recording"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		only = abs
+	}
+	found := a.findRecordings(t, nil)
+	days := a.endedSharesDays(t)
 	a.shareMu.Lock()
 	now := time.Now()
 	list := []shareView{}
 	for _, sh := range t.shares {
-		list = append(list, sh.view(now))
+		if one && (sh.Kind != kindDownload || found[sh] != only) {
+			continue
+		}
+		v := sh.view(now)
+		v.Missing = sh.Kind == kindDownload && found[sh] == ""
+		v.Downloading = a.share.sending[sh.ID]
+		if e := sh.endedAt(now); !e.IsZero() {
+			v.Ended = &e
+			if days > 0 {
+				at := e.Add(time.Duration(days) * 24 * time.Hour)
+				v.RemoveAt = &at
+			}
+		}
+		list = append(list, v)
 	}
 	a.shareMu.Unlock()
 	slices.Reverse(list) // newest first
 	writeJSON(w, http.StatusOK, map[string]any{
 		"shares": list, "url": a.cfg.Share.URL, "types": shareTypes,
 		"inbox": t.srv.cfg.Inbox != "", "defaultFileSize": defaultShareFileSize,
+		"endedDays": days, "endedDaysChoices": endedSharesChoices,
 	})
+}
+
+// activeFor is how long after its last chunk an upload counts as going on, for the header's number.
+const activeFor = 2 * time.Minute
+
+// handleSharesActive is how many uploads and downloads of the church's shares are going on now, for the
+// number on the shares icon: GET api/shares/active → {active}. An upload counts while a chunk is being
+// received or came in the last activeFor; one that stopped (the page was closed) does not.
+func (a *App) handleSharesActive(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	a.shareMu.Lock()
+	type upload struct {
+		path string
+		busy bool
+	}
+	var uploads []upload
+	n := 0
+	for _, sh := range t.shares {
+		n += a.share.sending[sh.ID]
+		for uid := range sh.Pending {
+			uploads = append(uploads, upload{partialPath(t, uid), a.share.busy[uid]})
+		}
+	}
+	a.shareMu.Unlock()
+	for _, u := range uploads {
+		if st, err := os.Stat(u.path); u.busy || (err == nil && time.Since(st.ModTime()) < activeFor) {
+			n++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"active": n})
+}
+
+// handleEndedSharesDays sets how long the church keeps a share that has ended: PUT api/shares/ended-days {days}
+// (0 = until it is removed by hand).
+func (a *App) handleEndedSharesDays(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	var q struct {
+		Days int `json:"days"`
+	}
+	if err := decodeRequest(r, &q); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !slices.Contains(endedSharesChoices, q.Days) {
+		writeError(w, http.StatusBadRequest, errors.New("choose how long ended shares are kept from the list"))
+		return
+	}
+	if err := a.update(t, func(c *churchConfig) { c.EndedSharesDays = &q.Days }); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"days": q.Days})
 }
 
 // handleShareCreate makes a share and returns its code, the only time it is
@@ -302,24 +450,36 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if t.srv.cfg.Inbox == "" {
-		writeError(w, http.StatusBadRequest, errNoInbox)
-		return
-	}
 	var q struct {
-		Label       string     `json:"label"`
-		Expires     *time.Time `json:"expires"` // nil = never
-		MaxUploads  int        `json:"maxUploads"`
-		MaxFileSize int64      `json:"maxFileSize"`
-		MaxTotal    int64      `json:"maxTotal"`
-		Types       []string   `json:"types"`
-		AllTypes    bool       `json:"allTypes"`
+		Kind         string     `json:"kind"` // "" or kindUpload, kindDownload
+		Recording    string     `json:"recording"`
+		Formats      []string   `json:"formats"`
+		MaxDownloads int        `json:"maxDownloads"`
+		Label        string     `json:"label"`
+		Expires      *time.Time `json:"expires"` // nil = never
+		MaxUploads   int        `json:"maxUploads"`
+		MaxFileSize  int64      `json:"maxFileSize"`
+		MaxTotal     int64      `json:"maxTotal"`
+		Types        []string   `json:"types"`
+		AllTypes     bool       `json:"allTypes"`
 	}
 	if err := decodeRequest(r, &q); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	label := strings.Join(strings.Fields(q.Label), " ")
+	if q.Kind == kindDownload {
+		a.createDownloadShare(w, t, label, q.Recording, q.Formats, q.MaxDownloads, q.Expires)
+		return
+	}
+	if q.Kind != "" && q.Kind != kindUpload {
+		writeError(w, http.StatusBadRequest, errors.New("unknown kind of share"))
+		return
+	}
+	if t.srv.cfg.Inbox == "" {
+		writeError(w, http.StatusBadRequest, errNoInbox)
+		return
+	}
 	var types []string
 	for _, ext := range shareTypes {
 		if slices.Contains(q.Types, ext) {
@@ -330,10 +490,9 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 		q.MaxFileSize = defaultShareFileSize
 	}
 	now := time.Now()
-	var err error
+	err := checkLabel(label)
 	switch {
-	case label == "" || len(label) > 80 || strings.ContainsFunc(label, func(r rune) bool { return r < ' ' }):
-		err = errors.New("give the share a name (up to 80 characters)")
+	case err != nil:
 	case !q.AllTypes && (len(types) == 0 || len(types) != len(q.Types)):
 		err = fmt.Errorf("choose file types from %s", strings.Join(shareTypes, ", "))
 	case q.MaxFileSize < 1<<20 || q.MaxFileSize > maxShareFileSize:
@@ -347,19 +506,32 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	code := newCode()
-	sh := &Share{ID: randomID(6), Hash: hashCode(code), Hint: code[len(code)-4:], Label: label, Created: now.UTC(),
-		MaxUploads: q.MaxUploads, MaxFileSize: q.MaxFileSize, MaxTotal: q.MaxTotal, Types: types, AllTypes: q.AllTypes}
+	sh := &Share{MaxUploads: q.MaxUploads, MaxFileSize: q.MaxFileSize, MaxTotal: q.MaxTotal, Types: types, AllTypes: q.AllTypes}
 	if q.AllTypes {
 		sh.Types = nil
 	}
-	if q.Expires != nil {
-		e := q.Expires.UTC()
+	a.addShare(w, t, sh, label, q.Expires)
+}
+
+func checkLabel(label string) error {
+	if label == "" || len(label) > 80 || strings.ContainsFunc(label, func(r rune) bool { return r < ' ' }) {
+		return errors.New("give the share a name (up to 80 characters)")
+	}
+	return nil
+}
+
+// addShare gives a checked share its code, id and times, keeps it, and returns the code.
+func (a *App) addShare(w http.ResponseWriter, t *tenant, sh *Share, label string, expires *time.Time) {
+	now := time.Now()
+	code := newCode()
+	sh.ID, sh.Hash, sh.Hint, sh.Label, sh.Created = randomID(6), hashCode(code), code[len(code)-4:], label, now.UTC()
+	if expires != nil {
+		e := expires.UTC()
 		sh.Expires = &e
 	}
 	a.shareMu.Lock()
 	t.shares = append(t.shares, sh)
-	err = a.saveShares(t)
+	err := a.saveShares(t)
 	if err != nil {
 		t.shares = t.shares[:len(t.shares)-1]
 	}
@@ -369,8 +541,8 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	a.cfg.Base.Logger.Printf("share: %s made share %s (%q)", t.id, sh.ID, label)
-	writeJSON(w, http.StatusCreated, map[string]any{"share": view, "code": code})
+	a.cfg.Base.Logger.Printf("share: %s made %s share %s (%q)", t.id, view.Kind, sh.ID, label)
+	writeJSON(w, http.StatusCreated, map[string]any{"share": view, "code": code, "url": a.cfg.Share.URL})
 }
 
 // handleSharePause stops a share's uploads until it is resumed:
@@ -401,19 +573,19 @@ func (a *App) setPaused(w http.ResponseWriter, r *http.Request, pause bool) {
 	sh := t.shares[i]
 	switch state := sh.state(time.Now()); {
 	case pause && state != "":
-		writeError(w, http.StatusConflict, errors.New("this share takes no uploads"))
+		writeError(w, http.StatusConflict, errors.New("this share has ended"))
 		return
 	case !pause && state != "paused":
 		writeError(w, http.StatusConflict, errors.New("only a paused share can be resumed"))
 		return
 	}
-	pending := sh.Pending
+	pending, tickets := sh.Pending, sh.Tickets
 	sh.Paused = pause
 	if pause {
-		sh.Pending = nil
+		sh.Pending, sh.Tickets = nil, nil // downloads that were going on stop too
 	}
 	if err := a.saveShares(t); err != nil {
-		sh.Paused, sh.Pending = !pause, pending
+		sh.Paused, sh.Pending, sh.Tickets = !pause, pending, tickets
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -442,7 +614,7 @@ func (a *App) handleShareRemove(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, err)
 	case open:
-		writeError(w, http.StatusConflict, errors.New("this share still takes uploads: pause it first"))
+		writeError(w, http.StatusConflict, errors.New("this share is still open: pause it first"))
 	case n == 0:
 		writeError(w, http.StatusNotFound, errors.New("no such share"))
 	default:

@@ -41,7 +41,7 @@ func run() error {
 	trashDays := flag.Int("trash-days", web.DefaultTrashDays, "keep a deleted recording in the trash for this many days")
 	layout := flag.String("layout", web.DefaultLayout, "where imported recordings go under --root, as a Go time layout")
 	ffBin := flag.String("ffmpeg", "ffmpeg", "path to ffmpeg")
-	shareListen := flag.String("share-listen", "", "address for the public upload page, where recordings are sent with a code made in the studio (Settings → Shares); \"\" = off")
+	shareListen := flag.String("share-listen", "", "address for the public share page, where recordings are sent and finished sermons downloaded with a code made in the studio (Shares, in the header); \"\" = off")
 	shareURL := flag.String("share-url", "", "the upload page's public address (e.g. https://upload-sermons.example.org/), for share links")
 	shareIPHeader := flag.String("share-ip-header", "", "header the proxy puts the client's address in (Cloudflare: CF-Connecting-IP); used for rate limits")
 	var limits web.RateLimits
@@ -97,13 +97,13 @@ func run() error {
 	errc := make(chan error, 2)
 	go func() { errc <- hs.ListenAndServe() }()
 	logger.Printf("sermon-studio %s listening on %s (data dir %q, root %q)", version, *listen, *dataDir, *root)
-	// The public upload page: chunks are small, so it can have timeouts.
+	// The public share page: upload chunks are small, so it can have timeouts (a download sets its own).
 	var ss *http.Server
 	if share != nil {
 		ss = &http.Server{Addr: *shareListen, Handler: srv.ShareHandler(), ReadHeaderTimeout: 10 * time.Second,
 			ReadTimeout: 5 * time.Minute, WriteTimeout: 6 * time.Minute, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 16 << 10}
 		go func() { errc <- ss.ListenAndServe() }()
-		logger.Printf("upload page listening on %s", *shareListen)
+		logger.Printf("share page listening on %s", *shareListen)
 	}
 
 	select {

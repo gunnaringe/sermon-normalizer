@@ -28,8 +28,10 @@ test('phone: every page fits the screen', async ({ page }) => {
   await fits(page, 'upload');
   await page.goto('#/settings');
   await expect(page.getByRole('heading', { name: 'Default tags' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Shares' })).toBeVisible();
   await fits(page, 'settings');
+  await page.goto('#/shares');
+  await expect(page.getByRole('heading', { name: 'Shares' })).toBeVisible();
+  await fits(page, 'shares');
 });
 
 test('phone: the editor by touch', async ({ page }) => {

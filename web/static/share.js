@@ -1,5 +1,6 @@
-// The public upload page: enter a code (or come with #code=... in the link),
-// then drop recordings. Every request carries the code in the Share-Code
+// The public share page: enter a code (or come with #code=... in the link),
+// then drop recordings, or, with the code of a download share, download the
+// sermon it gives (sharedownload.go). Every request carries the code in the Share-Code
 // header; the code is kept in sessionStorage (this tab only), never in the
 // address bar once read. Files are sent in chunks, so they pass Cloudflare's
 // limits and continue after a dropped connection or a reload.
@@ -12,6 +13,12 @@ langSelect.replaceChildren(...LANGS.map(([code, name]) => h('option', { value: c
 langSelect.addEventListener('change', () => { setLang(langSelect.value); location.reload(); });
 
 const view = document.getElementById('view');
+
+// setHeading names the page, in the header and the tab, for what the code is for.
+function setHeading(text) {
+  document.getElementById('heading').textContent = text;
+  document.title = text;
+}
 let code = '';
 let info = null;
 
@@ -53,9 +60,10 @@ function showCodeForm(message = '') {
     e.preventDefault();
     if (input.value.trim()) { button.disabled = true; tryCode(input.value.trim()); }
   } }, input, button);
+  setHeading('Sermon Studio');
   view.replaceChildren(
-    h('h1', {}, t('Send a recording')),
-    h('p', {}, t('Enter the code you were given.')),
+    h('h1', {}, t('Enter your code')),
+    h('p', {}, t('Enter the code you were given, to send a recording or download a sermon.')),
     form,
     message ? h('p', { class: 'error', role: 'alert' }, message) : '');
   input.focus();
@@ -77,7 +85,8 @@ async function tryCode(c) {
   }
   sessionStorage.setItem('shareCode', code);
   info = r.data;
-  showUpload();
+  if (info.kind === 'download') showDownload();
+  else showUpload();
 }
 
 function limitsText() {
@@ -109,7 +118,18 @@ async function showLogo() {
   } catch { /* the app's logo stays */ }
 }
 
+function otherCode() {
+  return h('a', { href: '#', onclick: (e) => {
+    e.preventDefault();
+    if (running) return;
+    sessionStorage.removeItem('shareCode');
+    code = '';
+    showCodeForm();
+  } }, t('Use another code'));
+}
+
 function showUpload() {
+  setHeading(t('Send a recording'));
   showLogo();
   const input = h('input', { type: 'file', multiple: true, accept: info.types.join(','), hidden: true });
   const list = h('ul', { class: 'files' });
@@ -132,19 +152,70 @@ function showUpload() {
     drop.classList.remove('over');
     add([...e.dataTransfer.files]);
   });
-  const other = h('a', { href: '#', onclick: (e) => {
-    e.preventDefault();
-    if (running) return;
-    sessionStorage.removeItem('shareCode');
-    code = '';
-    showCodeForm();
-  } }, t('Use another code'));
   view.replaceChildren(
     h('h1', {}, info.label),
     limitsLine = h('p', { class: 'muted' }, t('For {church}. {limits}.', { church: info.church, limits: limitsText() })),
     info.state ? h('p', { class: 'error' }, t('This code cannot be used any more.')) : drop,
     input, list,
-    h('p', { class: 'muted' }, t('Keep this page open until every file is received.'), ' ', other));
+    h('p', { class: 'muted' }, t('Keep this page open until every file is received.'), ' ', otherCode()));
+}
+
+const FORMAT_NAMES = { flac: 'FLAC', mp3: 'MP3', opus: 'Opus' };
+
+function downloadLimits() {
+  const parts = [];
+  if (info.downloadsLeft !== undefined) parts.push(tn(info.downloadsLeft, '{n} more download', '{n} more downloads'));
+  if (info.expires) parts.push(t('until {time}', { time: formatDateTime(info.expires) }));
+  return t('From {church}.', { church: info.church }) + (parts.length ? ' ' + parts.join(' · ') + '.' : '');
+}
+
+// showDownload is the page of a download share: the sermon, and a button per file. A press counts one
+// download and starts it from an address that works for some hours without the code, so the browser
+// can download it, and continue a download that broke; pressing again for it counts nothing.
+function showDownload() {
+  setHeading(t('Download a sermon'));
+  showLogo();
+  const status = h('p', { class: 'muted', role: 'status' });
+  const limits = h('p', { class: 'muted' }, downloadLimits());
+  const press = async (f, button) => {
+    button.disabled = true;
+    try {
+      const r = await call('POST', 'api/share/downloads', { format: f.format });
+      if (!r.resp.ok) throw new Error(errorText(r.resp, r.data));
+      location.assign(r.data.url); // sent as an attachment: the page stays
+      status.className = 'ok';
+      status.textContent = t('The download has started. If it stops, press the button again: it continues, and is not counted again.');
+      const again = await call('GET', 'api/share').catch(() => null);
+      if (again && again.resp.ok) {
+        info = again.data;
+        limits.textContent = downloadLimits();
+      }
+    } catch (e) {
+      status.className = 'error';
+      status.textContent = e.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
+  const buttons = info.files.map((f) => {
+    const b = h('button', { type: 'button', class: 'primary', name: 'download-' + f.format },
+      t('Download {format}', { format: FORMAT_NAMES[f.format] || f.format }), ' · ', formatSize(f.size));
+    b.addEventListener('click', () => press(f, b));
+    return b;
+  });
+  // the artist and date, unless the church's name or the title says it already
+  const what = [info.artist !== info.church ? info.artist : '', info.date && !(info.title || '').includes(info.date) ? info.date : '']
+    .filter(Boolean).join(' · ');
+  const ended = info.state === 'missing' ? t('This sermon is no longer available.')
+    : info.state ? t('This code cannot be used any more.')
+      : !buttons.length ? t('This sermon is no longer available.') : '';
+  view.replaceChildren(
+    h('h1', {}, info.title || info.label),
+    what ? h('p', {}, what) : '',
+    limits,
+    ended ? h('p', { class: 'error' }, ended) : h('p', { class: 'actions' }, buttons),
+    status,
+    h('p', { class: 'muted' }, otherCode()));
 }
 
 async function run() {

@@ -55,6 +55,9 @@ type churchConfig struct {
 	Meta *Meta  `json:"meta,omitempty"` // default tags; nil = DefaultMeta
 	// Processing is the default processing (processing.go); nil = the built-in.
 	Processing *processing `json:"processing,omitempty"`
+	// EndedSharesDays is how many days a share that has ended is kept before it is removed by itself;
+	// nil = defaultEndedSharesDays, 0 = never.
+	EndedSharesDays *int `json:"endedSharesDays,omitempty"`
 }
 
 // TenantInfo is a church as listed in the UI.
@@ -116,8 +119,10 @@ type App struct {
 type shareState struct {
 	limits *limiter
 	busy   map[string]bool // uploads receiving a chunk now
-	done   chan struct{}
-	wg     sync.WaitGroup
+	// sending counts the files a download share is sending now, by share id
+	sending map[string]int
+	done    chan struct{}
+	wg      sync.WaitGroup
 }
 
 // NewApp starts the root church (if any) and every church folder in the
@@ -128,7 +133,7 @@ func NewApp(cfg AppConfig) (*App, error) {
 	}
 	a := &App{cfg: cfg, limits: newLimits()}
 	if cfg.Share != nil {
-		a.share = &shareState{limits: newLimiter(cfg.Share.Limits), busy: map[string]bool{}, done: make(chan struct{})}
+		a.share = &shareState{limits: newLimiter(cfg.Share.Limits), busy: map[string]bool{}, sending: map[string]int{}, done: make(chan struct{})}
 	}
 	fail := func(err error) (*App, error) { a.Close(); return nil, err }
 	if cfg.Base.Root != "" {
@@ -331,6 +336,8 @@ func (a *App) Handler() http.Handler {
 		mux.HandleFunc("POST /api/shares/{id}/resume", a.handleShareResume)
 		mux.HandleFunc("POST /api/shares/{id}/remove", a.handleShareRemove)
 		mux.HandleFunc("POST /api/shares/remove-ended", a.handleShareRemoveEnded)
+		mux.HandleFunc("PUT /api/shares/ended-days", a.handleEndedSharesDays)
+		mux.HandleFunc("GET /api/shares/active", a.handleSharesActive)
 	}
 	toChurch := func(w http.ResponseWriter, r *http.Request) {
 		t, ok := a.tenantFor(r)

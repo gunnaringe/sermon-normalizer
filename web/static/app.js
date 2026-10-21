@@ -1,6 +1,7 @@
 // The app: a hash router. Every address starts with the church: #/<church> (the
 // recordings), #/<church>/recording/<path> (the recordings, that one opened),
-// #/<church>/folder/<path> (the editor), #/<church>/settings (the settings over the recordings). Settings also opens as an overlay from the gear.
+// #/<church>/folder/<path> (the editor), #/<church>/settings (the settings over the recordings), #/<church>/shares (the
+// shares, the same way). Both also open as an overlay from their icon in the header.
 import { api, q, h, href, INPUT_TYPES, isInputType, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, debounce, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
@@ -8,7 +9,7 @@ import { sharesView } from './shares.js';
 import { trashView } from './trash.js';
 import { processingView } from './processing.js';
 import { recordingsView } from './recordings.js';
-import { t, tr, lang, LANGS, setLang, getTheme, setTheme } from './i18n.js';
+import { t, tn, tr, lang, LANGS, setLang, getTheme, setTheme } from './i18n.js';
 
 const view = document.getElementById('view');
 let config = { inbox: false, defaults: {} };
@@ -16,10 +17,10 @@ let churches = { tenants: [], default: '', canAdd: false, shares: false };
 let teardown = null; // cleanup of the current view (player, event stream, keys)
 let shown = '';      // the page in the view, so the settings overlay can open over it without redoing it
 let page = null;     // the recordings page when it is shown: { open(path) }
-let settingsDialog = null;
+let overlay = null;  // the settings or shares over the page: { section, dialog }
 
 // Addresses from before the church was in them: the first part names a page.
-const OLD = { folder: 'folder', folders: '', settings: 'settings', shares: 'settings/shares', upload: '' };
+const OLD = { folder: 'folder', folders: '', settings: 'settings', shares: 'shares', upload: '' };
 
 async function route() {
   if (teardown) teardown();
@@ -30,7 +31,11 @@ async function route() {
     const old = segs.length ? OLD[segs[0]] + (keepRest ? '/' + segs.slice(1).join('/') : '') : '';
     return location.replace('#/' + currentTenant() + (old ? '/' + old.replace(/^\//, '') : ''));
   }
-  const [church, section = '', ...rest] = segs;
+  let [church, section = '', ...rest] = segs;
+  if (section === 'settings' && rest.join('/') === 'shares') { // where the shares were before: the address is put right in place
+    history.replaceState(null, '', '#/' + church + '/shares');
+    [section, rest] = ['shares', []];
+  }
   const path = rest.join('/');
   if (!churches.tenants.some((t) => t.id === church)) {
     shown = '';
@@ -40,14 +45,15 @@ async function route() {
   if (church !== currentTenant()) {
     setTenant(church);
     fillPicker();
+    countActive();
     config = await api('GET', 'api/config');
   }
-  if (settingsDialog && section !== 'settings') settingsDialog.close();
+  if (overlay && overlay.section !== section) overlay.dialog.close();
   try {
     if (section === 'folder') {
       shown = '';
       teardown = await editorView(view, path, config);
-    } else if (section === '' || section === 'recording' || section === 'settings') {
+    } else if (section === '' || section === 'recording' || section === 'settings' || section === 'shares') {
       if (shown !== church) {
         shown = '';
         page = await foldersView();
@@ -55,6 +61,7 @@ async function route() {
       }
       if (section === 'recording') page.open(path);
       if (section === 'settings') await openSettings(path);
+      if (section === 'shares') await openShares();
     } else {
       shown = '';
       view.replaceChildren(h('p', { class: 'error' }, t('No such page.')));
@@ -71,6 +78,7 @@ async function foldersView() {
   return recordingsView(view, {
     top: uploadBox(),
     church: currentTenant(),
+    shares: churches.shares,
     emptyNote: config.inbox ? t('No recordings here yet. Upload one above, or put one in the inbox folder.') : t('No recordings here yet. Upload one above.'),
   });
 }
@@ -186,39 +194,45 @@ function uploadBox() {
   return h('div', { class: 'upload' }, drop, input, chosen, status, progress);
 }
 
-// openSettings shows the settings as an overlay on the page, closed with the
-// cross, Esc or a click outside. Opened from an address (#/<church>/settings), closing
-// it goes back to #/<church>.
-async function openSettings(part = '') {
-  if (settingsDialog) {
-    settingsDialog.querySelector('#shares')?.scrollIntoView();
-    return;
-  }
-  const dialog = h('dialog', { class: 'dialog settings-dialog', 'aria-label': t('Settings') });
+// openOverlay shows the settings or the shares as an overlay on the page, closed with the cross, Esc or a
+// click outside. Opened from an address (#/<church>/settings), closing it goes back to #/<church>.
+async function openOverlay(section, title, closeLabel, fill) {
+  if (overlay && overlay.section === section && overlay.dialog.open) return;
+  if (overlay) overlay.dialog.close();
+  const dialog = h('dialog', { class: 'dialog settings-dialog', 'aria-label': title });
   const body = h('div', { class: 'settings' });
   dialog.append(
-    h('div', { class: 'settings-head' }, h('h1', {}, t('Settings')),
-      h('button', { type: 'button', class: 'close', title: t('Close'), 'aria-label': t('Close settings'), onclick: () => dialog.close() }, '✕')),
+    h('div', { class: 'settings-head' }, h('h1', {}, title),
+      h('button', { type: 'button', class: 'close', title: t('Close'), 'aria-label': closeLabel, onclick: () => dialog.close() }, '✕')),
     body);
   dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // the backdrop
   dialog.addEventListener('close', () => {
     dialog.remove();
-    settingsDialog = null;
-    if (/\/settings(\/|$)/.test(decodeURIComponent(location.hash))) location.hash = href();
+    if (overlay?.dialog !== dialog) return; // another overlay has taken its place (the close event comes later)
+    overlay = null;
+    if (new RegExp('^#/[^/]+/' + section + '(/|$)').test(decodeURIComponent(location.hash))) location.hash = href();
+    if (section === 'shares') countActive();
   });
   document.body.append(dialog);
   dialog.showModal();
-  settingsDialog = dialog;
+  overlay = { section, dialog };
   try {
-    await settingsView(body, part);
+    await fill(body);
   } catch (err) {
     body.replaceChildren(h('p', { class: 'error' }, err.message));
   }
 }
 
+const openSettings = (part = '') => openOverlay('settings', t('Settings'), t('Close settings'), (body) => settingsView(body, part));
+const openShares = () => openOverlay('shares', t('Shares'), t('Close shares'), async (body) => {
+  const box = h('section', { id: 'shares' });
+  body.replaceChildren(box);
+  await sharesView(box);
+});
+
 // settingsView edits the church: its name, default tags (templates with
 // placeholders, shown filled in for today, with and without a sermon name),
-// sermon names, and its shares when the public upload page is on.
+// sermon names. The shares have their own overlay (openShares).
 // part 'shares' scrolls to the shares.
 async function settingsView(box, part) {
   const data = await api('GET', 'api/settings');
@@ -309,9 +323,6 @@ async function settingsView(box, part) {
   const processing = h('section', { id: 'processing' });
   await processingView(processing, async () => { config = await api('GET', 'api/config'); });
 
-  const shares = h('section', { id: 'shares' });
-  if (tenants.shares) await sharesView(shares);
-
   const view_ = h('div', {},
     h('h2', {}, t('Appearance')),
     appearance(),
@@ -329,8 +340,7 @@ async function settingsView(box, part) {
     h('div', { class: 'panel' }, h('label', { class: 'check' }, h('input', {
       type: 'checkbox', name: 'wheel-zoom-key', checked: wheelZoomNeedsKey(),
       onchange: (e) => setWheelZoomNeedsKey(e.target.checked),
-    }), t('Zoom with the scroll wheel only while holding Ctrl (Cmd on a Mac)'))),
-    tenants.shares ? shares : '');
+    }), t('Zoom with the scroll wheel only while holding Ctrl (Cmd on a Mac)'))));
   box.replaceChildren(view_);
   if (part) view_.querySelector('#' + CSS.escape(part))?.scrollIntoView();
   preview();
@@ -352,6 +362,7 @@ const select = document.getElementById('church');
 const brand = document.querySelector('header .brand');
 const nameText = document.getElementById('church-name');
 const gear = document.querySelector('[data-nav=settings]');
+const sharesIcon = document.querySelector('[data-nav=shares]');
 
 function fillPicker() {
   const cur = currentTenant();
@@ -359,6 +370,8 @@ function fillPicker() {
   brand.querySelector('img').src = mine?.logo ? forTenant('api/logo') + '&v=' + mine.logo : 'icons/logo.svg';
   brand.href = href();
   gear.href = href('settings');
+  sharesIcon.href = href('shares');
+  sharesIcon.hidden = !churches.shares;
   const single = churches.tenants.length === 1 && !churches.canAdd;
   select.hidden = single;
   nameText.hidden = !single;
@@ -372,6 +385,7 @@ async function loadChurches() {
   churches = await api('GET', 'api/tenants');
   if (!churches.tenants.some((t) => t.id === currentTenant())) setTenant(churches.default);
   fillPicker();
+  countActive();
 }
 
 // Switching church is going to its address; adding one goes there too.
@@ -398,6 +412,30 @@ gear.addEventListener('click', (e) => {
   e.preventDefault();
   openSettings();
 });
+
+// The shares icon opens the shares the same way, and shows how many uploads and downloads are going on.
+sharesIcon.addEventListener('click', (e) => {
+  if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  openShares();
+});
+
+// countActive puts the number of uploads and downloads going on now on the shares icon; asked again every
+// 30 seconds while the page is in view, when the church changes and when the shares are closed.
+async function countActive() {
+  if (!churches.shares || document.hidden) return;
+  const count = sharesIcon.querySelector('.count');
+  try {
+    const { active } = await api('GET', 'api/shares/active');
+    count.hidden = !active;
+    count.textContent = active > 99 ? '99+' : String(active);
+    const label = active ? tn(active, 'Shares: {n} upload or download going on', 'Shares: {n} uploads or downloads going on') : t('Shares');
+    sharesIcon.title = label;
+    sharesIcon.setAttribute('aria-label', label);
+  } catch { /* the icon stays as it was */ }
+}
+setInterval(countActive, 30_000);
+document.addEventListener('visibilitychange', countActive);
 
 // logoutButton shows Log out when the server knows the login proxy's logout.
 // The icon asks first: a click opens "Log out?", which logs out when clicked;

@@ -119,7 +119,7 @@ test('settings and a share for people without a login', async ({ page, context }
   await page.goto('#/settings');
   await expect(page.getByRole('heading', { name: 'Default tags' })).toBeVisible();
   await shot(page, '12-settings');
-  await page.goto('#/settings/shares');
+  await page.goto('#/shares');
   await page.locator('input[name=label]').fill('Sound desk');
   await page.locator('input[name=maxUploads]').fill('5');
   await page.locator('input[name=expires]').fill('2026-12-31');
@@ -128,7 +128,7 @@ test('settings and a share for people without a login', async ({ page, context }
   const link = await dialog.locator('.share-link').textContent();
   await shot(page, '13-share-made');
   await dialog.getByRole('button', { name: 'OK' }).click();
-  await shot(page, '14-shares', page.locator('#shares'));
+  await shot(page, '14-shares');
 
   // The public page: no login, the code from the link or typed.
   const visitor = await context.newPage();
@@ -141,6 +141,25 @@ test('settings and a share for people without a login', async ({ page, context }
   await guest.locator('input[type=file]').setInputFiles({ name: 'Guest talk 2026-11-01.flac', mimeType: 'audio/flac', buffer: fs.readFileSync(path.join(DATA, 'guest.flac')) });
   await expect(guest.getByText('Received. Thank you!')).toBeVisible({ timeout: 60_000 });
   await shot(guest, '16-public-uploaded');
+});
+
+test('a finished sermon shared for download', async ({ page, context }) => {
+  await page.goto('#/grace-chapel/recording/2026/2026-10-18');
+  await page.locator('tr.detail-row').getByRole('button', { name: 'Share for download…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Share for download' });
+  await dialog.locator('input[name=label]').fill('For the homebound');
+  await dialog.locator('input[name=maxDownloads]').fill('10');
+  await dialog.locator('input[name=expires]').fill('2026-12-31');
+  await shot(page, '20-share-download');
+  await dialog.getByRole('button', { name: 'Make share' }).click();
+  const made = page.getByRole('dialog', { name: 'Share made' });
+  const link = await made.locator('.share-link').textContent();
+  await made.getByRole('button', { name: 'OK' }).click();
+  const guest = await context.newPage();
+  await guest.goto(link);
+  await expect(guest.getByRole('button', { name: /^Download MP3/ })).toBeVisible();
+  await shot(guest, '21-public-download');
+  await guest.close();
 });
 
 test('on a phone, and in the dark', async ({ browser }) => {

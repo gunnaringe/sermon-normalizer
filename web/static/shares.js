@@ -1,7 +1,8 @@
 // Shares: codes that let people without a login send recordings to this
-// church's inbox from the public upload page. A code is shown once, when the
-// share is made. A section of the settings; sharesView fills its box.
-import { api, h, formatSize, formatDate, formatDateTime } from './util.js';
+// church's inbox from the public share page, or download one sermon (made on
+// the recording, sermons.js). A code is shown once, when the share is made.
+// They have their own overlay (the icon in the header); sharesView fills its box.
+import { api, h, href, formatSize, formatDate, formatDateTime } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
 import { t, tn } from './i18n.js';
 
@@ -10,13 +11,23 @@ const GB = 1 << 30;
 // What a share's state is called; the server's words are the keys of this table.
 const STATES = { paused: 'paused', expired: 'expired', 'used up': 'used up', full: 'full' };
 
+const FORMAT_NAMES = { flac: 'FLAC', mp3: 'MP3', opus: 'Opus' };
+const baseName = (path) => path.slice(path.lastIndexOf('/') + 1);
+
 function stateText(s) {
   if (s.state) return h('span', { class: 'badge' }, t(STATES[s.state] || s.state));
+  if (s.missing) return h('span', { class: 'badge' }, t('recording not found'));
+  if (s.downloading) return h('span', { class: 'badge busy' }, t('{n} downloading', { n: s.downloading }));
   if (s.uploading) return h('span', { class: 'badge busy' }, t('{n} uploading', { n: s.uploading }));
   return h('span', { class: 'badge on' }, t('open'));
 }
 
 function limits(s) {
+  if (s.kind === 'download') {
+    return [s.formats.map((f) => FORMAT_NAMES[f] || f).join(' '),
+      s.maxDownloads ? tn(s.maxDownloads, 'up to {n} download', 'up to {n} downloads') : t('no download limit'),
+      s.expires ? t('until {time}', { time: formatDateTime(s.expires) }) : t('no expiry')].join(' · ');
+  }
   const out = [t('up to {size} per file', { size: formatSize(s.maxFileSize) }), s.allTypes ? t('all audio') : s.types.join(' ')];
   if (s.maxUploads) out.push(tn(s.maxUploads, '{n} file', '{n} files'));
   if (s.maxTotal) out.push(t('{size} in all', { size: formatSize(s.maxTotal) }));
@@ -26,7 +37,7 @@ function limits(s) {
 
 // parseExpiry reads yyyy-mm-dd or yyyy-mm-dd hh:mm in local time; a day
 // alone lasts to its end. Empty = never.
-function parseExpiry(s) {
+export function parseExpiry(s) {
   s = s.trim();
   if (!s) return null;
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?$/);
@@ -57,7 +68,8 @@ function holdToCopy(el, text, done) {
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-async function showCode(url, code) {
+// showCode shows a new share's code and link, once. title is what the phone's share menu calls it.
+export async function showCode(url, code, title = t('Send recordings')) {
   const link = linkFor(url, code);
   const note = h('span', { class: 'muted', role: 'status' });
   const codeEl = h('span', { class: 'share-code', title: t('Hold to copy') }, code);
@@ -65,7 +77,7 @@ async function showCode(url, code) {
   const share = h('button', { type: 'button', name: 'share', onclick: async () => {
     const what = link ? { url: link } : { text: code };
     if (navigator.share) {
-      try { await navigator.share({ title: t('Send recordings'), ...what }); } catch { /* closed */ }
+      try { await navigator.share({ title, ...what }); } catch { /* closed */ }
       return;
     }
     await navigator.clipboard.writeText(link || code);
@@ -81,6 +93,7 @@ async function showCode(url, code) {
 
 export async function sharesView(box) {
   const data = await api('GET', 'api/shares');
+  const refresh = () => sharesView(box);
   const num = (name, attrs = {}) => h('input', { type: 'number', name, min: 0, step: 'any', ...attrs });
   const label = h('input', { type: 'text', name: 'label', maxlength: 80, placeholder: t('e.g. Recordings from the sound desk') });
   const types = data.types.map((t) => h('input', { type: 'checkbox', name: 'type', value: t, checked: true }));
@@ -106,64 +119,16 @@ export async function sharesView(box) {
         expires: parseExpiry(expires.value),
       });
       await showCode(data.url, made.code);
-      await sharesView(box);
+      await refresh();
     } catch (err) { status.textContent = err.message; }
   } }, t('Make share'));
 
-  // Pausing asks first only when it stops someone's upload.
-  const pause = (s) => async () => {
-    if (s.uploading && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
-      body: t('Uploads in progress with the code of "{label}" stop. It takes uploads again when you resume it.', { label: s.label }) })) return;
-    try {
-      await api('POST', `api/shares/${encodeURIComponent(s.id)}/pause`);
-      await sharesView(box);
-    } catch (err) { alertDialog({ body: err.message }); }
-  };
-  const resume = (s) => async () => {
-    try {
-      await api('POST', `api/shares/${encodeURIComponent(s.id)}/resume`);
-      await sharesView(box);
-    } catch (err) { alertDialog({ body: err.message }); }
-  };
-
-  const remove = (s) => async () => {
-    const ok = await confirmDialog({ title: t('Remove share'), confirm: t('Remove'), danger: true,
-      body: t('"{label}" and its list of uploads are removed, and its code no longer works. Files already sent stay.', { label: s.label }) });
-    if (!ok) return;
-    try {
-      await api('POST', `api/shares/${encodeURIComponent(s.id)}/remove`);
-      await sharesView(box);
-    } catch (err) { alertDialog({ body: err.message }); }
-  };
-  const ended = data.shares.filter((s) => s.state && s.state !== 'paused');
-  const removeEnded = async () => {
-    const ok = await confirmDialog({ title: t('Remove ended shares'), confirm: t('Remove'), danger: true,
-      body: tn(ended.length, '{n} share that has ended (expired, used up or full) is removed with its list of uploads. Files already sent stay; paused shares too.', '{n} shares that have ended (expired, used up or full) are removed with their lists of uploads. Files already sent stay; paused shares too.') });
-    if (!ok) return;
-    try {
-      await api('POST', 'api/shares/remove-ended');
-      await sharesView(box);
-    } catch (err) { alertDialog({ body: err.message }); }
-  };
-
-  const rows = data.shares.map((s) => h('div', { class: 'panel share' },
-    h('p', {}, h('strong', {}, s.label), ' ', stateText(s), ' ',
-      h('span', { class: 'muted mono' }, '…' + s.hint)),
-    h('p', { class: 'muted' }, limits(s)),
-    h('p', {}, `${s.count ? t('{files} received ({size})', { files: tn(s.count, '{n} file', '{n} files'), size: formatSize(s.bytes) }) : t('Nothing received yet')} · ${t('made {date}', { date: formatDate(s.created) })}`),
-    s.log.length ? h('details', {}, h('summary', {}, t('Uploads')),
-      h('table', { class: 'list' }, s.log.map((u) => h('tr', {},
-        h('td', {}, formatDateTime(u.time)), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
-    h('p', {}, !s.state ? h('button', { name: 'pause', onclick: pause(s) }, t('Pause'))
-      : s.state === 'paused' ? [h('button', { class: 'primary', name: 'resume', onclick: resume(s) }, t('Resume')), ' ',
-        h('button', { name: 'remove', onclick: remove(s) }, t('Remove'))]
-      : h('button', { name: 'remove', onclick: remove(s) }, t('Remove')))));
-
   box.replaceChildren(
-    h('h2', {}, t('Shares')),
     h('p', { class: 'muted' }, t('A share is a code that lets someone without a login send recordings on the upload page'), data.url ? [' (', h('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.url), ')'] : '',
       '. ' + t('The recordings arrive in this church like any other. Give people the code or the link.') + ' ' +
-      t('The code is shown only once, when you make the share.')),
+      t('The code is shown only once, when you make the share.') + ' ' +
+      t('To let someone download a finished sermon, use Share for download… on the recording.')),
+    h('h2', {}, t('New upload share')),
     data.inbox ? h('div', { class: 'panel share-form' },
       h('label', { for: 'share-label' }, t('Name')), Object.assign(label, { id: 'share-label' }),
       h('span', {}, t('File types')), h('span', {}, h('label', { class: 'check' }, allTypes, ' ' + t('All supported audio')), h('br'), typeList),
@@ -173,7 +138,98 @@ export async function sharesView(box) {
       h('label', {}, t('Expires')), expires,
       h('div', { class: 'wide' }, create, ' ', status))
       : h('p', { class: 'error' }, t('Shares need an inbox folder, and this church has none.')),
-    h('h3', {}, t('Made')),
-    ended.length ? h('p', {}, h('button', { name: 'remove-ended', onclick: removeEnded }, t('Remove {n} ended', { n: ended.length }))) : '',
-    ...(rows.length ? rows : [h('p', { class: 'muted' }, t('No shares yet.'))]));
+    h('h2', {}, t('Made')),
+    keepEnded(data, refresh),
+    ...shareGroups(data, refresh));
+}
+
+// keepEnded is the church's choice of how long a share that has ended is kept before it is removed by itself.
+function keepEnded(data, refresh) {
+  const select = h('select', { name: 'ended-days', id: 'ended-days', onchange: async () => {
+    try {
+      await api('PUT', 'api/shares/ended-days', { days: Number(select.value) });
+      await refresh();
+    } catch (err) { alertDialog({ body: err.message }); }
+  } }, data.endedDaysChoices.map((n) => h('option', { value: n, selected: n === data.endedDays },
+    n ? tn(n, '{n} day', '{n} days') : t('never'))));
+  return h('p', {}, h('label', { for: 'ended-days' }, t('Remove ended shares after')), ' ', select);
+}
+
+// recordingShares fills box with a recording's own download shares, in its row on the recordings page;
+// nothing when it has none. It is called again after a share was made there.
+export async function recordingShares(path, box) {
+  const data = await api('GET', 'api/shares?recording=' + encodeURIComponent(path));
+  const refresh = () => recordingShares(path, box);
+  box.replaceChildren(...(data.shares.length ? [h('h4', {}, t('Shared for download'), ' ', h('a', { class: 'all-shares', href: href('shares') }, t('All shares'))),
+    ...shareGroups(data, refresh, { compact: true })] : []));
+}
+
+// shareGroups are the shares in two folds: the open and paused ones, and the ended ones (expired, used
+// up, full), folded, which are removed by themselves some days after they ended. refresh draws them again
+// after a change. compact: a recording's own, without what is the same for all of them.
+function shareGroups(data, refresh, { compact = false } = {}) {
+  const act = (fn) => async () => {
+    try {
+      if (await fn() === false) return;
+      await refresh();
+    } catch (err) { alertDialog({ body: err.message }); }
+  };
+  // Pausing asks first only when it stops someone's upload or download.
+  const pause = (s) => act(async () => {
+    if (s.uploading && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
+      body: t('Uploads in progress with the code of "{label}" stop. It takes uploads again when you resume it.', { label: s.label }) })) return false;
+    if (s.resumable && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
+      body: t('Downloads that have started with the code of "{label}" stop. It gives downloads again when you resume it.', { label: s.label }) })) return false;
+    await api('POST', `api/shares/${encodeURIComponent(s.id)}/pause`);
+  });
+  const resume = (s) => act(() => api('POST', `api/shares/${encodeURIComponent(s.id)}/resume`));
+  const remove = (s) => act(async () => {
+    const ok = await confirmDialog({ title: t('Remove share'), confirm: t('Remove'), danger: true,
+      body: s.kind === 'download'
+        ? t('"{label}" and its list of downloads are removed, and its code no longer works. The recording stays.', { label: s.label })
+        : t('"{label}" and its list of uploads are removed, and its code no longer works. Files already sent stay.', { label: s.label }) });
+    if (!ok) return false;
+    await api('POST', `api/shares/${encodeURIComponent(s.id)}/remove`);
+  });
+  const open = data.shares.filter((s) => !s.ended);
+  const ended = data.shares.filter((s) => s.ended);
+  const removeEnded = act(async () => {
+    const ok = await confirmDialog({ title: t('Remove ended shares'), confirm: t('Remove'), danger: true,
+      body: tn(ended.length, '{n} share that has ended (expired, used up or full) is removed with its list. Recordings stay; paused shares too.', '{n} shares that have ended (expired, used up or full) are removed with their lists. Recordings stay; paused shares too.') });
+    if (!ok) return false;
+    await api('POST', 'api/shares/remove-ended');
+  });
+
+  const used = (s) => s.kind === 'download'
+    ? (s.count ? tn(s.count, '{n} download', '{n} downloads') : t('Not downloaded yet'))
+    : (s.count ? t('{files} received ({size})', { files: tn(s.count, '{n} file', '{n} files'), size: formatSize(s.bytes) }) : t('Nothing received yet'));
+  const row = (s) => h('div', { class: 'panel share' + (compact ? ' compact' : '') },
+    h('p', {}, h('strong', {}, s.label), ' ', stateText(s), ' ',
+      compact ? '' : h('span', { class: 'badge kind' }, s.kind === 'download' ? t('Download') : t('Upload')), ' ',
+      h('span', { class: 'muted mono' }, '…' + s.hint)),
+    s.kind === 'download' && !compact ? h('p', {}, t('Download of {name}', { name: baseName(s.recording) })) : '',
+    h('p', { class: 'muted' }, limits(s)),
+    h('p', {}, `${used(s)} · ${t('made {date}', { date: formatDate(s.created) })}`),
+    s.removeAt ? h('p', { class: 'muted' }, t('Removed automatically on {date}.', { date: formatDate(s.removeAt) })) : '',
+    s.log.length ? h('details', {}, h('summary', {}, s.kind === 'download' ? t('Downloads') : t('Uploads')),
+      h('table', { class: 'list' }, s.log.map((u) => h('tr', {},
+        h('td', {}, formatDateTime(u.time)), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
+    h('p', {}, !s.state ? h('button', { name: 'pause', onclick: pause(s) }, t('Pause'))
+      : s.state === 'paused' ? [h('button', { class: 'primary', name: 'resume', onclick: resume(s) }, t('Resume')), ' ',
+        h('button', { name: 'remove', onclick: remove(s) }, t('Remove'))]
+      : h('button', { name: 'remove', onclick: remove(s) }, t('Remove'))));
+
+  if (!data.shares.length) return [h('p', { class: 'muted' }, t('No shares yet.'))];
+  return [
+    open.length || !compact ? h('details', { class: 'share-group', open: true },
+      h('summary', {}, t('Open ({n})', { n: open.length })),
+      ...(open.length ? open.map(row) : [h('p', { class: 'muted' }, t('None open.'))])) : '',
+    ended.length ? h('details', { class: 'share-group ended' },
+      h('summary', {}, t('Ended ({n})', { n: ended.length })),
+      h('p', { class: 'muted' }, data.endedDays
+        ? tn(data.endedDays, 'An ended share is removed automatically {n} day after it ended.', 'An ended share is removed automatically {n} days after it ended.')
+        : t('Ended shares are kept until you remove them.'),
+      compact ? '' : [' ', h('button', { name: 'remove-ended', onclick: removeEnded }, t('Remove {n} ended', { n: ended.length }))]),
+      ...ended.map(row)) : '',
+  ];
 }
