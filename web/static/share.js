@@ -226,7 +226,7 @@ async function sendFile(file, onProgress) {
       await sleep(1000 * Math.max(Number(resp.headers.get('Retry-After')) || 0, Math.min(60, 2 ** failures)));
       continue;
     }
-    // Refused for good (wrong type, revoked...): free its place in the code's limits.
+    // Refused (wrong type, paused...): free its place in the code's limits.
     localStorage.removeItem(key);
     if (resp.status !== 404) await call('DELETE', `api/share/uploads/${encodeURIComponent(id)}`).catch(() => {});
     throw new Error(errorText(resp, data));

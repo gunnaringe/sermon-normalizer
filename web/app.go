@@ -327,7 +327,8 @@ func (a *App) Handler() http.Handler {
 	if a.share != nil {
 		mux.HandleFunc("GET /api/shares", a.handleShares)
 		mux.HandleFunc("POST /api/shares", a.handleShareCreate)
-		mux.HandleFunc("POST /api/shares/{id}/revoke", a.handleShareRevoke)
+		mux.HandleFunc("POST /api/shares/{id}/pause", a.handleSharePause)
+		mux.HandleFunc("POST /api/shares/{id}/resume", a.handleShareResume)
 		mux.HandleFunc("POST /api/shares/{id}/remove", a.handleShareRemove)
 		mux.HandleFunc("POST /api/shares/remove-ended", a.handleShareRemoveEnded)
 	}

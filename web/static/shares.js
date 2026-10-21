@@ -8,7 +8,7 @@ import { t, tn } from './i18n.js';
 const GB = 1 << 30;
 
 // What a share's state is called; the server's words are the keys of this table.
-const STATES = { revoked: 'revoked', expired: 'expired', 'used up': 'used up', full: 'full' };
+const STATES = { paused: 'paused', expired: 'expired', 'used up': 'used up', full: 'full' };
 
 function stateText(s) {
   if (s.state) return h('span', { class: 'badge' }, t(STATES[s.state] || s.state));
@@ -110,29 +110,35 @@ export async function sharesView(box) {
     } catch (err) { status.textContent = err.message; }
   } }, t('Make share'));
 
-  const revoke = (s) => async () => {
-    const ok = await confirmDialog({ title: t('Revoke share'), confirm: t('Revoke'), danger: true,
-      body: t('Nobody can upload with the code of "{label}" any more. Files already sent stay; uploads in progress stop.', { label: s.label }) });
-    if (!ok) return;
+  // Pausing asks first only when it stops someone's upload.
+  const pause = (s) => async () => {
+    if (s.uploading && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
+      body: t('Uploads in progress with the code of "{label}" stop. It takes uploads again when you resume it.', { label: s.label }) })) return;
     try {
-      await api('POST', `api/shares/${encodeURIComponent(s.id)}/revoke`);
+      await api('POST', `api/shares/${encodeURIComponent(s.id)}/pause`);
+      await sharesView(box);
+    } catch (err) { alertDialog({ body: err.message }); }
+  };
+  const resume = (s) => async () => {
+    try {
+      await api('POST', `api/shares/${encodeURIComponent(s.id)}/resume`);
       await sharesView(box);
     } catch (err) { alertDialog({ body: err.message }); }
   };
 
   const remove = (s) => async () => {
     const ok = await confirmDialog({ title: t('Remove share'), confirm: t('Remove'), danger: true,
-      body: t('"{label}" and its list of uploads are removed. Files already sent stay.', { label: s.label }) });
+      body: t('"{label}" and its list of uploads are removed, and its code no longer works. Files already sent stay.', { label: s.label }) });
     if (!ok) return;
     try {
       await api('POST', `api/shares/${encodeURIComponent(s.id)}/remove`);
       await sharesView(box);
     } catch (err) { alertDialog({ body: err.message }); }
   };
-  const ended = data.shares.filter((s) => s.state);
+  const ended = data.shares.filter((s) => s.state && s.state !== 'paused');
   const removeEnded = async () => {
     const ok = await confirmDialog({ title: t('Remove ended shares'), confirm: t('Remove'), danger: true,
-      body: tn(ended.length, '{n} share that no longer takes uploads (revoked, expired, used up or full) is removed with its list of uploads. Files already sent stay.', '{n} shares that no longer take uploads (revoked, expired, used up or full) are removed with their lists of uploads. Files already sent stay.') });
+      body: tn(ended.length, '{n} share that has ended (expired, used up or full) is removed with its list of uploads. Files already sent stay; paused shares too.', '{n} shares that have ended (expired, used up or full) are removed with their lists of uploads. Files already sent stay; paused shares too.') });
     if (!ok) return;
     try {
       await api('POST', 'api/shares/remove-ended');
@@ -148,9 +154,10 @@ export async function sharesView(box) {
     s.log.length ? h('details', {}, h('summary', {}, t('Uploads')),
       h('table', { class: 'list' }, s.log.map((u) => h('tr', {},
         h('td', {}, formatDateTime(u.time)), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
-    h('p', {}, s.state
-      ? h('button', { name: 'remove', onclick: remove(s) }, t('Remove'))
-      : h('button', { name: 'revoke', onclick: revoke(s) }, t('Revoke')))));
+    h('p', {}, !s.state ? h('button', { name: 'pause', onclick: pause(s) }, t('Pause'))
+      : s.state === 'paused' ? [h('button', { class: 'primary', name: 'resume', onclick: resume(s) }, t('Resume')), ' ',
+        h('button', { name: 'remove', onclick: remove(s) }, t('Remove'))]
+      : h('button', { name: 'remove', onclick: remove(s) }, t('Remove')))));
 
   box.replaceChildren(
     h('h2', {}, t('Shares')),

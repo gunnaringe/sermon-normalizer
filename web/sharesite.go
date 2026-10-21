@@ -96,7 +96,7 @@ func (a *App) clientIP(r *http.Request) string {
 }
 
 // shareFor checks the request's code. On failure it has written the error.
-// A share that is revoked or expired is still found (the code was right),
+// A share that is paused or expired is still found (the code was right),
 // but refused.
 func (a *App) shareFor(w http.ResponseWriter, r *http.Request) (*tenant, *Share, string, bool) {
 	ip := a.clientIP(r)
@@ -119,8 +119,12 @@ func (a *App) shareFor(w http.ResponseWriter, r *http.Request) (*tenant, *Share,
 	a.shareMu.Lock()
 	state := sh.state(time.Now())
 	a.shareMu.Unlock()
-	if state == "revoked" || state == "expired" {
-		writeError(w, http.StatusForbidden, fmt.Errorf("this code has %s", map[string]string{"revoked": "been withdrawn", "expired": "expired"}[state]))
+	switch state {
+	case "paused":
+		writeError(w, http.StatusForbidden, errors.New("this code is paused: ask the church that gave it to you"))
+		return nil, nil, ip, false
+	case "expired":
+		writeError(w, http.StatusForbidden, errors.New("this code has expired"))
 		return nil, nil, ip, false
 	}
 	return t, sh, ip, true

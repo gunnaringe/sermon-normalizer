@@ -207,28 +207,51 @@ func TestShareRefusesWhatItShould(t *testing.T) {
 	if w := st.call("PUT", "/api/share/uploads/"+id+"?offset=0", other, "1.1.1.1", wav(2000)); w.Code != http.StatusNotFound {
 		t.Errorf("upload of another share: %d", w.Code)
 	}
-	// Revoked: refused at once, also mid-upload; the uploads in progress go
+	// Paused: refused at once, also mid-upload; the uploads in progress go
 	// with their files, and the share stays in the list.
 	os.WriteFile(filepath.Join(st.church, "Innboks", ".share-"+id+".partial"), []byte("x"), 0o644)
-	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/revoke", ""); w.Code != 200 {
-		t.Fatalf("revoke: %d %s", w.Code, w.Body)
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/resume", ""); w.Code != http.StatusConflict {
+		t.Errorf("resume an open share: %d", w.Code)
+	}
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/pause", ""); w.Code != 200 {
+		t.Fatalf("pause: %d %s", w.Code, w.Body)
 	}
 	if w := st.call("PUT", "/api/share/uploads/"+id+"?offset=0", code, "1.1.1.1", wav(2000)); w.Code != http.StatusForbidden {
-		t.Errorf("chunk after revoke: %d", w.Code)
+		t.Errorf("chunk after pause: %d", w.Code)
 	}
 	if fileExists(filepath.Join(st.church, "Innboks", ".share-"+id+".partial")) {
-		t.Error("partial left after revoke")
+		t.Error("partial left after pause")
 	}
-	if w := st.call("GET", "/api/share", code, "1.1.1.1", nil); w.Code != http.StatusForbidden {
-		t.Errorf("revoked share: %d", w.Code)
+	if w := st.call("GET", "/api/share", code, "1.1.1.1", nil); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "paused") {
+		t.Errorf("paused share: %d %s", w.Code, w.Body)
 	}
-	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/delete", ""); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
-		t.Errorf("delete is gone: %d", w.Code)
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/pause", ""); w.Code != http.StatusConflict {
+		t.Errorf("pause it twice: %d", w.Code)
 	}
-	if !strings.Contains(do(st.studio, "GET", "/api/shares", "").Body.String(), `"revoked"`) {
-		t.Error("revoked share not listed")
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/revoke", ""); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("revoke is gone: %d", w.Code)
 	}
-	// An open share cannot be removed; an ended one can, and then it is gone.
+	if !strings.Contains(do(st.studio, "GET", "/api/shares", "").Body.String(), `"paused"`) {
+		t.Error("paused share not listed")
+	}
+	// Resumed: the same code works again.
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/resume", ""); w.Code != 200 {
+		t.Fatalf("resume: %d %s", w.Code, w.Body)
+	}
+	if w := st.call("GET", "/api/share", code, "1.1.1.1", nil); w.Code != 200 {
+		t.Errorf("resumed share: %d %s", w.Code, w.Body)
+	}
+	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/pause", ""); w.Code != 200 {
+		t.Fatalf("pause again: %d %s", w.Code, w.Body)
+	}
+	// Removing the ended ones leaves a paused share.
+	if w := do(st.studio, "POST", "/api/shares/remove-ended", ""); w.Code != 200 {
+		t.Errorf("remove ended: %d", w.Code)
+	}
+	if !strings.Contains(do(st.studio, "GET", "/api/shares", "").Body.String(), sh.ID) {
+		t.Error("remove ended took the paused share")
+	}
+	// An open share cannot be removed; a paused one can, and then it is gone.
 	st.makeShare(`{"label":"Open","types":[".wav"]}`)
 	list := decode[struct{ Shares []struct{ ID, Label string } }](t, do(st.studio, "GET", "/api/shares", ""))
 	var openID string
@@ -241,7 +264,7 @@ func TestShareRefusesWhatItShould(t *testing.T) {
 		t.Errorf("remove an open share: %d", w.Code)
 	}
 	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/remove", ""); w.Code != 200 {
-		t.Errorf("remove a revoked share: %d %s", w.Code, w.Body)
+		t.Errorf("remove a paused share: %d %s", w.Code, w.Body)
 	}
 	if w := do(st.studio, "POST", "/api/shares/"+sh.ID+"/remove", ""); w.Code != http.StatusNotFound {
 		t.Errorf("remove it twice: %d", w.Code)
@@ -533,6 +556,25 @@ func TestShareLogo(t *testing.T) {
 	for _, c := range []string{"", "AAAA-BBBB-CCCC-DDDD"} {
 		if w := st.call("GET", "/api/share/logo", c, "2.2.2.2", nil); w.Code != http.StatusForbidden {
 			t.Errorf("logo with code %q: %d", c, w.Code)
+		}
+	}
+}
+
+// A paused share that has also ended says how it ended.
+func TestSharePausedState(t *testing.T) {
+	now := time.Now()
+	past := now.Add(-time.Hour)
+	for _, c := range []struct {
+		sh   Share
+		want string
+	}{
+		{Share{Paused: true}, "paused"},
+		{Share{Paused: true, Expires: &past}, "expired"},
+		{Share{Paused: true, MaxUploads: 1, Count: 1}, "used up"},
+		{Share{}, ""},
+	} {
+		if got := c.sh.state(now); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.sh, got, c.want)
 		}
 	}
 }

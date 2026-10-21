@@ -73,7 +73,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/inboxwatch.go`: `ingest` moves settled inbox files straight to their date
   folder (convert + prepare happen there).
 - `web/share.go`: shares (codes for the public upload page), `<church>/shares.json`, the studio's
-  `api/shares` (only with `--share-listen`; shown as the last section of Settings, `shares.js`). Revoke, and remove the ended ones (`removeShares`; an open share is never removed). `web/sharesite.go`: the public listener
+  `api/shares` (only with `--share-listen`; shown as the last section of Settings, `shares.js`). Pause/resume (the same code works again), remove a paused or ended one (`removeShares`; an open share is never removed; remove-ended leaves the paused). `web/sharesite.go`: the public listener
   (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
 - `web/static/`: plain JS, no build. `app.js` = the hash router (`#/<church>/…`, old addresses without a church are moved; the

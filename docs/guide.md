@@ -181,10 +181,11 @@ separate, public upload page, with a code. **Settings → Shares** in the studio
 types (all supported audio, or some of them), the max file size, and optionally how many files, how much
 in all and an expiry. The code (`XXXX-XXXX-XXXX-XXXX`, 80 bits) and a link with it (`<share-url>#code=...`)
 are shown once, with a Share button for the link (hold the code to copy it); the church keeps only a hash,
-in `<church>/shares.json`, with the uploads made (name, size, address, time). A share can be revoked:
-refused at once, also mid-upload (after a confirmation); it stays in the list with what came in. A share
-that no longer takes uploads (revoked, expired, used up, full) can be removed from the list, one by one or
-all at once; the files it brought stay.
+in `<church>/shares.json`, with the uploads made (name, size, address, time). A share can be paused:
+its code is refused at once, also mid-upload (after a confirmation, if someone is uploading), until you
+resume it, so the same code works again. A paused share, or one that has ended (expired, used up, full),
+can be removed, with its list of uploads; its code then works no more, and the files it brought stay.
+**Remove ended** removes all the ended ones at once, not the paused ones.
 
 The upload page asks for the code, or takes it from the link and removes it from the address bar
 (it is in the fragment, so it never reaches the server's or a proxy's logs). Files go in 16 MB

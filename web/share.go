@@ -58,7 +58,7 @@ type Share struct {
 	MaxTotal    int64      `json:"maxTotal,omitempty"` // bytes over all uploads; 0 = no limit
 	Types       []string   `json:"types,omitempty"`    // the ones it takes, if not AllTypes
 	AllTypes    bool       `json:"allTypes,omitempty"` // every type the inbox takes, also ones added later
-	Revoked     bool       `json:"revoked,omitempty"`
+	Paused      bool       `json:"paused,omitempty"`   // takes no uploads until resumed
 
 	Count   int                       `json:"count"` // finished uploads
 	Bytes   int64                     `json:"bytes"`
@@ -85,17 +85,18 @@ type pendingUpload struct {
 	Started  time.Time `json:"started"`
 }
 
-// state says whether a share takes uploads: "" if it does, else why not.
+// state says whether a share takes uploads: "" if it does, else why not. A
+// paused share that has also ended says how it ended: resuming would not open it.
 func (sh *Share) state(now time.Time) string {
 	switch {
-	case sh.Revoked:
-		return "revoked"
 	case sh.Expires != nil && now.After(*sh.Expires):
 		return "expired"
 	case sh.MaxUploads > 0 && sh.Count >= sh.MaxUploads:
 		return "used up"
 	case sh.MaxTotal > 0 && sh.Bytes >= sh.MaxTotal:
 		return "full"
+	case sh.Paused:
+		return "paused"
 	}
 	return ""
 }
@@ -372,9 +373,19 @@ func (a *App) handleShareCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"share": view, "code": code})
 }
 
-// handleShareRevoke stops a share for good: POST api/shares/{id}/revoke. It
-// stays in the list, with what came in; uploads in progress are dropped.
-func (a *App) handleShareRevoke(w http.ResponseWriter, r *http.Request) {
+// handleSharePause stops a share's uploads until it is resumed:
+// POST api/shares/{id}/pause. Uploads in progress are dropped, with their files.
+func (a *App) handleSharePause(w http.ResponseWriter, r *http.Request) {
+	a.setPaused(w, r, true)
+}
+
+// handleShareResume lets a paused share take uploads again:
+// POST api/shares/{id}/resume.
+func (a *App) handleShareResume(w http.ResponseWriter, r *http.Request) {
+	a.setPaused(w, r, false)
+}
+
+func (a *App) setPaused(w http.ResponseWriter, r *http.Request, pause bool) {
 	t, ok := a.adminTenant(w, r)
 	if !ok {
 		return
@@ -388,25 +399,38 @@ func (a *App) handleShareRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sh := t.shares[i]
-	wasRevoked, pending := sh.Revoked, sh.Pending
-	sh.Revoked, sh.Pending = true, nil
+	switch state := sh.state(time.Now()); {
+	case pause && state != "":
+		writeError(w, http.StatusConflict, errors.New("this share takes no uploads"))
+		return
+	case !pause && state != "paused":
+		writeError(w, http.StatusConflict, errors.New("only a paused share can be resumed"))
+		return
+	}
+	pending := sh.Pending
+	sh.Paused = pause
+	if pause {
+		sh.Pending = nil
+	}
 	if err := a.saveShares(t); err != nil {
-		sh.Revoked, sh.Pending = wasRevoked, pending
+		sh.Paused, sh.Pending = !pause, pending
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	for uid := range pending {
-		if !a.share.busy[uid] {
-			os.Remove(partialPath(t, uid))
+	if pause {
+		for uid := range pending {
+			if !a.share.busy[uid] {
+				os.Remove(partialPath(t, uid))
+			}
 		}
 	}
-	a.cfg.Base.Logger.Printf("share: %s revoked share %s (%q)", t.id, sh.ID, sh.Label)
+	a.cfg.Base.Logger.Printf("share: %s %s share %s (%q)", t.id, map[bool]string{true: "paused", false: "resumed"}[pause], sh.ID, sh.Label)
 	writeJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
-// handleShareRemove deletes a share that no longer takes uploads (revoked,
-// expired, used up or full) from the list, with its log:
-// POST api/shares/{id}/remove. An open share is revoked first.
+// handleShareRemove deletes a share that takes no uploads (paused, expired,
+// used up or full), with its log: POST api/shares/{id}/remove. Its code then
+// works no more. An open share is paused first.
 func (a *App) handleShareRemove(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.adminTenant(w, r)
 	if !ok {
@@ -418,7 +442,7 @@ func (a *App) handleShareRemove(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, err)
 	case open:
-		writeError(w, http.StatusConflict, errors.New("this share still takes uploads: revoke it first"))
+		writeError(w, http.StatusConflict, errors.New("this share still takes uploads: pause it first"))
 	case n == 0:
 		writeError(w, http.StatusNotFound, errors.New("no such share"))
 	default:
@@ -426,14 +450,14 @@ func (a *App) handleShareRemove(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleShareRemoveEnded deletes every share that no longer takes uploads:
-// POST api/shares/remove-ended.
+// handleShareRemoveEnded deletes every share that has ended (expired, used up
+// or full): POST api/shares/remove-ended. Paused shares stay.
 func (a *App) handleShareRemoveEnded(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.adminTenant(w, r)
 	if !ok {
 		return
 	}
-	n, _, err := a.removeShares(t, func(*Share) bool { return true })
+	n, _, err := a.removeShares(t, func(sh *Share) bool { return sh.state(time.Now()) != "paused" })
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -441,7 +465,7 @@ func (a *App) handleShareRemoveEnded(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int{"removed": n})
 }
 
-// removeShares drops the church's ended shares that pick says yes to, and the
+// removeShares drops the church's paused or ended shares that pick says yes to, and the
 // partial files of their uploads. A share that still takes uploads is left
 // alone; open says one was picked.
 func (a *App) removeShares(t *tenant, pick func(*Share) bool) (n int, open bool, err error) {
