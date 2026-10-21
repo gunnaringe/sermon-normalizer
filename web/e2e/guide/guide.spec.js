@@ -143,6 +143,25 @@ test('settings and a share for people without a login', async ({ page, context }
   await shot(guest, '16-public-uploaded');
 });
 
+test('a finished sermon shared for download', async ({ page, context }) => {
+  await page.goto('#/grace-chapel/recording/2026/2026-10-18');
+  await page.locator('tr.detail-row').getByRole('button', { name: 'Share for download…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Share for download' });
+  await dialog.locator('input[name=label]').fill('For the homebound');
+  await dialog.locator('input[name=maxDownloads]').fill('10');
+  await dialog.locator('input[name=expires]').fill('2026-12-31');
+  await shot(page, '20-share-download');
+  await dialog.getByRole('button', { name: 'Make share' }).click();
+  const made = page.getByRole('dialog', { name: 'Share made' });
+  const link = await made.locator('.share-link').textContent();
+  await made.getByRole('button', { name: 'OK' }).click();
+  const guest = await context.newPage();
+  await guest.goto(link);
+  await expect(guest.getByRole('button', { name: /^Download MP3/ })).toBeVisible();
+  await shot(guest, '21-public-download');
+  await guest.close();
+});
+
 test('on a phone, and in the dark', async ({ browser }) => {
   const phone = await browser.newContext({ baseURL: 'http://localhost:8080/', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const p = await phone.newPage();

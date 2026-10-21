@@ -19,6 +19,9 @@ import (
 // a recording and the sermon made from it: what the recording is, the sermon's
 // saved and adjusted settings, and how each output was made.
 type folderState struct {
+	// ID tells the recording apart from another one in the same folder later; given when a download share
+	// is made, which keeps it to find the recording (renamed, restored from the trash) and nothing else.
+	ID string `json:"id,omitempty"`
 	// Recording is what the recording is; nil until it has been looked at, and
 	// redone when the file changes (Stamp).
 	Recording *recordingFacts `json:"recording"`

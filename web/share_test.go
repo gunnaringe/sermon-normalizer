@@ -399,6 +399,12 @@ func TestSharePublicIsSeparate(t *testing.T) {
 			t.Errorf("GET %s on the public listener: %d", path, w.Code)
 		}
 	}
+	// The one way to a file: a counted download's ticket, which names no path.
+	for _, path := range []string{"/api/share/downloads/x", "/api/share/downloads/..%2F..%2Fchurch.json", "/api/share/downloads/"} {
+		if w := st.call("GET", path, "", "1.1.1.1", nil); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("GET %s on the public listener: %d", path, w.Code)
+		}
+	}
 	if w := st.call("PUT", "/api/inbox/files/x.wav", "", "1.1.1.1", wav(2000)); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("inbox PUT on the public listener: %d", w.Code)
 	}

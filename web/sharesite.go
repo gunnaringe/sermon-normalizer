@@ -54,6 +54,8 @@ func (a *App) ShareHandler() http.Handler {
 	mux.HandleFunc("GET /api/share/uploads/{id}", a.handleShareStatus)
 	mux.HandleFunc("PUT /api/share/uploads/{id}", a.handleShareChunk)
 	mux.HandleFunc("DELETE /api/share/uploads/{id}", a.handleShareCancel)
+	mux.HandleFunc("POST /api/share/downloads", a.handleShareDownloadStart)
+	mux.HandleFunc("GET /api/share/downloads/{id}", a.handleShareDownloadFile)
 	return a.shareGuard(http.NewCrossOriginProtection().Handler(mux))
 }
 
@@ -136,11 +138,15 @@ func (a *App) handleShareInfo(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if sh.Kind == kindDownload {
+		a.downloadInfo(w, t, sh)
+		return
+	}
 	a.shareMu.Lock()
 	defer a.shareMu.Unlock()
 	n, bytes := sh.reserved()
 	info := map[string]any{
-		"label": sh.Label, "church": t.info().Name, "types": sh.types(), "allTypes": sh.AllTypes, "maxFileSize": sh.MaxFileSize,
+		"kind": kindUpload, "label": sh.Label, "church": t.info().Name, "types": sh.types(), "allTypes": sh.AllTypes, "maxFileSize": sh.MaxFileSize,
 		"expires": sh.Expires, "state": sh.state(time.Now()), "chunk": 16 << 20, "logo": t.logoFile() != "",
 	}
 	if sh.MaxUploads > 0 {
@@ -191,7 +197,7 @@ func shareFileName(name string) (string, error) {
 // handleShareStart starts an upload and holds its place in the share's
 // limits: POST api/share/uploads {name, size, modified} → {id}.
 func (a *App) handleShareStart(w http.ResponseWriter, r *http.Request) {
-	t, sh, ip, ok := a.shareFor(w, r)
+	t, sh, ip, ok := a.uploadShareFor(w, r)
 	if !ok {
 		return
 	}
@@ -287,7 +293,7 @@ func partialSize(path string) int64 {
 
 // handleShareStatus is where an upload continues: GET api/share/uploads/{id}.
 func (a *App) handleShareStatus(w http.ResponseWriter, r *http.Request) {
-	t, sh, _, ok := a.shareFor(w, r)
+	t, sh, _, ok := a.uploadShareFor(w, r)
 	if !ok {
 		return
 	}
@@ -335,7 +341,7 @@ func magicOK(name string, head []byte) bool {
 // with the offset to continue from. The last one renames the file into the
 // inbox and starts its ingest.
 func (a *App) handleShareChunk(w http.ResponseWriter, r *http.Request) {
-	t, sh, ip, ok := a.shareFor(w, r)
+	t, sh, ip, ok := a.uploadShareFor(w, r)
 	if !ok {
 		return
 	}
@@ -436,7 +442,7 @@ func (a *App) dropUpload(t *tenant, sh *Share, id string) {
 // handleShareCancel drops an upload the page gave up on:
 // DELETE api/share/uploads/{id}.
 func (a *App) handleShareCancel(w http.ResponseWriter, r *http.Request) {
-	t, sh, _, ok := a.shareFor(w, r)
+	t, sh, _, ok := a.uploadShareFor(w, r)
 	if !ok {
 		return
 	}
@@ -505,7 +511,7 @@ func (a *App) finishShareUpload(t *tenant, sh *Share, id string, p pendingUpload
 }
 
 // sweepShares drops uploads that stopped long ago, with their partial files,
-// and forgets quiet addresses.
+// and downloads that can no longer be resumed, and forgets quiet addresses.
 func (a *App) sweepShares(now time.Time) {
 	a.share.limits.prune()
 	a.mu.Lock()
@@ -526,6 +532,12 @@ func (a *App) sweepShares(now time.Time) {
 					delete(sh.Pending, id)
 					changed = true
 					a.cfg.Base.Logger.Printf("share: dropped unfinished upload %s from %s", p.Name, p.IP)
+				}
+			}
+			for id, tk := range sh.Tickets {
+				if !now.Before(tk.Expires) {
+					delete(sh.Tickets, id)
+					changed = true
 				}
 			}
 		}

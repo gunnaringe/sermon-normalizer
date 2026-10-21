@@ -916,6 +916,67 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await expect(up.getByRole('alert')).toContainText('unknown code');
 });
 
+test('download shares: share a finished sermon from its row, download it on the share page', async ({ page, context }) => {
+  // A finished sermon of its own (the files only need to be there), so the other tests' runs do not matter.
+  const folder = '2025/2025-12-24 Christmas';
+  const dir = path.join(DATA, 'root', folder);
+  fs.mkdirSync(dir, { recursive: true });
+  const mp3 = Buffer.from('ID3 a stand-in for the MP3 file');
+  fs.writeFileSync(path.join(dir, '2025-12-24 Christmas.mp3'), mp3);
+  fs.writeFileSync(path.join(dir, '2025-12-24 Christmas.flac'), Buffer.from('fLaC a stand-in for the FLAC file'));
+
+  await page.goto('#/first-church/recording/' + folder);
+  await page.locator('tr.detail-row').getByRole('button', { name: 'Share for download…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Share for download' });
+  await expect(dialog.locator('input[name=label]')).toHaveValue('2025-12-24 Christmas');
+  await expect(dialog.getByLabel('MP3')).toBeChecked();
+  await expect(dialog.getByLabel('FLAC')).not.toBeChecked();
+  await expect(dialog.getByLabel('Opus')).toHaveCount(0); // not made
+  await dialog.locator('input[name=label]').fill('For Anna');
+  await dialog.locator('input[name=maxDownloads]').fill('2');
+  await dialog.locator('input[name=expires]').fill('2099-02-30');
+  await dialog.getByRole('button', { name: 'Make share' }).click();
+  await page.getByRole('dialog', { name: 'Something went wrong' }).getByRole('button', { name: 'OK' }).click();
+  await expect(dialog.locator('input[name=label]')).toHaveValue('For Anna'); // the form again, as it was
+  await dialog.locator('input[name=expires]').fill('2099-12-31');
+  await page.screenshot({ path: path.join(shots, 'share-download-dialog.png') });
+  await dialog.getByRole('button', { name: 'Make share' }).click();
+  const made = page.getByRole('dialog', { name: 'Share made' });
+  const link = await made.locator('.share-link').textContent();
+  expect(link).toMatch(/^http:\/\/localhost:8081\/#code=[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
+  await made.getByRole('button', { name: 'OK' }).click();
+
+  // The link opens the sermon; a press downloads the file, and counts one.
+  const down = await context.newPage();
+  await down.goto(link);
+  await expect(down.locator('#heading')).toHaveText('Download a sermon');
+  await expect(down.getByText(/^From .+\. 2 more downloads · until 2099-12-31 23:59\.$/)).toBeVisible();
+  await expect(down.getByRole('button', { name: /^Download FLAC/ })).toHaveCount(0);
+  const [file] = await Promise.all([down.waitForEvent('download'), down.getByRole('button', { name: /^Download MP3/ }).click()]);
+  expect(file.suggestedFilename()).toBe('2025-12-24 Christmas.mp3');
+  expect(fs.readFileSync(await file.path()).equals(mp3)).toBe(true);
+  await expect(down.getByText('The download has started.')).toBeVisible();
+  await expect(down.getByText(/^From .+\. 1 more download · until 2099-12-31 23:59\.$/)).toBeVisible();
+  await down.screenshot({ path: path.join(shots, 'share-download.png') });
+
+  // The studio lists it with the uploads' shares.
+  await page.goto('#/first-church/settings/shares');
+  const row = page.locator('.share', { hasText: 'For Anna' });
+  await expect(row).toContainText('Download of 2025-12-24 Christmas');
+  await expect(row).toContainText('1 download ·');
+  await expect(row).toContainText('1 downloading');
+  await row.locator('summary', { hasText: 'Downloads' }).click();
+  await expect(row.locator('table')).toContainText('2025-12-24 Christmas.mp3');
+  await row.screenshot({ path: path.join(shots, 'settings-share-download.png') });
+
+  // Gone from the church: the page says so.
+  fs.rmSync(dir, { recursive: true });
+  await down.reload();
+  await expect(down.getByText('This sermon is no longer available.')).toBeVisible();
+  await page.reload();
+  await expect(row).toContainText('recording not found');
+});
+
 test('a recording being imported shows that, not what is left to do', async ({ page }) => {
   // The server's list, with the first recording shown as being converted.
   await page.route('**/api/recordings*', async (route) => {

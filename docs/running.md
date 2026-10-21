@@ -67,11 +67,11 @@ church and no right to add more sees just its name in the header; otherwise a qu
 | `--trash-days` | 30 | how long a deleted recording stays in the trash (Settings → Trash) before it is removed for good |
 | `--layout` | `2006/2006-01-02` | where new recordings go under a church's `Taler`, as a Go time layout |
 | `--ffmpeg` | `ffmpeg` | path to ffmpeg |
-| `--share-listen` | | address of the public upload page (see [Shares](guide.md#shares)); unset = no shares |
-| `--share-url` | | the upload page's public address, so the studio can show share links |
+| `--share-listen` | | address of the public share page, for sending recordings and downloading sermons (see [Shares](guide.md#shares)); unset = no shares |
+| `--share-url` | | the share page's public address, so the studio can show share links |
 | `--share-ip-header` | | header with the client's address, for the rate limits (Cloudflare: `CF-Connecting-IP`) |
 | `--share-fails-per-ip`, `--share-fails-total` | 5, 30 | wrong codes in 10 minutes before an address is blocked for an hour / codes are refused for everyone for 10 minutes |
-| `--share-requests-per-ip`, `--share-requests-total` | 120, 1200 | requests per minute to the upload page |
+| `--share-requests-per-ip`, `--share-requests-total` | 120, 1200 | requests per minute to the share page |
 | `--share-uploads-per-ip`, `--share-uploads-total` | 3, 10 | chunks received at the same time |
 
 Churches: the dropdown in the header switches church. A request names its church with

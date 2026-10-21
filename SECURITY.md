@@ -11,9 +11,10 @@ not as a public issue. You will get an answer within a few days.
 - **The studio has no login of its own.** Run it on a trusted network, or behind a proxy that handles
   login. With `--groups-header` it reads the user's groups from a header the proxy sets, so every request
   must come through that proxy ([access.md](docs/access.md)).
-- **The public upload page is separate on purpose** (`--share-listen`). It serves only itself and
-  `api/share/*`; nothing of the studio and nothing to list or download (the one file it sends is the church's
-  logo, and only to a valid code). Every request carries a share
+- **The public share page is separate on purpose** (`--share-listen`). It serves only itself and
+  `api/share/*`; nothing of the studio and nothing to list. The only files it sends are the church's logo
+  to a valid code, and the finished files of the one sermon a download share gives, to its code (a counted
+  download gets an address of 128 random bits that works for 6 hours). Every request carries a share
   code (80 bits; only a hash is stored). Wrong codes and request rates are limited, uploads are checked
   to be the audio or video type they claim, and an upload is refused when the disk would get within
   1 GB of full. Run it on its own host, not behind the login proxy.

@@ -35,7 +35,8 @@ with EBU R128, true peak limited), then encoded to **FLAC, MP3 and Opus**.
 **Recordings arrive however they arrive.** Upload from the browser (large files in chunks, resumable),
 let a recorder drop files in a church's inbox folder, or hand a sound technician a **share code** for a
 public upload page that needs no login. WAV, AIFF, CAF, FLAC, MP3, M4A, Ogg, Opus, WMA and video files
-(the sound is copied out unchanged) all work.
+(the sound is copied out unchanged) all work. A finished sermon goes out the same way: a code that lets
+someone download it, as often and for as long as you choose.
 
 ![The recordings page: years, status, labels, search](docs/img/01-recordings.png)
 
@@ -76,7 +77,7 @@ One Go binary, **standard library only**, with ffmpeg run as a command. The fron
 JavaScript with [wavesurfer.js](https://wavesurfer.xyz/) for the waveform: no framework and no build
 step. State is plain files in the data folder, so there is no database to run or back up. The
 studio has no login of its own: put it behind your login proxy, or on a trusted network. The
-public upload page is a separate listener that can reach nothing but itself. See
+public share page is a separate listener that reaches nothing but itself and the files a download code gives. See
 [SECURITY.md](SECURITY.md).
 
 ## Documentation

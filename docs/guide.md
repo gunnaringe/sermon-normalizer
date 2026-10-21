@@ -10,7 +10,7 @@ The pictures show a real speech: President Kennedy's inaugural address (1961), 1
 2. [Uploading](#uploading)
 3. [Cutting: sections and cuts](#cutting-sections-and-cuts)
 4. [Saving and the files](#saving-and-the-files)
-5. [Sharing an upload page](#shares)
+5. [Shares: sending recordings, downloading sermons](#shares)
 6. [Settings, tags, language and theme](#tags)
 
 ## The recordings page
@@ -177,8 +177,12 @@ at once.
 
 ![The public upload page: no login, just the code](img/15-public-code.png)
 
-With `--share-listen`, people without a login can send recordings to a church's inbox on a
-separate, public upload page, with a code. **Settings → Shares** in the studio makes one: a name, the file
+With `--share-listen`, people without a login can send recordings to a church's inbox, or download a
+finished sermon, on a separate, public share page, with a code. A share is one or the other.
+
+### Sending recordings
+
+People without a login send recordings to a church's inbox with a code. **Settings → Shares** in the studio makes one: a name, the file
 types (all supported audio, or some of them), the max file size, and optionally how many files, how much
 in all and an expiry. The code (`XXXX-XXXX-XXXX-XXXX`, 80 bits) and a link with it (`<share-url>#code=...`)
 are shown once, with a Share button for the link (hold the code to copy it); the church keeps only a hash,
@@ -196,10 +200,32 @@ when complete (never over a file: `name (2).wav`); then they are ingested like a
 Half-written files (stopped uploads, here or in the studio, and encodes cut off by a crash) are
 removed once they have sat untouched for a day; the server looks every hour.
 
-Run the upload page on its own host, **not** behind the login proxy, and keep the studio behind
-it. The page serves only itself and `api/share/*`: nothing of the studio, nothing to list or
-download. Every request carries the code; wrong codes and requests are limited per address and in
-all (flags above), and an upload is refused when the disk would get within 1 GB of full.
+### Downloading a sermon
+
+![Share for download, on a finished sermon](img/20-share-download.png)
+
+![The share page with a download code](img/21-public-download.png)
+
+**Share for download…** on a finished sermon (in its row on the recordings page) makes a code that lets
+someone without a login download it: a name, which of the files that have been made (MP3 to begin with),
+and optionally how many downloads and an expiry. The code and the link are shown once, as for uploads,
+and the share is listed in **Settings → Shares** with its downloads (file, size, address, time); it is
+paused, resumed and removed the same way.
+
+The share page shows the sermon's title and a button per file. A press counts one download and starts
+it from an address that works for 6 hours without the code, so the browser can download it and continue
+a download that broke; pressing again for the same file, from the same address, in that time counts
+nothing. A share follows its sermon when it is renamed or given another date, and gives the files as they
+are now, also after a new Save. While the sermon is in the trash the page says it is no longer available;
+restored, it works again.
+
+### Where to run it
+
+Run the share page on its own host, **not** behind the login proxy, and keep the studio behind
+it. The page serves only itself and `api/share/*`: nothing of the studio and nothing to list; the only
+files it sends are the files of a download share, to its code. Every request carries the code; wrong
+codes and requests are limited per address and in all (flags above), and an upload is refused when the
+disk would get within 1 GB of full.
 
 ## Tags
 

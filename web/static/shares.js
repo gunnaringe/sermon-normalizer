@@ -1,6 +1,7 @@
 // Shares: codes that let people without a login send recordings to this
-// church's inbox from the public upload page. A code is shown once, when the
-// share is made. A section of the settings; sharesView fills its box.
+// church's inbox from the public share page, or download one sermon (made on
+// the recording, sermons.js). A code is shown once, when the share is made.
+// A section of the settings; sharesView fills its box.
 import { api, h, formatSize, formatDate, formatDateTime } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
 import { t, tn } from './i18n.js';
@@ -10,13 +11,23 @@ const GB = 1 << 30;
 // What a share's state is called; the server's words are the keys of this table.
 const STATES = { paused: 'paused', expired: 'expired', 'used up': 'used up', full: 'full' };
 
+const FORMAT_NAMES = { flac: 'FLAC', mp3: 'MP3', opus: 'Opus' };
+const baseName = (path) => path.slice(path.lastIndexOf('/') + 1);
+
 function stateText(s) {
   if (s.state) return h('span', { class: 'badge' }, t(STATES[s.state] || s.state));
+  if (s.missing) return h('span', { class: 'badge' }, t('recording not found'));
+  if (s.downloading) return h('span', { class: 'badge busy' }, t('{n} downloading', { n: s.downloading }));
   if (s.uploading) return h('span', { class: 'badge busy' }, t('{n} uploading', { n: s.uploading }));
   return h('span', { class: 'badge on' }, t('open'));
 }
 
 function limits(s) {
+  if (s.kind === 'download') {
+    return [s.formats.map((f) => FORMAT_NAMES[f] || f).join(' '),
+      s.maxDownloads ? tn(s.maxDownloads, 'up to {n} download', 'up to {n} downloads') : t('no download limit'),
+      s.expires ? t('until {time}', { time: formatDateTime(s.expires) }) : t('no expiry')].join(' · ');
+  }
   const out = [t('up to {size} per file', { size: formatSize(s.maxFileSize) }), s.allTypes ? t('all audio') : s.types.join(' ')];
   if (s.maxUploads) out.push(tn(s.maxUploads, '{n} file', '{n} files'));
   if (s.maxTotal) out.push(t('{size} in all', { size: formatSize(s.maxTotal) }));
@@ -26,7 +37,7 @@ function limits(s) {
 
 // parseExpiry reads yyyy-mm-dd or yyyy-mm-dd hh:mm in local time; a day
 // alone lasts to its end. Empty = never.
-function parseExpiry(s) {
+export function parseExpiry(s) {
   s = s.trim();
   if (!s) return null;
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?$/);
@@ -57,7 +68,8 @@ function holdToCopy(el, text, done) {
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-async function showCode(url, code) {
+// showCode shows a new share's code and link, once. title is what the phone's share menu calls it.
+export async function showCode(url, code, title = t('Send recordings')) {
   const link = linkFor(url, code);
   const note = h('span', { class: 'muted', role: 'status' });
   const codeEl = h('span', { class: 'share-code', title: t('Hold to copy') }, code);
@@ -65,7 +77,7 @@ async function showCode(url, code) {
   const share = h('button', { type: 'button', name: 'share', onclick: async () => {
     const what = link ? { url: link } : { text: code };
     if (navigator.share) {
-      try { await navigator.share({ title: t('Send recordings'), ...what }); } catch { /* closed */ }
+      try { await navigator.share({ title, ...what }); } catch { /* closed */ }
       return;
     }
     await navigator.clipboard.writeText(link || code);
@@ -114,6 +126,8 @@ export async function sharesView(box) {
   const pause = (s) => async () => {
     if (s.uploading && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
       body: t('Uploads in progress with the code of "{label}" stop. It takes uploads again when you resume it.', { label: s.label }) })) return;
+    if (s.downloading && !await confirmDialog({ title: t('Pause share'), confirm: t('Pause'), danger: true,
+      body: t('Downloads that have started with the code of "{label}" stop. It gives downloads again when you resume it.', { label: s.label }) })) return;
     try {
       await api('POST', `api/shares/${encodeURIComponent(s.id)}/pause`);
       await sharesView(box);
@@ -128,7 +142,9 @@ export async function sharesView(box) {
 
   const remove = (s) => async () => {
     const ok = await confirmDialog({ title: t('Remove share'), confirm: t('Remove'), danger: true,
-      body: t('"{label}" and its list of uploads are removed, and its code no longer works. Files already sent stay.', { label: s.label }) });
+      body: s.kind === 'download'
+        ? t('"{label}" and its list of downloads are removed, and its code no longer works. The recording stays.', { label: s.label })
+        : t('"{label}" and its list of uploads are removed, and its code no longer works. Files already sent stay.', { label: s.label }) });
     if (!ok) return;
     try {
       await api('POST', `api/shares/${encodeURIComponent(s.id)}/remove`);
@@ -146,12 +162,16 @@ export async function sharesView(box) {
     } catch (err) { alertDialog({ body: err.message }); }
   };
 
+  const used = (s) => s.kind === 'download'
+    ? (s.count ? tn(s.count, '{n} download', '{n} downloads') : t('Not downloaded yet'))
+    : (s.count ? t('{files} received ({size})', { files: tn(s.count, '{n} file', '{n} files'), size: formatSize(s.bytes) }) : t('Nothing received yet'));
   const rows = data.shares.map((s) => h('div', { class: 'panel share' },
     h('p', {}, h('strong', {}, s.label), ' ', stateText(s), ' ',
       h('span', { class: 'muted mono' }, '…' + s.hint)),
+    s.kind === 'download' ? h('p', {}, t('Download of {name}', { name: baseName(s.recording) })) : '',
     h('p', { class: 'muted' }, limits(s)),
-    h('p', {}, `${s.count ? t('{files} received ({size})', { files: tn(s.count, '{n} file', '{n} files'), size: formatSize(s.bytes) }) : t('Nothing received yet')} · ${t('made {date}', { date: formatDate(s.created) })}`),
-    s.log.length ? h('details', {}, h('summary', {}, t('Uploads')),
+    h('p', {}, `${used(s)} · ${t('made {date}', { date: formatDate(s.created) })}`),
+    s.log.length ? h('details', {}, h('summary', {}, s.kind === 'download' ? t('Downloads') : t('Uploads')),
       h('table', { class: 'list' }, s.log.map((u) => h('tr', {},
         h('td', {}, formatDateTime(u.time)), h('td', {}, u.name), h('td', {}, formatSize(u.size)), h('td', { class: 'muted' }, u.ip))))) : '',
     h('p', {}, !s.state ? h('button', { name: 'pause', onclick: pause(s) }, t('Pause'))
@@ -163,7 +183,8 @@ export async function sharesView(box) {
     h('h2', {}, t('Shares')),
     h('p', { class: 'muted' }, t('A share is a code that lets someone without a login send recordings on the upload page'), data.url ? [' (', h('a', { href: data.url, target: '_blank', rel: 'noopener' }, data.url), ')'] : '',
       '. ' + t('The recordings arrive in this church like any other. Give people the code or the link.') + ' ' +
-      t('The code is shown only once, when you make the share.')),
+      t('The code is shown only once, when you make the share.') + ' ' +
+      t('To let someone download a finished sermon, use Share for download… on the recording.')),
     data.inbox ? h('div', { class: 'panel share-form' },
       h('label', { for: 'share-label' }, t('Name')), Object.assign(label, { id: 'share-label' }),
       h('span', {}, t('File types')), h('span', {}, h('label', { class: 'check' }, allTypes, ' ' + t('All supported audio')), h('br'), typeList),

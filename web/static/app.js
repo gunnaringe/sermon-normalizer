@@ -71,6 +71,7 @@ async function foldersView() {
   return recordingsView(view, {
     top: uploadBox(),
     church: currentTenant(),
+    shares: churches.shares,
     emptyNote: config.inbox ? t('No recordings here yet. Upload one above, or put one in the inbox folder.') : t('No recordings here yet. Upload one above.'),
   });
 }

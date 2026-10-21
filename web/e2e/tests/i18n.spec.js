@@ -101,7 +101,7 @@ test.describe('the public upload page', () => {
   test.use({ locale: 'nb-NO' });
   test('is translated, with its own language choice and the link to the repo', async ({ page }) => {
     await page.goto('http://localhost:8081/');
-    await expect(page.getByRole('heading', { name: 'Send et opptak' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Skriv inn koden' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Fortsett' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Kildekode på GitHub' })).toHaveAttribute('href', REPO);
     await page.getByLabel('Kode').fill('AAAA-BBBB-CCCC-DDDD');
@@ -109,6 +109,6 @@ test.describe('the public upload page', () => {
     await expect(page.getByRole('alert')).toContainText('ukjent kode'); // the server's message, translated
     await page.screenshot({ path: path.join(shots, 'share-upload-nb.png') });
     await page.getByLabel('Språk').selectOption('en');
-    await expect(page.getByRole('heading', { name: 'Send a recording' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Enter your code' })).toBeVisible();
   });
 });

@@ -3,6 +3,7 @@
 // been processed, only a way into the editor.
 import { api, q, h, href, formatSize, formatTime, forTenant } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
+import { showCode, parseExpiry } from './shares.js';
 import { t, tn, tr } from './i18n.js';
 
 const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
@@ -24,7 +25,7 @@ const MAX_LABELS = 10;
 // sermonDetail returns the panel for a folder; it fills in when the folder
 // has been read, and again after a format was made. ctx.suggestions() lists
 // the labels already used; ctx.changed() is told when this one's labels change; ctx.deleted() when it
-// was moved to the trash (ctx.trashDays is how long it stays there).
+// was moved to the trash (ctx.trashDays is how long it stays there). ctx.shares: the public share page is on.
 export function sermonDetail(entry, ctx = {}) {
   const panel = h('div', { class: 'detail' }, h('p', { class: 'muted' }, 'Loading…'));
   const editURL = href('folder', entry.path);
@@ -132,6 +133,41 @@ export function sermonDetail(entry, ctx = {}) {
     return b;
   }
 
+  // shareButton makes a download share of the files that have been made: a code and a link that let
+  // someone without a login download them on the public share page, as often as it allows.
+  function shareButton(info) {
+    return h('button', { type: 'button', name: 'share-download', onclick: async () => {
+      const made = FORMATS.filter(([f]) => info.outputs.some((o) => o.format === f));
+      const boxes = made.map(([f]) => h('input', { type: 'checkbox', name: 'format', value: f, checked: f === 'mp3' || !made.some(([m]) => m === 'mp3') }));
+      const label = h('input', { type: 'text', name: 'label', id: 'download-label', maxlength: 80, value: entry.name });
+      const max = h('input', { type: 'number', name: 'maxDownloads', min: 0, step: 1, placeholder: t('no limit') });
+      const expires = h('input', { type: 'text', name: 'expires', class: 'date', maxlength: 16, autocomplete: 'off', placeholder: t('yyyy-mm-dd [hh:mm]') });
+      for (;;) {
+        const ok = await confirmDialog({ title: t('Share for download'), confirm: t('Make share'), body: [
+          h('p', { class: 'muted' }, t('Makes a code and a link that let someone without a login download this sermon on the share page.')),
+          h('div', { class: 'share-form' },
+            h('label', { for: 'download-label' }, t('Name')), label,
+            h('span', {}, t('Formats')), h('span', {}, boxes.map((b, i) => h('label', { class: 'check' }, b, ' ' + made[i][1] + ' '))),
+            h('label', {}, t('Max downloads')), max,
+            h('label', {}, t('Expires')), expires),
+        ] });
+        if (!ok) return;
+        try {
+          const done = await api('POST', 'api/shares', {
+            kind: 'download', recording: entry.path, label: label.value,
+            formats: boxes.filter((b) => b.checked).map((b) => b.value),
+            maxDownloads: Number(max.value) || 0,
+            expires: parseExpiry(expires.value),
+          });
+          await showCode(done.url, done.code, t('Download a sermon'));
+          return;
+        } catch (err) {
+          await alertDialog({ body: err.message }); // then the form again, as it was filled in
+        }
+      }
+    } }, t('Share for download…'));
+  }
+
   // deleteButton moves the recording to the trash, after asking.
   function deleteButton() {
     return h('button', { type: 'button', class: 'delete', name: 'delete-recording', onclick: async () => {
@@ -187,7 +223,8 @@ export function sermonDetail(entry, ctx = {}) {
       h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
       h('p', { class: 'actions' }, downloads),
       status,
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Edit sermon')), copyLink(), deleteButton()),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Edit sermon')), copyLink(),
+        ctx.shares && info.outputs.length ? shareButton(info) : '', deleteButton()),
     ];
   }
 

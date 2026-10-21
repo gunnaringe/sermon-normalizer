@@ -72,10 +72,14 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/cleanup.go`: removes half-written files (`.partial`, hidden `.upload`) untouched for a day, at start and hourly.
 - `web/inboxwatch.go`: `ingest` moves settled inbox files straight to their date
   folder (convert + prepare happen there).
-- `web/share.go`: shares (codes for the public upload page), `<church>/shares.json`, the studio's
+- `web/share.go`: shares (codes for the public share page: upload shares, and download shares, `sharedownload.go`), `<church>/shares.json`, the studio's
   `api/shares` (only with `--share-listen`; shown as the last section of Settings, `shares.js`). Pause/resume (the same code works again), remove a paused or ended one (`removeShares`; an open share is never removed; remove-ended leaves the paused). `web/sharesite.go`: the public listener
   (`App.ShareHandler`: `share.html` + `api/share/*`, nothing else), chunked upload to
   `Innboks/.share-<id>.partial`. `web/ratelimit.go`: its limits per address and in all.
+- `web/sharedownload.go`: a download share gives one recording's finished files (`kind: "download"`, made with Share for download… in
+  `sermons.js`). It finds its recording by `id` in `recording.json` (given when the share is made; the path is a hint that follows a
+  rename, a recording in the trash is not found). `POST api/share/downloads` counts one and hands out a ticket (`GET api/share/downloads/{id}`,
+  no code, Range, `ticketFor`); the same file from the same address while its ticket lasts counts nothing.
 - `web/static/`: plain JS, no build. `app.js` = the hash router (`#/<church>/…`, old addresses without a church are moved; the
   church comes from the address) and the Settings overlay (`openSettings`, over whichever page is shown). `recordings.js` = the one recordings page (years, search, Newly imported, rows, `open(path)` for links); `sermons.js` = a sermon's details inside it (labels, copy link, play, download,
   make a format); clicking anywhere on a date row expands it; one with no files only offers the editor there. Its status (`badges`): to do / done from `saved` (or files), plus no files / files out of date (`outdated`: an output's `cut` ≠ `cutOf` the saved version). `icons/` = the logo: `logo.svg` is the one source (header, favicon,
@@ -111,8 +115,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.
 - Messages from `normalizer` show in the web UI: use the form's names
   (Start, Save, mono), not flags. English everywhere.
-- The public upload page is on the internet without a login: add nothing to `ShareHandler`
-  that reads files or reaches the studio (the one exception: `api/share/logo` sends the church's logo to a valid code); `TestSharePublicIsSeparate` checks this.
+- The public share page is on the internet without a login: add nothing to `ShareHandler`
+  that reads files or reaches the studio (the two exceptions: `api/share/logo` sends the church's logo to a valid code, and a download
+  share's ticket sends its recording's finished files, by format, never by a path); `TestSharePublicIsSeparate` checks this.
 - Keep the Playwright image tag (`scripts/test.sh`) equal to `@playwright/test`
   in `web/e2e/package.json`.
 
