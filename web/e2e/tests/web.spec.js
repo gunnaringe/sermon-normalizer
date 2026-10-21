@@ -927,6 +927,51 @@ test('the recording keeps the name it arrived with: in the conversion note and i
   expect(JSON.parse(fs.readFileSync(path.join(folder, 'recording.json'), 'utf8')).sourceName).toBe('R_20270101-101010.wav');
 });
 
+test('undo and redo: buttons and keys, back to no section, kept, a field keeps its own undo', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  const file = path.join(DATA, 'root/2026/2026-10-04/recording.json');
+  const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
+  const history = () => editor(page, () => window.__editor.history);
+  const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
+  const redoButton = page.getByRole('button', { name: 'Redo', exact: true });
+  const base = (await history()).undo; // removing the start the editor made is a step already
+
+  await editor(page, () => window.__editor.addSection(10, 90));
+  expect(await history()).toEqual({ undo: base + 1, redo: 0 });
+  await editor(page, () => { window.__editor.addCut(30, 40); window.__editor.setFade('fadeIn', 2); });
+  expect(await history()).toEqual({ undo: base + 2, redo: 0 }); // changes that come together are one step
+  await expect(redoButton).toBeDisabled();
+
+  // ctrl+z takes the cut and the fade away, ctrl+shift+z brings them back.
+  await page.locator('body').press('Control+z');
+  expect(await editor(page, () => window.__editor.cuts)).toEqual([]);
+  expect(await editor(page, () => window.__editor.fades)).toEqual({ fadeIn: 0, fadeOut: 0 });
+  await expect(redoButton).toBeEnabled();
+  await page.locator('body').press('Control+Shift+z');
+  expect(await editor(page, () => window.__editor.cuts)).toEqual([{ start: 30, end: 40 }]);
+  await expect(fadeKnob(page, 'fadeIn')).toHaveAttribute('aria-valuenow', '2');
+
+  // The buttons do the same, back to no section at all, and forward again.
+  await undoButton.click();
+  await undoButton.click();
+  expect(await sections(page)).toEqual([]);
+  await redoButton.click();
+  expect(await sections(page)).toEqual([{ start: 10, end: 90 }]);
+  expect(await editor(page, () => window.__editor.cuts)).toEqual([]);
+  await expect.poll(() => read().adjusted?.cuts.length, { timeout: 5000 }).toBe(0); // what undo and redo put back is kept
+
+  // A new change after an undo drops what could be redone.
+  await editor(page, () => window.__editor.addCut(50, 55));
+  expect((await history()).redo).toBe(0);
+  await expect(redoButton).toBeDisabled();
+
+  // In a field, ctrl+z is the field's own undo, not the edit's.
+  const label = page.getByLabel('Sermon label');
+  await label.fill('Preken');
+  await label.press('Control+z');
+  expect(await editor(page, () => window.__editor.cuts)).toEqual([{ start: 50, end: 55 }]);
+});
+
 test('split a section, put in a pause, and choose what Play plays', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await editor(page, () => window.__editor.addSection(10, 90));

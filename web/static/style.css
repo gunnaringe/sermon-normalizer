@@ -507,4 +507,5 @@ input.pause { width: 4.5em; }
   .save-what { flex-basis: 100%; font-size: 1em; }
   .save-actions { gap: 0.4rem; }
   .save-actions button { padding: 0.4rem 0.75rem; }
+  .save-actions .wide-only { display: none; } /* undo and redo: the arrows only */
 }

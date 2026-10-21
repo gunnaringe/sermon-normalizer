@@ -79,7 +79,8 @@ Each can have a label, which shows on the waveform.
   stereo or mono in effect, which opens to its format, how it came and its metadata; and *Download original*), **Edit** (the
   waveform, sections, cuts and fades), **Metadata added to the file** (title, artist, album), **Processing** and **Output**.
   Under them, a **bar** sticks to the bottom of the window: whether the edit is saved (hover it to see both versions),
-  what Save will do, **Revert…** and **Save**.
+  what Save will do, **Undo** and **Redo** (also `ctrl+z` and `ctrl+shift+z`; they cover the sections, cuts, labels,
+  pauses and fades, not the processing and the tags, whose fields have their own undo), **Revert…** and **Save**.
 - **Saved version:** the sections, the cuts and the fades are kept in `recording.json` in the date
   folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
   the next time the sermon is opened. **Save** (in the bar) makes them the *saved version*,

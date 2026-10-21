@@ -138,8 +138,10 @@ export function typing(e) {
 
 export function debounce(fn, ms) {
   let timer;
-  return (...args) => {
+  const later = (...args) => {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), ms);
   };
+  later.cancel = () => clearTimeout(timer); // forget a call that is waiting
+  return later;
 }
