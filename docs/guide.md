@@ -54,7 +54,7 @@ Each can have a label, which shows on the waveform.
 ## In detail
 
 - **Recordings** (the one page, `#/<church>`): the upload, a search field, **Newly imported** (arrived in the last 7 days, newest
-  first, with when), then the years, each folded open on its own (the newest at first; the browser remembers). A row opens the
+  first, with when; folded at first), then the years, each folded open on its own (the newest at first; the browser remembers). A row opens the
   recording's details in place. **Labels** are your own tags on a recording ("Easter", "guest speaker": up to 10, 30 characters; added with the + button, Enter or a comma, or picked from the labels already in use;
   removed with the × on the pill, kept as `labels` in `recording.json`, not written into the files). The search matches name, date and labels
   in every year at once (all words must match); a label on a row searches for it. **Copy link** gives the address of one recording,
@@ -139,7 +139,7 @@ Each can have a label, which shows on the waveform.
   another cut than the saved one) when Save has more to do; *converting*, *preparing* and
   *processing* while the server works on it.
 - **Newly imported:** a recording that arrived (upload, inbox, share) in the last 7 days is also listed
-  on top of the first page, with when it came; the import time is kept in its `recording.json`.
+  on top of the first page, with when it came. It folds open and shut like a year and is shut at first; the import time is kept in its `recording.json`.
 - **Upload** (at the top of the recordings page): drop or pick the recording and its date (suggested from the file name or the file's
   date); it goes straight into the date folder (`<year>/<date>/<date>_raw.*`, see `--layout`).
   Uploads are sent in chunks, so they pass proxies that limit request size (Cloudflare: 100 MB)

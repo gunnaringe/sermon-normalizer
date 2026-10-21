@@ -568,13 +568,20 @@ test('upload straight into a new date folder, in chunks', async ({ page }) => {
   expect(fs.readFileSync(path.join(dir, '2026-09-27_raw.flac')).equals(fs.readFileSync(path.join(DATA, 'upload.flac')))).toBe(true);
   // It is on top of the first page, among the new ones, and opens there.
   await page.locator('a.brand').click();
+  // Folded at first, like a year that is not the newest; opened, it stays open.
   const recent = page.locator('section.recent');
-  await expect(recent.getByRole('heading', { name: 'Newly imported' })).toBeVisible();
+  const head = recent.getByRole('button', { name: /Newly imported/ });
+  await expect(head).toHaveAttribute('aria-expanded', 'false');
+  await expect(recent.locator('tr')).toHaveCount(0);
+  await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
   const row = recent.locator('tr', { hasText: '2026-09-27' });
   await expect(row).toContainText('arrived today');
   await row.getByRole('button', { name: '2026-09-27', exact: true }).click();
   await expect(recent.getByRole('link', { name: 'Open in the editor' })).toBeVisible();
   await page.screenshot({ path: path.join(shots, 'folders-new.png') });
+  await page.reload();
+  await expect(recent.locator('tr', { hasText: '2026-09-27' })).toBeVisible();
   // The date now has a recording: a second upload to it is refused.
   await page.locator('input[type=file]').setInputFiles({ name: 'again 2026-09-27.flac', mimeType: 'audio/flac', buffer: Buffer.from('x') });
   await page.getByRole('button', { name: 'Upload' }).click();
