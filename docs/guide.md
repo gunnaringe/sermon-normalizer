@@ -44,6 +44,8 @@ Each can have a label, which shows on the waveform.
 
 ![Output: choose the formats; Save is in the bar at the bottom](img/07-output.png)
 
+![The bar at the bottom of the window: what Save does, Revert and Save](img/07-save-bar.png)
+
 ![Processing, followed live](img/08-processing.png)
 
 ![Done](img/09-done.png)

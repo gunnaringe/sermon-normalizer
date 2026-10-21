@@ -502,5 +502,9 @@ input.pause { width: 4.5em; }
 .save-what p { margin: 0.15rem 0; }
 .save-actions { display: flex; gap: 0.5rem; margin-left: auto; }
 @media (max-width: 640px) {
-  .save-bar { bottom: 0; gap: 0.3rem 0.8rem; padding: 0.5rem 0.7rem; border-radius: 12px 12px 0 0; }
+  /* a phone: small text above, the buttons on their own row, flush with the bottom of the screen */
+  .save-bar { bottom: 0; gap: 0.15rem 0.6rem; padding: 0.4rem 0.7rem 0.5rem; border-radius: 12px 12px 0 0; font-size: 0.85rem; }
+  .save-what { flex-basis: 100%; font-size: 1em; }
+  .save-actions { gap: 0.4rem; }
+  .save-actions button { padding: 0.4rem 0.75rem; }
 }
