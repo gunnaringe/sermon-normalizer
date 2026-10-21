@@ -1,6 +1,6 @@
 // The recordings page: every recording of the church in one list. The ones that
 // arrived lately on top ("Newly imported"), then the years, each folded open
-// on its own; a search field over names, dates and labels. A row opens the
+// on its own like the new ones; a search field over names, dates and labels. A row opens the
 // details of the recording (sermons.js) right where it is.
 import { api, h, debounce, formatDate, formatDateTime } from './util.js';
 import { sermonDetail } from './sermons.js';
@@ -46,7 +46,9 @@ export async function recordingsView(view, { top, church, emptyNote }) {
   const all = data.recordings;
   const newMs = data.newFor * 1000;
 
-  // Which years are open is the browser's, per church; the newest one at first.
+  // Which groups are open is the browser's, per church: the years by number,
+  // the newly imported as NEW. At first only the newest year is.
+  const NEW = 'new';
   const storeKey = 'openYears:' + church;
   const stored = JSON.parse(localStorage.getItem(storeKey) || 'null');
   const openYears = new Set(stored ?? (all.length ? [yearOf(all[0])] : []));
@@ -105,17 +107,19 @@ export async function recordingsView(view, { top, church, emptyNote }) {
 
   const table = (entries, opts) => h('table', { class: 'list' }, h('tbody', {}, entries.map((e) => row(e, opts))));
 
-  function yearSection(year, entries) {
-    const sec = h('section', { class: 'year' });
+  // group is a heading that folds its recordings open and shut: a year, or the
+  // newly imported (cls 'recent', rows with when they came).
+  function group(key, title, entries, { cls = 'year', when = false } = {}) {
+    const sec = h('section', { class: cls });
     const draw = () => {
-      const open = openYears.has(year);
+      const open = openYears.has(key);
       sec.replaceChildren(
         h('button', { class: 'year-head', 'aria-expanded': String(open), onclick: () => {
-          if (open) openYears.delete(year); else openYears.add(year);
+          if (open) openYears.delete(key); else openYears.add(key);
           remember();
           draw();
-        } }, h('span', { class: 'tw' }, open ? '▾' : '▸'), year, h('span', { class: 'muted' }, ` · ${tn(entries.length, '{n} recording', '{n} recordings')}`)),
-        open ? table(entries, { register: true }) : '');
+        } }, h('span', { class: 'tw' }, open ? '▾' : '▸'), title, h('span', { class: 'muted' }, ` · ${tn(entries.length, '{n} recording', '{n} recordings')}`)),
+        open ? table(entries, when ? { when } : { register: true }) : '');
     };
     draw();
     return sec;
@@ -150,8 +154,8 @@ export async function recordingsView(view, { top, church, emptyNote }) {
       years.get(yearOf(e)).push(e);
     }
     list.replaceChildren(
-      lately.length ? h('section', { class: 'recent' }, h('h2', {}, t('Newly imported')), table(lately, { when: true })) : '',
-      ...[...years].map(([year, entries]) => yearSection(year, entries)));
+      lately.length ? group(NEW, t('Newly imported'), lately, { cls: 'recent', when: true }) : '',
+      ...[...years].map(([year, entries]) => group(year, year, entries)));
   }
 
   const input = h('input', { type: 'search', name: 'search', class: 'search', placeholder: t('Search name, date or label'),
