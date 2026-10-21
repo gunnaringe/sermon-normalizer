@@ -55,6 +55,9 @@ type churchConfig struct {
 	Meta *Meta  `json:"meta,omitempty"` // default tags; nil = DefaultMeta
 	// Processing is the default processing (processing.go); nil = the built-in.
 	Processing *processing `json:"processing,omitempty"`
+	// EndedSharesDays is how many days a share that has ended is kept before it is removed by itself;
+	// nil = defaultEndedSharesDays, 0 = never.
+	EndedSharesDays *int `json:"endedSharesDays,omitempty"`
 }
 
 // TenantInfo is a church as listed in the UI.
@@ -331,6 +334,7 @@ func (a *App) Handler() http.Handler {
 		mux.HandleFunc("POST /api/shares/{id}/resume", a.handleShareResume)
 		mux.HandleFunc("POST /api/shares/{id}/remove", a.handleShareRemove)
 		mux.HandleFunc("POST /api/shares/remove-ended", a.handleShareRemoveEnded)
+		mux.HandleFunc("PUT /api/shares/ended-days", a.handleEndedSharesDays)
 	}
 	toChurch := func(w http.ResponseWriter, r *http.Request) {
 		t, ok := a.tenantFor(r)

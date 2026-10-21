@@ -95,6 +95,37 @@ type pendingUpload struct {
 	Started  time.Time `json:"started"`
 }
 
+// defaultEndedSharesDays is how long a share that has ended is kept, unless the church chose otherwise;
+// endedSharesChoices are what it can choose (0 = keep them).
+const defaultEndedSharesDays = 30
+
+var endedSharesChoices = []int{7, 30, 90, 365, 0}
+
+// endedSharesDays is how many days the church keeps a share that has ended; 0 = until it is removed by hand.
+func (a *App) endedSharesDays(t *tenant) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if d := t.cfg.EndedSharesDays; d != nil {
+		return *d
+	}
+	return defaultEndedSharesDays
+}
+
+// endedAt is when a share ended: its expiry, or its last upload or download when that used it up or
+// filled it. Zero while it is open or only paused.
+func (sh *Share) endedAt(now time.Time) time.Time {
+	switch sh.state(now) {
+	case "expired":
+		return *sh.Expires
+	case "used up", "full":
+		if n := len(sh.Log); n > 0 {
+			return sh.Log[n-1].Time
+		}
+		return sh.Created
+	}
+	return time.Time{}
+}
+
 // state says whether a share takes uploads: "" if it does, else why not. A
 // paused share that has also ended says how it ended: resuming would not open it.
 func (sh *Share) state(now time.Time) string {
@@ -270,6 +301,9 @@ type shareView struct {
 	MaxDownloads int      `json:"maxDownloads"`
 	Downloading  int      `json:"downloading"`       // downloads that can still be resumed
 	Missing      bool     `json:"missing,omitempty"` // its recording is not there (in the trash)
+
+	Ended    *time.Time `json:"ended,omitempty"`    // when it ended (expired, used up, full)
+	RemoveAt *time.Time `json:"removeAt,omitempty"` // when it is removed by itself, if the church does that
 }
 
 func (sh *Share) view(now time.Time) shareView {
@@ -310,13 +344,34 @@ func (a *App) handleShares(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// ?recording=<path>: only the download shares of that recording
+	only, one := "", r.URL.Query().Has("recording")
+	if one {
+		abs, err := t.srv.resolve(r.URL.Query().Get("recording"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		only = abs
+	}
 	found := a.findRecordings(t, nil)
+	days := a.endedSharesDays(t)
 	a.shareMu.Lock()
 	now := time.Now()
 	list := []shareView{}
 	for _, sh := range t.shares {
+		if one && (sh.Kind != kindDownload || found[sh] != only) {
+			continue
+		}
 		v := sh.view(now)
 		v.Missing = sh.Kind == kindDownload && found[sh] == ""
+		if e := sh.endedAt(now); !e.IsZero() {
+			v.Ended = &e
+			if days > 0 {
+				at := e.Add(time.Duration(days) * 24 * time.Hour)
+				v.RemoveAt = &at
+			}
+		}
 		list = append(list, v)
 	}
 	a.shareMu.Unlock()
@@ -324,7 +379,33 @@ func (a *App) handleShares(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"shares": list, "url": a.cfg.Share.URL, "types": shareTypes,
 		"inbox": t.srv.cfg.Inbox != "", "defaultFileSize": defaultShareFileSize,
+		"endedDays": days, "endedDaysChoices": endedSharesChoices,
 	})
+}
+
+// handleEndedSharesDays sets how long the church keeps a share that has ended: PUT api/shares/ended-days {days}
+// (0 = until it is removed by hand).
+func (a *App) handleEndedSharesDays(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.adminTenant(w, r)
+	if !ok {
+		return
+	}
+	var q struct {
+		Days int `json:"days"`
+	}
+	if err := decodeRequest(r, &q); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !slices.Contains(endedSharesChoices, q.Days) {
+		writeError(w, http.StatusBadRequest, errors.New("choose how long ended shares are kept from the list"))
+		return
+	}
+	if err := a.update(t, func(c *churchConfig) { c.EndedSharesDays = &q.Days }); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"days": q.Days})
 }
 
 // handleShareCreate makes a share and returns its code, the only time it is

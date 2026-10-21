@@ -926,14 +926,16 @@ test('download shares: share a finished sermon from its row, download it on the 
   fs.writeFileSync(path.join(dir, '2025-12-24 Christmas.flac'), Buffer.from('fLaC a stand-in for the FLAC file'));
 
   await page.goto('#/first-church/recording/' + folder);
-  await page.locator('tr.detail-row').getByRole('button', { name: 'Share for download…' }).click();
+  const detail = page.locator('tr.detail-row');
+  await expect(detail.locator('.recording-shares')).toBeEmpty(); // none yet
+  await detail.getByRole('button', { name: 'Share for download…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Share for download' });
   await expect(dialog.locator('input[name=label]')).toHaveValue('2025-12-24 Christmas');
   await expect(dialog.getByLabel('MP3')).toBeChecked();
   await expect(dialog.getByLabel('FLAC')).not.toBeChecked();
   await expect(dialog.getByLabel('Opus')).toHaveCount(0); // not made
   await dialog.locator('input[name=label]').fill('For Anna');
-  await dialog.locator('input[name=maxDownloads]').fill('2');
+  await dialog.locator('input[name=maxDownloads]').fill('1');
   await dialog.locator('input[name=expires]').fill('2099-02-30');
   await dialog.getByRole('button', { name: 'Make share' }).click();
   await page.getByRole('dialog', { name: 'Something went wrong' }).getByRole('button', { name: 'OK' }).click();
@@ -945,36 +947,51 @@ test('download shares: share a finished sermon from its row, download it on the 
   const link = await made.locator('.share-link').textContent();
   expect(link).toMatch(/^http:\/\/localhost:8081\/#code=[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
   await made.getByRole('button', { name: 'OK' }).click();
+  // The sermon's row lists its own shares.
+  const own = detail.locator('.recording-shares');
+  await expect(own).toContainText('Shared for download');
+  await expect(own.locator('.share', { hasText: 'For Anna' })).toContainText('open');
+  await detail.screenshot({ path: path.join(shots, 'recording-shares.png') });
 
   // The link opens the sermon; a press downloads the file, and counts one.
   const down = await context.newPage();
   await down.goto(link);
   await expect(down.locator('#heading')).toHaveText('Download a sermon');
-  await expect(down.getByText(/^From .+\. 2 more downloads · until 2099-12-31 23:59\.$/)).toBeVisible();
+  await expect(down.getByText(/^From .+\. 1 more download · until 2099-12-31 23:59\.$/)).toBeVisible();
   await expect(down.getByRole('button', { name: /^Download FLAC/ })).toHaveCount(0);
   const [file] = await Promise.all([down.waitForEvent('download'), down.getByRole('button', { name: /^Download MP3/ }).click()]);
   expect(file.suggestedFilename()).toBe('2025-12-24 Christmas.mp3');
   expect(fs.readFileSync(await file.path()).equals(mp3)).toBe(true);
   await expect(down.getByText('The download has started.')).toBeVisible();
-  await expect(down.getByText(/^From .+\. 1 more download · until 2099-12-31 23:59\.$/)).toBeVisible();
+  await expect(down.getByText(/^From .+\. 0 more downloads · until 2099-12-31 23:59\.$/)).toBeVisible();
   await down.screenshot({ path: path.join(shots, 'share-download.png') });
 
-  // The studio lists it with the uploads' shares.
+  // Used up: under Ended in the studio, removed automatically after the days the church chose.
   await page.goto('#/first-church/settings/shares');
-  const row = page.locator('.share', { hasText: 'For Anna' });
+  const endedGroup = page.locator('details.share-group.ended');
+  await expect(endedGroup.locator('> summary')).toHaveText(/^Ended \(\d+\)$/);
+  await endedGroup.locator('> summary').click();
+  const row = endedGroup.locator('.share', { hasText: 'For Anna' });
   await expect(row).toContainText('Download of 2025-12-24 Christmas');
+  await expect(row).toContainText('used up');
   await expect(row).toContainText('1 download ·');
-  await expect(row).toContainText('1 downloading');
+  await expect(row).toContainText(/Removed automatically on \d{4}-\d{2}-\d{2}\./);
   await row.locator('summary', { hasText: 'Downloads' }).click();
   await expect(row.locator('table')).toContainText('2025-12-24 Christmas.mp3');
-  await row.screenshot({ path: path.join(shots, 'settings-share-download.png') });
+  await page.locator('#shares h3', { hasText: 'Made' }).evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: path.join(shots, 'settings-shares-groups.png') });
+  await page.locator('select[name=ended-days]').selectOption({ label: 'never' });
+  await expect(endedGroup).toContainText('Ended shares are kept until you remove them.');
+  await expect(row).not.toContainText('Removed automatically');
+  await page.locator('select[name=ended-days]').selectOption({ label: '30 days' });
+  await expect(row).toContainText('Removed automatically');
 
-  // Gone from the church: the page says so.
+  // The sermon's row: no open ones, the ended one folded.
+  await page.goto('#/first-church/recording/' + folder);
+  await page.reload(); // the row was drawn before the download
+  await expect(own.locator('details.share-group.ended > summary')).toHaveText('Ended (1)');
+  await expect(own.locator('details.share-group')).toHaveCount(1);
   fs.rmSync(dir, { recursive: true });
-  await down.reload();
-  await expect(down.getByText('This sermon is no longer available.')).toBeVisible();
-  await page.reload();
-  await expect(row).toContainText('recording not found');
 });
 
 test('a recording being imported shows that, not what is left to do', async ({ page }) => {

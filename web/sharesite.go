@@ -510,17 +510,39 @@ func (a *App) finishShareUpload(t *tenant, sh *Share, id string, p pendingUpload
 	return name, nil
 }
 
-// sweepShares drops uploads that stopped long ago, with their partial files,
-// and downloads that can no longer be resumed, and forgets quiet addresses.
+// sweepShares removes shares that ended longer ago than their church keeps them, drops uploads that
+// stopped long ago, with their partial files, and downloads that can no longer be resumed, and forgets
+// quiet addresses.
 func (a *App) sweepShares(now time.Time) {
 	a.share.limits.prune()
 	a.mu.Lock()
 	tenants := append([]*tenant(nil), a.tenants...)
 	a.mu.Unlock()
+	keep := map[*tenant]int{}
+	for _, t := range tenants {
+		keep[t] = a.endedSharesDays(t)
+	}
 	a.shareMu.Lock()
 	defer a.shareMu.Unlock()
 	for _, t := range tenants {
 		changed := false
+		if days := keep[t]; days > 0 {
+			var kept []*Share
+			for _, sh := range t.shares {
+				if e := sh.endedAt(now); !e.IsZero() && now.Sub(e) > time.Duration(days)*24*time.Hour {
+					for uid := range sh.Pending {
+						if !a.share.busy[uid] {
+							os.Remove(partialPath(t, uid))
+						}
+					}
+					changed = true
+					a.cfg.Base.Logger.Printf("share: %s removed share %s (%q): ended more than %d days ago", t.id, sh.ID, sh.Label, days)
+					continue
+				}
+				kept = append(kept, sh)
+			}
+			t.shares = kept
+		}
 		for _, sh := range t.shares {
 			for id, p := range sh.Pending {
 				last := p.Started

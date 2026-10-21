@@ -3,7 +3,7 @@
 // been processed, only a way into the editor.
 import { api, q, h, href, formatSize, formatTime, forTenant } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
-import { showCode, parseExpiry } from './shares.js';
+import { showCode, parseExpiry, recordingShares } from './shares.js';
 import { t, tn, tr } from './i18n.js';
 
 const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
@@ -160,6 +160,7 @@ export function sermonDetail(entry, ctx = {}) {
             expires: parseExpiry(expires.value),
           });
           await showCode(done.url, done.code, t('Download a sermon'));
+          await recordingShares(entry.path, sharesBox);
           return;
         } catch (err) {
           await alertDialog({ body: err.message }); // then the form again, as it was filled in
@@ -167,6 +168,9 @@ export function sermonDetail(entry, ctx = {}) {
       }
     } }, t('Share for download…'));
   }
+
+  // sharesBox lists the recording's own download shares (only when it has any).
+  const sharesBox = h('div', { class: 'recording-shares' });
 
   // deleteButton moves the recording to the trash, after asking.
   function deleteButton() {
@@ -192,6 +196,7 @@ export function sermonDetail(entry, ctx = {}) {
   }
 
   function processed(info) {
+    if (ctx.shares) recordingShares(entry.path, sharesBox).catch(() => {});
     const saved = info.sermon && info.sermon.saved;
     const tags = info.tags || {};
     const facts = [
@@ -225,6 +230,7 @@ export function sermonDetail(entry, ctx = {}) {
       status,
       h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Edit sermon')), copyLink(),
         ctx.shares && info.outputs.length ? shareButton(info) : '', deleteButton()),
+      ctx.shares ? sharesBox : '',
     ];
   }
 

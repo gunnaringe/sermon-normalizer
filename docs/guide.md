@@ -192,6 +192,12 @@ resume it, so the same code works again. A paused share, or one that has ended (
 can be removed, with its list of uploads; its code then works no more, and the files it brought stay.
 **Remove ended** removes all the ended ones at once, not the paused ones.
 
+The list has two folds: **Open** (open and paused shares) and **Ended** (expired, used up or full),
+folded. An ended share is removed automatically some days after it ended: 30 unless you choose 7, 90,
+365 or never (**Remove ended shares after**, kept per church in `church.json`). It ended at its expiry,
+or at the upload or download that used it up; a paused share is never removed automatically. Each
+ended one says when it goes. The files it brought, and the sermon a download share gave, stay.
+
 The upload page asks for the code, or takes it from the link and removes it from the address bar
 (it is in the fragment, so it never reaches the server's or a proxy's logs). Files go in 16 MB
 chunks, so they pass Cloudflare, and continue after a dropped connection, a reload or a restart.
@@ -210,7 +216,8 @@ removed once they have sat untouched for a day; the server looks every hour.
 someone without a login download it: a name, which of the files that have been made (MP3 to begin with),
 and optionally how many downloads and an expiry. The code and the link are shown once, as for uploads,
 and the share is listed in **Settings → Shares** with its downloads (file, size, address, time); it is
-paused, resumed and removed the same way.
+paused, resumed and removed the same way. The sermon's row lists its own download shares too, under
+**Shared for download**, where they can be paused and removed as well.
 
 The share page shows the sermon's title and a button per file. A press counts one download and starts
 it from an address that works for 6 hours without the code, so the browser can download it and continue

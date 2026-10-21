@@ -356,6 +356,13 @@ main.narrow > h1, main.narrow > .panel:first-of-type { margin-top: 1rem; }
 .share-link { word-break: break-all; user-select: all; }
 .share-form { display: grid; grid-template-columns: 11em minmax(10em, 22em); align-items: center; gap: 0.5rem 0.8rem; }
 .share-form .wide { grid-column: 1 / -1; }
+/* the shares in two folds: open (and paused), then ended */
+details.share-group > summary { color: var(--fg); font-weight: 600; margin: 0.8rem 0 0.5rem; }
+.badge.kind { font-weight: 500; }
+.badge.kind::before { display: none; }
+.share.compact { padding-top: 0.2rem; padding-bottom: 0.2rem; }
+.share.compact p { margin: 0.4rem 0; }
+.recording-shares h4 { margin: 1rem 0 0; }
 
 /* Touch screens and phones: no keyboard, fingers instead of a mouse. */
 @media (pointer: coarse), (max-width: 640px) {

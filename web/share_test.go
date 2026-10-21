@@ -585,3 +585,98 @@ func TestSharePausedState(t *testing.T) {
 		}
 	}
 }
+
+// A share that has ended is removed by itself when it ended longer ago than the church keeps them
+// (30 days unless chosen; 0 = never). Open and paused ones stay.
+func TestShareEndedAreRemoved(t *testing.T) {
+	st, used := downloadTest(t, `{"kind":"download","recording":"2026/2026-10-18 Advent","formats":["mp3"],"label":"Used up","maxDownloads":1}`)
+	st.download(used, "1.1.1.1", "mp3")
+	for _, label := range []string{"Expired long ago", "Expired lately", "Paused", "Open"} {
+		st.makeShare(`{"label":"` + label + `","allTypes":true,"expires":"2099-01-01T00:00:00Z"}`)
+	}
+	now := time.Now()
+	shares := map[string]*Share{}
+	st.app.shareMu.Lock()
+	for _, sh := range st.app.tenants[0].shares {
+		shares[sh.Label] = sh
+	}
+	long, lately := now.Add(-31*24*time.Hour), now.Add(-10*24*time.Hour)
+	shares["Expired long ago"].Expires = &long
+	shares["Expired lately"].Expires = &lately
+	shares["Paused"].Paused = true
+	shares["Used up"].Log[0].Time = long
+	st.app.shareMu.Unlock()
+	labels := func() []string {
+		var out []string
+		for _, s := range decode[struct{ Shares []shareView }](t, do(st.studio, "GET", "/api/shares", "")).Shares {
+			out = append(out, s.Label)
+		}
+		return out
+	}
+
+	list := decode[struct {
+		Shares    []shareView
+		EndedDays int
+	}](t, do(st.studio, "GET", "/api/shares", ""))
+	if list.EndedDays != 30 {
+		t.Errorf("kept for %d days", list.EndedDays)
+	}
+	for _, s := range list.Shares {
+		switch {
+		case s.Label == "Expired lately" && (s.Ended == nil || s.RemoveAt == nil || !s.RemoveAt.Equal(lately.Add(30*24*time.Hour))):
+			t.Errorf("%s: ended %v, removed at %v", s.Label, s.Ended, s.RemoveAt)
+		case (s.Label == "Open" || s.Label == "Paused") && (s.Ended != nil || s.RemoveAt != nil):
+			t.Errorf("%s has ended: %v", s.Label, s.Ended)
+		}
+	}
+
+	st.app.sweepShares(now)
+	if got := strings.Join(labels(), ", "); got != "Open, Paused, Expired lately" {
+		t.Errorf("after the sweep: %s", got)
+	}
+	if saved, _ := readShares(st.church); len(saved) != 3 {
+		t.Errorf("shares.json has %d", len(saved))
+	}
+
+	// Never: nothing goes. 7 days: the one that ended 10 days ago goes.
+	if w := do(st.studio, "PUT", "/api/shares/ended-days", `{"days":0}`); w.Code != http.StatusOK {
+		t.Fatalf("never: %d %s", w.Code, w.Body)
+	}
+	st.app.sweepShares(now.Add(400 * 24 * time.Hour))
+	if n := len(labels()); n != 3 {
+		t.Errorf("kept forever: %d left", n)
+	}
+	if w := do(st.studio, "PUT", "/api/shares/ended-days", `{"days":5}`); w.Code != http.StatusBadRequest {
+		t.Errorf("5 days, not a choice: %d", w.Code)
+	}
+	do(st.studio, "PUT", "/api/shares/ended-days", `{"days":7}`)
+	if b, _ := os.ReadFile(filepath.Join(st.church, "church.json")); !strings.Contains(string(b), `"endedSharesDays": 7`) {
+		t.Errorf("church.json: %s", b)
+	}
+	st.app.sweepShares(now)
+	if got := strings.Join(labels(), ", "); got != "Open, Paused" {
+		t.Errorf("kept 7 days: %s", got)
+	}
+}
+
+// A recording's own download shares, for its row on the recordings page.
+func TestSharesOfARecording(t *testing.T) {
+	st, _ := downloadTest(t, `{"kind":"download","recording":"2026/2026-10-18 Advent","formats":["mp3"],"label":"Advent"}`)
+	st.makeShare(`{"label":"Sound desk","allTypes":true}`)
+	other := filepath.Join(st.church, "Taler", "2026", "2026-10-25")
+	os.MkdirAll(other, 0o755)
+	os.WriteFile(filepath.Join(other, "2026-10-25.mp3"), []byte("ID3 another"), 0o644)
+	st.makeShare(`{"kind":"download","recording":"2026/2026-10-25","formats":["mp3"],"label":"Another"}`)
+	for path, want := range map[string]string{"2026/2026-10-18 Advent": "Advent", "2026/2026-10-25": "Another", "2026": ""} {
+		var got []string
+		for _, s := range decode[struct{ Shares []shareView }](t, do(st.studio, "GET", "/api/shares?recording="+escape(path), "")).Shares {
+			got = append(got, s.Label)
+		}
+		if strings.Join(got, ",") != want {
+			t.Errorf("%s: %v", path, got)
+		}
+	}
+	if w := do(st.studio, "GET", "/api/shares?recording=..%2Fx", ""); w.Code != http.StatusBadRequest {
+		t.Errorf("outside: %d", w.Code)
+	}
+}
