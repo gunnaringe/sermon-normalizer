@@ -1,24 +1,14 @@
-<p align="center">
-  <img src="web/static/icons/logo.svg" alt="Sermon Studio" width="88">
-</p>
+# Sermon Studio
 
-<h1 align="center">Sermon Studio</h1>
+**Turn a recording of a church service into publish-ready sermon files.**
+Cut the sermon out on a waveform. Get evenly loud FLAC, MP3 and Opus, ready for podcast services.
 
-<p align="center">
-  <strong>Turn a recording of a church service into publish-ready sermon files.</strong><br>
-  Cut the sermon out on a waveform. Get evenly loud FLAC, MP3 and Opus, ready for podcast services.
-</p>
+[![Build](https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml/badge.svg)](https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+![Go, standard library only](https://img.shields.io/badge/go-stdlib%20only-00ADD8)
+![English, Norwegian bokmål and nynorsk](https://img.shields.io/badge/UI-English%20%C2%B7%20bokm%C3%A5l%20%C2%B7%20nynorsk-lightgrey)
 
-<p align="center">
-  <a href="https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml"><img src="https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml/badge.svg" alt="Build"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache 2.0"></a>
-  <img src="https://img.shields.io/badge/go-stdlib%20only-00ADD8" alt="Go, standard library only">
-  <img src="https://img.shields.io/badge/UI-English%20%C2%B7%20bokm%C3%A5l%20%C2%B7%20nynorsk-lightgrey" alt="English, Norwegian bokmål and nynorsk">
-</p>
-
-<p align="center">
-  <img src="docs/img/hero.png" alt="The editor: a 14-minute speech as a waveform, two sections kept, a cough cut out" width="900">
-</p>
+![The editor: a 14-minute speech as a waveform, two sections kept, a cough cut out](docs/img/hero.png)
 
 ## The problem
 
@@ -36,7 +26,7 @@ Keep one section or several, cut out a cough or a song in the middle, and label 
 listen: press once where a part starts and again where it ends. Hear the join before you commit, and
 undo any step. Nothing is ever cut from the original.
 
-<p align="center"><img src="docs/img/05-sections-list.png" alt="Sections and cuts, with labels and exact times" width="760"></p>
+![Sections and cuts, with labels and exact times](docs/img/05-sections-list.png)
 
 **Even, standard loudness.** Speech and music are recorded at very different levels. The output is
 mixed to mono (or kept stereo), noise-reduced, and normalised to podcast loudness (-19 LUFS, measured
@@ -47,10 +37,9 @@ let a recorder drop files in a church's inbox folder, or hand a sound technician
 public upload page that needs no login. WAV, AIFF, FLAC, MP3, M4A, Ogg, Opus, WMA and video files
 (the sound is copied out unchanged) all work.
 
-<p align="center">
-  <img src="docs/img/01-recordings.png" alt="The recordings page: years, status, labels, search" width="48%">
-  <img src="docs/img/16-public-uploaded.png" alt="The public upload page, used with a share code and no login" width="48%">
-</p>
+![The recordings page: years, status, labels, search](docs/img/01-recordings.png)
+
+![The public upload page, used with a share code and no login](docs/img/16-public-uploaded.png)
 
 **Safe by design.** The original recording is kept, whole, next to the results. A file is deleted
 only after its copy is verified identical. Outputs are written to a temporary name and renamed when
@@ -59,13 +48,9 @@ complete, so a crash never leaves a half-written file. Everything about a record
 
 **Made for several churches and for phones.** One folder per church, each with its own default tags,
 names, logo and users. The interface is in English, Norwegian bokmål and nynorsk, in a light or dark
-theme, and the editor works with a finger on a phone.
+theme, and the editor works with a finger [on a phone](docs/img/18-phone-editor.png).
 
-<p align="center">
-  <img src="docs/img/18-phone-editor.png" alt="The editor on a phone" width="26%">
-  &nbsp;&nbsp;
-  <img src="docs/img/19-dark-editor.png" alt="The editor in the dark theme" width="68%">
-</p>
+![The editor in the dark theme](docs/img/19-dark-editor.png)
 
 ## How it works
 

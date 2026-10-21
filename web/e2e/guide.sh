@@ -16,9 +16,10 @@ cat >"$church/church.json" <<JSON
 {"name":"Grace Chapel","meta":{"title":"{yyyy}-{mm}-{dd} {name}","artist":"Grace Chapel","album":"Sunday services"}}
 JSON
 
-# A service as a recorder makes it: a WAV of the whole speech to upload; a few earlier Sundays,
+# A service as a recorder makes it: a WAV of the whole speech to upload, named like a Behringer X32's
+# (R_<date>-<time>.wav); a few earlier Sundays,
 # two minutes each from other parts of it; and a short file for the public upload page.
-ffmpeg -v error -i "$speech" -ac 1 -ar 44100 -c:a pcm_s16le "$data/service.wav"
+ffmpeg -v error -i "$speech" -ac 1 -ar 44100 -c:a pcm_s16le "$data/R_20261018-104506.wav"
 n=0
 for day in 2026-09-06 2026-09-13 2026-09-20 2026-09-27 2026-10-04; do
 	mkdir -p "$church/Taler/2026/$day"
