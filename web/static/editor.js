@@ -110,6 +110,8 @@ export async function editorView(view, path, config) {
   const saveNote = h('span', { class: 'muted', role: 'status' });
   const versionOut = h('strong', {});
   const revertButton = h('button', { disabled: true, title: t('Throw away the adjustments and go back to the saved version'), onclick: revertVersion }, t('Revert…'));
+  const undoButton = h('button', { disabled: true, title: t('Undo the last change to the edit (ctrl+z)'), 'aria-label': t('Undo'), onclick: () => undo() }, '↶', h('span', { class: 'wide-only' }, ' ' + t('Undo')));
+  const redoButton = h('button', { disabled: true, title: t('Redo what was undone (ctrl+shift+z)'), 'aria-label': t('Redo'), onclick: () => redo() }, '↷', h('span', { class: 'wide-only' }, ' ' + t('Redo')));
   const jobPanel = h('section', {});
 
   // Another date or name for this sermon: renames the folder and its files.
@@ -137,7 +139,7 @@ export async function editorView(view, path, config) {
   const saveBar = h('div', { class: 'save-bar' },
     h('div', { class: 'save-state' }, versionOut, ' ', saveNote),
     h('div', { class: 'save-what' }, outputNote, checkOut),
-    h('div', { class: 'save-actions' }, revertButton, saveButton));
+    h('div', { class: 'save-actions' }, undoButton, redoButton, revertButton, saveButton));
 
   let processingEl = processingPanel();
   view.replaceChildren(
@@ -397,6 +399,7 @@ export async function editorView(view, path, config) {
       const initial = sermon.adjusted || sermon.saved;
       if (initial) applySettings(initial);
       else proposeSection(data.silences);
+      present = snapshot(); // what undo goes back to, at most
     });
     buildFades();
     // A drag on the waveform makes a region: it becomes a section. Sections
@@ -496,7 +499,7 @@ export async function editorView(view, path, config) {
     cleanups.push(() => document.removeEventListener('keydown', onKey));
 
     const spans = (list) => list.map((x) => ({ start: x.region.start, end: x.region.end }));
-    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut, splitHere, setFade, get fades() { return { fadeIn: opts.fadeIn, fadeOut: opts.fadeOut }; } }; // for tests and the console
+    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut, splitHere, setFade, undo, redo, get history() { record(); return { undo: undoStack.length, redo: redoStack.length }; }, get fades() { return { fadeIn: opts.fadeIn, fadeOut: opts.fadeOut }; } }; // for tests and the console
     cleanups.push(() => { delete window.__editor; });
   }
 
@@ -958,16 +961,14 @@ export async function editorView(view, path, config) {
   const saveSoon = debounce(() => { if (alive) persistAdjusted(); }, 700);
 
   // applySettings puts settings on the page: the sections, the cuts and the fades.
-  function applySettings(set) {
+  function applySettings(set, { show = true } = {}) {
     restoring = true;
     try {
       for (const x of [...sections, ...cuts]) x.region.remove();
       sections.length = cuts.length = 0;
       for (const x of set.sections) addSection(x.start, x.end, x.label, x.pause);
-      if (sections.length) {
-        for (const c of set.cuts) addCut(c.start, c.end, c.label, c.pause);
-        reveal(first());
-      }
+      for (const c of set.cuts) addCut(c.start, c.end, c.label, c.pause);
+      if (sections.length && show) reveal(first());
       for (const key of ['fadeIn', 'fadeOut']) opts[key] = set[key];
       if (set.sound) {
         Object.assign(opts, set.sound);
@@ -980,6 +981,68 @@ export async function editorView(view, path, config) {
     renderCuts();
     check();
   }
+
+  // ---- undo and redo: the edit on the waveform (sections, cuts, their labels and pauses, the fades), not the
+  // processing or the tags, which are fields with the browser's own undo ----
+
+  const undoStack = [], redoStack = [];
+  let present = null; // the edit as it was last recorded
+  let pointerHeld = false; // a drag is going on: it becomes one step when it ends
+
+  // snapshot is the edit on the page, also when there is no section.
+  const snapshot = () => JSON.stringify({ sections: sections.map(spanOf), cuts: cuts.map(spanOf), fadeIn: opts.fadeIn || 0, fadeOut: opts.fadeOut || 0 });
+
+  // record makes the edit as it is now a step that can be undone, if it changed.
+  function record() {
+    recordSoon.cancel();
+    if (pointerHeld || restoring || present === null) return;
+    const now = snapshot();
+    if (now === present) return;
+    undoStack.push(present);
+    if (undoStack.length > 200) undoStack.shift();
+    redoStack.length = 0;
+    present = now;
+    showHistory();
+  }
+  const recordSoon = debounce(() => { if (alive) record(); }, 400);
+  window.addEventListener('pointerdown', onPointerDown, true);
+  window.addEventListener('pointerup', onPointerUp, true);
+  cleanups.push(() => {
+    window.removeEventListener('pointerdown', onPointerDown, true);
+    window.removeEventListener('pointerup', onPointerUp, true);
+  });
+  function onPointerDown() { pointerHeld = true; }
+  function onPointerUp() { pointerHeld = false; recordSoon(); }
+
+  function step(from, to) {
+    record(); // a change not recorded yet comes first
+    if (!from.length) return;
+    to.push(present);
+    present = from.pop();
+    applySettings(JSON.parse(present), { show: false });
+    if (proposed) adopt();
+    showHistory();
+    persistAdjusted(); // putting settings back is not kept by itself
+  }
+  const undo = () => step(undoStack, redoStack);
+  const redo = () => step(redoStack, undoStack);
+
+  function showHistory() {
+    undoButton.disabled = !undoStack.length;
+    redoButton.disabled = !redoStack.length;
+  }
+
+  // ctrl+z undoes, ctrl+shift+z and ctrl+y redo; in a field they are the field's own.
+  function onUndoKey(e) {
+    if (typing(e) || !(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector('dialog[open]')) return;
+    const key = e.key.toLowerCase();
+    if (key === 'z' && !e.shiftKey) undo();
+    else if ((key === 'z' && e.shiftKey) || key === 'y') redo();
+    else return;
+    e.preventDefault();
+  }
+  document.addEventListener('keydown', onUndoKey);
+  cleanups.push(() => document.removeEventListener('keydown', onUndoKey));
 
   const describe = (set) => [
     set.sections.map((x) => t('{from} to {to}', { from: formatTime(x.start, 0), to: formatTime(x.end, 0) })).join(' ' + t('and') + ' '),
@@ -1019,6 +1082,7 @@ export async function editorView(view, path, config) {
       sermon = await api('POST', 'api/sermon/revert?path=' + q(path));
       lastSent = JSON.stringify(sermon.saved);
       applySettings(sermon.saved);
+      record();
       saveNote.textContent = t('Back to the saved version.');
     } catch (e) {
       saveNote.textContent = t('Not reverted: {error}', { error: e.message });
@@ -1242,6 +1306,7 @@ export async function editorView(view, path, config) {
 
   function changed() {
     if (proposed && !restoring) adopt();
+    if (!restoring) recordSoon();
     saveOptions(opts);
     check();
     saveSoon();
