@@ -666,9 +666,10 @@ test('settings: default tags are saved and used on the sermon page', async ({ pa
   await expect(page.locator('button[name=save-tags]')).toBeDisabled();
   await page.locator('input[name=title]').fill('{date} {name}');
   await page.locator('input[name=artist]').fill('Norkirken Melhus');
-  await expect(page.locator('.tags').last()).toContainText('→ Norkirken Melhus');
+  const tagsPanel = page.locator('.tags', { has: page.locator('button[name=save-tags]') });
+  await expect(tagsPanel).toContainText('→ Norkirken Melhus');
   await page.locator('button[name=save-tags]').click();
-  await expect(page.locator('.tags').last().getByText('Saved.')).toBeVisible();
+  await expect(tagsPanel.getByText('Saved.')).toBeVisible();
   await page.screenshot({ path: path.join(shots, 'settings.png') });
 
   await page.goto('#/folder/2026/2026-10-04');
@@ -1168,6 +1169,60 @@ test('fades are set with the knobs on the waveform: drag, keys, kept', async ({ 
   await expect(fadeKnob(page, 'fadeOut')).toHaveAttribute('aria-valuenow', String(want.fadeOut));
 });
 
+
+test('processing: the church\'s defaults in Settings; a recording goes back to them or makes its own the defaults', async ({ page }) => {
+  const reset = () => page.request.put('api/processing', { data: { processing: null } });
+  try {
+    // Settings: the defaults a recording starts with.
+    await page.goto('#/settings/processing');
+    const settings = page.locator('#processing');
+    await expect(settings.getByRole('heading', { name: 'Processing' })).toBeVisible();
+    await settings.locator('select[name=compression]').selectOption('strong');
+    await settings.locator('input[name=fadeIn]').fill('2');
+    await settings.getByLabel('Opus bitrate Stereo').fill('80k');
+    await settings.getByRole('button', { name: 'Save' }).click();
+    await expect(settings.getByText('Saved.')).toBeVisible();
+    await settings.getByRole('heading', { name: 'Processing' }).scrollIntoViewIfNeeded();
+    await settings.screenshot({ path: path.join(shots, 'settings-processing.png') });
+    const defaults = async () => (await (await page.request.get('api/config')).json()).defaults;
+    expect((await defaults()).processing).toMatchObject({ compression: 'strong', fadeIn: 2, stereoLevels: { opusBitrate: '80k' } });
+
+    // A recording without its own processing starts with them.
+    await openEditor(page, '2026/2026-10-04');
+    await editor(page, () => window.__editor.addSection(10, 90));
+    const proc = page.locator('.panel.processing');
+    await expect(page.locator('select[name=compression]')).toHaveValue('strong');
+    expect((await editor(page, () => window.__editor.fades)).fadeIn).toBe(2);
+    await expect(proc.getByText("The same as the church's defaults.", { exact: true })).toBeVisible();
+    await expect(proc.getByRole('button', { name: 'Use the defaults' })).toBeDisabled();
+
+    // Changed here, it is this recording's own; Use the defaults brings them back, and undo takes that back.
+    await page.locator('select[name=leveling]').selectOption('strong');
+    await expect(proc.getByText("Not the same as the church's defaults.", { exact: true })).toBeVisible();
+    await page.locator('section.step').nth(3).screenshot({ path: path.join(shots, 'edit-processing-defaults.png') });
+    await proc.getByRole('button', { name: 'Use the defaults' }).click();
+    await expect(page.locator('select[name=leveling]')).toHaveValue('normal');
+    await expect(proc.getByText("The same as the church's defaults.", { exact: true })).toBeVisible();
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('select[name=leveling]')).toHaveValue('strong');
+
+    // Make these the defaults: the next recording starts with them.
+    await proc.getByRole('button', { name: 'Make these the defaults' }).click();
+    await page.getByRole('dialog', { name: 'Make these the defaults' }).getByRole('button', { name: 'Make them the defaults' }).click();
+    await expect(proc.getByText("The same as the church's defaults.", { exact: true })).toBeVisible();
+    expect((await defaults()).processing).toMatchObject({ leveling: 'strong', compression: 'strong', stereoLevels: { opusBitrate: '80k' } });
+    await openEditor(page, '2026/2026-06-14');
+    await expect(page.locator('select[name=leveling]')).toHaveValue('strong');
+
+    // Back to the built-in values in Settings.
+    await page.goto('#/settings/processing');
+    await settings.getByRole('button', { name: 'Use the built-in values' }).click();
+    await expect(settings.locator('select[name=leveling]')).toHaveValue('normal');
+    expect((await defaults()).processing).toEqual((await defaults()).builtin);
+  } finally {
+    await reset();
+  }
+});
 
 test('processing: the choices are kept with the sermon, and a sample can be heard', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');

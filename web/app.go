@@ -53,6 +53,8 @@ type AppConfig struct {
 type churchConfig struct {
 	Name string `json:"name,omitempty"`
 	Meta *Meta  `json:"meta,omitempty"` // default tags; nil = DefaultMeta
+	// Processing is the default processing (processing.go); nil = the built-in.
+	Processing *processing `json:"processing,omitempty"`
 }
 
 // TenantInfo is a church as listed in the UI.
@@ -232,6 +234,8 @@ func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
 		}
 		cfg.Meta = cc.Meta
 		cfg.SaveMeta = func(m Meta) error { return a.update(t, func(c *churchConfig) { c.Meta = &m }) }
+		cfg.Processing = cc.Processing
+		cfg.SaveProcessing = func(p *processing) error { return a.update(t, func(c *churchConfig) { c.Processing = p }) }
 	}
 	if dir != "" {
 		var err error

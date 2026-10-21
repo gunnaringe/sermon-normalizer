@@ -9,7 +9,6 @@ import { confirmDialog, infoDialog } from './dialog.js';
 import { t, tn, tr, lang } from './i18n.js';
 import { api, q, h, href, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
 
-const STORE = 'sermon-studio-options';
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -36,24 +35,11 @@ function describeFormat(fmt) {
 // SOUND_KEYS are the processing choices that are kept with a sermon.
 const SOUND_KEYS = ['stereo', 'noiseReduction', 'roomSound', 'leveling', 'compression', 'targetLufs', 'truePeak', 'mp3Bitrate', 'opusBitrate'];
 
-// FORMAT_KEYS are chosen per recording, so they are never carried over.
+// DEFAULT_KEYS are what the church's default processing sets: the sound and the fades.
+const DEFAULT_KEYS = [...SOUND_KEYS, 'fadeIn', 'fadeOut'];
+
+// FORMAT_KEYS are chosen per recording.
 const FORMAT_KEYS = ['flac', 'mp3', 'opus'];
-
-// savedOptions are the choices of the last run, except per-recording ones.
-function savedOptions(config) {
-  const opts = { ...config.defaults.mono };
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORE) || '{}');
-    for (const k of FORMAT_KEYS) delete stored[k];
-    Object.assign(opts, stored);
-  } catch {}
-  return opts;
-}
-
-function saveOptions(opts) {
-  const { sections, cuts, title, artist, album, flac, mp3, opus, ...keep } = opts;
-  localStorage.setItem(STORE, JSON.stringify(keep));
-}
 
 export async function editorView(view, path, config) {
   const info = await api('GET', 'api/folder?path=' + q(path));
@@ -64,10 +50,16 @@ export async function editorView(view, path, config) {
     for (const fn of cleanups) fn();
   };
 
-  const opts = savedOptions(config);
-  // The processing the sermon was kept with comes before what was last used on another one.
+  const opts = { ...config.defaults.start }; // the church's defaults
+  // The processing kept with this recording comes before them.
   const keptSound = info.sermon && (info.sermon.adjusted || info.sermon.saved)?.sound;
   if (keptSound) Object.assign(opts, keptSound);
+  // Going back to the church's defaults, or making this processing the default (see useDefaults).
+  const sameAsDefaults = () => DEFAULT_KEYS.every((k) => String(opts[k]) === String(config.defaults.start[k]));
+  const defaultsNote = h('span', { class: 'muted', role: 'status' });
+  const useDefaultsButton = h('button', { type: 'button', name: 'use-defaults', onclick: useDefaults }, t('Use the defaults'));
+  const makeDefaultsButton = h('button', { type: 'button', name: 'make-defaults', onclick: makeDefaults }, t('Make these the defaults'));
+
   // The formats are this recording's own: those it has, or the defaults when it
   // has none. Choosing here changes nothing elsewhere.
   if (info.outputs.length) for (const f of FORMAT_KEYS) opts[f] = info.outputs.some((o) => o.format === f);
@@ -1124,15 +1116,16 @@ export async function editorView(view, path, config) {
     check();
   }
 
-  // ---- undo and redo: the edit on the waveform (sections, cuts, their labels and pauses, the fades), not the
-  // processing or the tags, which are fields with the browser's own undo ----
+  // ---- undo and redo: the edit on the waveform (sections, cuts, their labels and pauses, the fades) and the
+  // processing, not the tags; in a field, ctrl+z is the field's own ----
 
   const undoStack = [], redoStack = [];
   let present = null; // the edit as it was last recorded
   let pointerHeld = false; // a drag is going on: it becomes one step when it ends
 
   // snapshot is the edit on the page, also when there is no section.
-  const snapshot = () => JSON.stringify({ sections: sections.map(spanOf), cuts: cuts.map(spanOf), fadeIn: opts.fadeIn || 0, fadeOut: opts.fadeOut || 0 });
+  const snapshot = () => JSON.stringify({ sections: sections.map(spanOf), cuts: cuts.map(spanOf), fadeIn: opts.fadeIn || 0, fadeOut: opts.fadeOut || 0,
+    sound: Object.fromEntries(SOUND_KEYS.map((k) => [k, opts[k]])) });
 
   // record makes the edit as it is now a step that can be undone, if it changed.
   function record() {
@@ -1320,6 +1313,48 @@ export async function editorView(view, path, config) {
     processingEl.replaceWith(next);
     processingEl = next;
     showChannelWarning();
+    showDefaults();
+  }
+
+  // ---- the church's default processing: this recording can go back to it, or make its own the default ----
+
+  function showDefaults() {
+    const same = sameAsDefaults();
+    defaultsNote.textContent = same ? t('The same as the church\'s defaults.') : t('Not the same as the church\'s defaults.');
+    useDefaultsButton.disabled = makeDefaultsButton.disabled = same;
+  }
+
+  function useDefaults() {
+    record(); // its own step, also right after another change
+    const d = config.defaults.start;
+    for (const k of SOUND_KEYS) opts[k] = d[k];
+    for (const k of ['fadeIn', 'fadeOut']) {
+      if (sections.length) setFade(k, d[k]); // as long as the sermon allows
+      else opts[k] = d[k];
+    }
+    redrawProcessing();
+    changed();
+  }
+
+  async function makeDefaults() {
+    const ok = await confirmDialog({ title: t('Make these the defaults'), confirm: t('Make them the defaults'),
+      body: t('New recordings start with this processing and these fades. Recordings that have their own keep it.') });
+    if (!ok) return;
+    const levels = { targetLufs: opts.targetLufs, mp3Bitrate: opts.mp3Bitrate, opusBitrate: opts.opusBitrate };
+    const p = {
+      ...config.defaults.processing,
+      stereo: opts.stereo, noiseReduction: Math.round(opts.noiseReduction), roomSound: opts.roomSound,
+      leveling: opts.leveling, compression: opts.compression, truePeak: opts.truePeak,
+      fadeIn: opts.fadeIn, fadeOut: opts.fadeOut,
+      [opts.stereo ? 'stereoLevels' : 'mono']: levels,
+    };
+    try {
+      await api('PUT', 'api/processing', { processing: p });
+      Object.assign(config, await api('GET', 'api/config'));
+      showDefaults();
+    } catch (e) {
+      defaultsNote.textContent = t('Not saved: {error}', { error: e.message });
+    }
   }
 
   // processingPanel is how the sermon is made into files: channels, noise, levels, loudness and bitrates.
@@ -1384,6 +1419,7 @@ export async function editorView(view, path, config) {
     } }, t('Hear a sample'));
 
     return h('div', { class: 'panel processing' },
+      group(t('Defaults'), h('p', {}, useDefaultsButton, ' ', makeDefaultsButton), defaultsNote),
       group(t('Channels'), channels, channelWarning),
       group(t('Noise'),
         num('noiseReduction', t('Noise reduction (dB)'), 1, 0, 40),
@@ -1449,7 +1485,7 @@ export async function editorView(view, path, config) {
   function changed() {
     if (proposed && !restoring) adopt();
     if (!restoring) recordSoon();
-    saveOptions(opts);
+    showDefaults();
     check();
     saveSoon();
   }

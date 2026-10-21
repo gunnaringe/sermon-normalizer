@@ -120,8 +120,11 @@ Each can have a label, which shows on the waveform.
   **Keep room sound** (how much of the room's own sound, such as its reverb, is kept: less reduction or more room sound sounds more natural).
   *Levels*: **Leveling** (off, gentle, normal, strong) and **Compression** (off, light, normal, strong). *Loudness*: the target
   (LUFS) and the true-peak ceiling. *Encoding*: the MP3 and Opus bitrates. **Hear a sample** makes 30 seconds from the playhead with
-  the settings, to listen to before the whole sermon is made (cuts, pauses and fades are not applied). A new sermon starts with
-  what you last used.
+  the settings, to listen to before the whole sermon is made (cuts, pauses and fades are not applied). A recording starts with
+  the church's defaults (**Settings → Processing**: the same choices, loudness and bitrates for mono and for stereo, and the fade
+  lengths); once changed, the processing is the recording's own, in its `recording.json`. **Use the defaults** brings the
+  church's back (undo takes that back), and **Make these the defaults** makes this recording's processing and fades the church's
+  (recordings that have their own keep it). A line says whether the recording is the same as the defaults.
 - **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,
   green when the file is there (play and download it from the recordings list). `recording.json` keeps what each file was made from (sections, cuts,
   fades, sound, tags, bitrate), so a file made from other settings than the page shows says

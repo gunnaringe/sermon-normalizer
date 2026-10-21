@@ -6,6 +6,7 @@ import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
 import { trashView } from './trash.js';
+import { processingView } from './processing.js';
 import { recordingsView } from './recordings.js';
 import { t, tr, lang, LANGS, setLang, getTheme, setTheme } from './i18n.js';
 
@@ -305,6 +306,9 @@ async function settingsView(box, part) {
   const trash = h('section', { id: 'trash' });
   await trashView(trash);
 
+  const processing = h('section', { id: 'processing' });
+  await processingView(processing, async () => { config = await api('GET', 'api/config'); });
+
   const shares = h('section', { id: 'shares' });
   if (tenants.shares) await sharesView(shares);
 
@@ -318,6 +322,7 @@ async function settingsView(box, part) {
     h('p', { class: 'muted' }, t('Written into all generated recordings. You can change them for one recording in the editor. Placeholders:'), ' ',
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + tr(p.help) + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
     h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
+    processing,
     trash,
     h('h2', {}, t('Waveform')),
     h('p', { class: 'muted' }, t('Saved in this browser only.')),
@@ -327,7 +332,7 @@ async function settingsView(box, part) {
     }), t('Zoom with the scroll wheel only while holding Ctrl (Cmd on a Mac)'))),
     tenants.shares ? shares : '');
   box.replaceChildren(view_);
-  if (part === 'shares') shares.scrollIntoView();
+  if (part) view_.querySelector('#' + CSS.escape(part))?.scrollIntoView();
   preview();
 }
 
