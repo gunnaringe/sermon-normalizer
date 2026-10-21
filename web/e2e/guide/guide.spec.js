@@ -92,6 +92,7 @@ test('upload, cut, save', async ({ page }) => {
   const output = page.locator('section.step').last();
   await output.scrollIntoViewIfNeeded();
   await shot(page, '07-output', output);
+  await shot(page, '07-save-bar', page.locator('.save-bar'));
 
   // Save: the edit is kept, then the files are made; progress can be followed or left.
   await save(page).click();
