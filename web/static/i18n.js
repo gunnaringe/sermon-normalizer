@@ -30,7 +30,7 @@ export function setLang(code) {
 }
 
 export function t(text, params) {
-  const out = dict[text] ?? text;
+  const out = dict[text] ?? (text?.includes('|') ? text.slice(text.indexOf('|') + 1) : text); // 'context|Text': the context tells one word's meanings apart
   return params ? out.replace(/\{(\w+)\}/g, (_, k) => params[k] ?? '') : out;
 }
 

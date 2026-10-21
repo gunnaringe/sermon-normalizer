@@ -101,6 +101,7 @@ export async function editorView(view, path, config) {
   const sectionHint = h('p', { class: 'muted section-hint' });
   const cutList = h('div', { class: 'cuts' });
   const cutHint = h('p', { class: 'muted' });
+  const cutHelp = h('p', { class: 'muted' }, t('Mark a part that should not be published, such as a cough, a song or something sensitive.'));
   const inputPanel = h('div', { class: 'panel input-file' });
   const channelWarning = h('p', { class: 'notice', role: 'status' });
   const pills = h('div', { class: 'pills', role: 'group', 'aria-label': t('Formats') });
@@ -310,7 +311,7 @@ export async function editorView(view, path, config) {
               button('+', t('Zoom in (+)'), () => { zoom.value = Math.min(100, +zoom.value + 10); applyZoom(); })),
             clock)),
         h('div', { class: 'group' },
-          h('strong', {}, t('Sermon')),
+          h('strong', {}, t('Sections')),
           h('div', { class: 'toolbar' },
             button(t('Set start'), t('The section at the playhead (or the next one) starts there (s)'), markStart),
             button(t('Set end'), t('The section at the playhead (or the one before) ends there (e)'), markEnd),
@@ -323,6 +324,7 @@ export async function editorView(view, path, config) {
           h('strong', {}, t('Cut out')),
           h('div', { class: 'toolbar' },
             addCutButton),
+          cutHelp,
           cutHint,
           cutList)),
       h('p', { class: 'touch-hint' },
@@ -790,8 +792,8 @@ export async function editorView(view, path, config) {
   // values. With none, an empty row makes the first one from typed times.
   function renderSections() {
     if (!sections.length) {
-      const startIn = h('input', { type: 'text', class: 'time', placeholder: t('start'), 'aria-label': t('{name} from', { name: t('Sermon') }) });
-      const endIn = h('input', { type: 'text', class: 'time', placeholder: t('end'), 'aria-label': t('{name} to', { name: t('Sermon') }) });
+      const startIn = h('input', { type: 'text', class: 'time', placeholder: t('start'), 'aria-label': t('{name} from', { name: t('Section') }) });
+      const endIn = h('input', { type: 'text', class: 'time', placeholder: t('end'), 'aria-label': t('{name} to', { name: t('Section') }) });
       const edit = () => {
         if (rebuilding) return;
         const start = startIn.value.trim() === '' ? 0 : parseTime(startIn.value);
@@ -804,7 +806,7 @@ export async function editorView(view, path, config) {
         input.addEventListener('change', edit);
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { edit(); input.blur(); } });
       }
-      rebuild(sectionList, h('div', { class: 'section' }, h('strong', {}, t('Sermon')),
+      rebuild(sectionList, h('div', { class: 'section' }, h('strong', {}, t('Section')),
         h('label', {}, t('From'), ' ', startIn), h('label', {}, t('to'), ' ', endIn)));
       syncSections();
       syncCuts();
@@ -812,7 +814,7 @@ export async function editorView(view, path, config) {
     }
     rebuild(sectionList, ...sections.map((x, i) => {
       const r = x.region;
-      const name = sections.length > 1 ? t('Section {n}', { n: i + 1 }) : t('Sermon');
+      const name = sections.length > 1 ? t('Section {n}', { n: i + 1 }) : t('Section');
       const startIn = x.startIn = h('input', { type: 'text', class: 'time', 'aria-label': t('{name} from', { name }) });
       const endIn = x.endIn = h('input', { type: 'text', class: 'time', 'aria-label': t('{name} to', { name }) });
       x.info = h('span', { class: 'muted' });
@@ -1017,7 +1019,7 @@ export async function editorView(view, path, config) {
       c.warn.hidden = !c.warn.textContent;
     }
     if (!sections.length && openCut) cancelCut();
-    cutHint.textContent = !sections.length ? t('Select the sermon first. Then cut out parts you do not want, such as a song.')
+    cutHint.textContent = !sections.length ? t('Select the sermon first.')
       : openCut ? t('Play or move the playhead to where the cut ends, then press End the cut here (c). Escape lets it go.')
         : cuts.length ? '' : t('Nothing cut out. Press the button (or c) where a cut starts and again where it ends, or shift-drag on the waveform.');
     if (addCutButton) addCutButton.disabled = !sections.length;
@@ -1389,7 +1391,7 @@ export async function editorView(view, path, config) {
         hint(t('Taking out noise also takes out some of the room\'s own sound, such as its reverb. Less reduction, or more room sound kept, sounds more natural; more sounds cleaner.'))),
       group(t('Levels'),
         choice('leveling', t('Leveling'), strengths(t('Off'), t('Gentle'), t('Normal'), t('Strong'))),
-        choice('compression', t('Compression'), [['off', t('Off')], ['light', t('Light')], ['normal', t('Normal')], ['strong', t('Strong')]]),
+        choice('compression', t('Compression'), [['off', t('Off')], ['light', t('compression|Light')], ['normal', t('Normal')], ['strong', t('Strong')]]),
         hint(t('Leveling brings quiet speech and loud parts closer. Compression narrows the loudness range further: light is usually enough.'))),
       group(t('Loudness'),
         num('targetLufs', t('Target loudness (LUFS)'), 0.5, -70, -5),
