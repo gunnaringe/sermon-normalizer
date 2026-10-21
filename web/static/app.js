@@ -234,19 +234,16 @@ const openShares = () => openOverlay('shares', t('Shares'), t('Close shares'), a
 const openAbout = () => openOverlay('about', t('About Sermon Studio'), t('Close about'), (body) => aboutView(body));
 
 const REPO = 'https://github.com/gunnaringe/sermon-studio';
-const EMAIL = 'sermons@apphub.casa';
 const AUTHOR = 'Gunnar Inge Gjøvik Sortland';
 const HOME = 'https://gunnaringe.sort.land';
 
-// aboutView tells why the studio was made and where to find more, or the one who made it.
+// aboutView tells why the studio was made, by whom (a link to their page, which says how to reach them) and where to find more.
 function aboutView(box) {
   const link = (url, text) => h('a', { href: url, target: '_blank', rel: 'noopener' }, text);
-  const [before, after] = t('Questions, or just want to say hi? Write to {email}.', { email: '\0' }).split('\0');
+  const [before, after] = t('I, {name}, made Sermon Studio for my own church. Every Sunday the service is recorded, and someone has to cut out the sermon, even out the sound and publish it, often late in the evening in a busy week. I wanted a way to do that which is easy and quick: open the recording, mark the sermon, press Save.', { name: '\0' }).split('\0');
   box.replaceChildren(h('div', { class: 'about' },
-    h('p', {}, t('I made Sermon Studio for my own church. Every Sunday the service is recorded, and someone has to cut out the sermon, even out the sound and publish it, often late in the evening in a busy week. I wanted a way to do that which is easy and quick: open the recording, mark the sermon, press Save.')),
+    h('p', {}, before, link(HOME, AUTHOR), after),
     h('p', {}, t('It is free and open source. If it can help your church too, you are welcome to use it.')),
-    h('p', {}, before, h('a', { href: 'mailto:' + EMAIL }, EMAIL), after),
-    h('p', { class: 'about-author' }, '— ' + AUTHOR + ' · ', link(HOME, HOME.replace('https://', ''))),
     h('ul', { class: 'about-links' },
       h('li', {}, link(REPO, t('Source code on GitHub'))),
       h('li', {}, link(REPO + '/blob/main/docs/guide.md', t('User guide'))),

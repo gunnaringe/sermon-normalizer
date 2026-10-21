@@ -352,7 +352,6 @@ button.link { border: 0; background: none; box-shadow: none; color: var(--accent
 .settings-head .close:hover { color: var(--fg); background: var(--bg); }
 .settings { padding: 0.2rem 1.4rem 1.4rem; }
 .about { max-width: 38rem; }
-.about-author { color: var(--muted); }
 .about-links { padding-left: 1.2rem; }
 .about-links li + li { margin-top: 0.3rem; }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1.1rem; }

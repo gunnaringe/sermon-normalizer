@@ -792,11 +792,8 @@ test('about: from the footer, over the page; the footer is at the bottom of a sh
   await page.goto('#/first-church');
   const dialog = page.getByRole('dialog', { name: 'About Sermon Studio' });
   await page.locator('footer').getByRole('link', { name: 'About' }).click();
-  await expect(dialog.getByText('I made Sermon Studio for my own church.')).toBeVisible();
-  await expect(dialog.getByRole('link', { name: 'sermons@apphub.casa' })).toHaveAttribute('href', 'mailto:sermons@apphub.casa');
-  await expect(dialog.getByText('Gunnar Inge Gjøvik Sortland')).toBeVisible();
-  await expect(dialog.getByRole('link', { name: 'Gunnar Inge Gjøvik Sortland' })).toHaveCount(0); // the name is not a link
-  await expect(dialog.getByRole('link', { name: 'gunnaringe.sort.land' })).toHaveAttribute('href', 'https://gunnaringe.sort.land');
+  await expect(dialog.getByText('made Sermon Studio for my own church.')).toBeVisible();
+  await expect(dialog.getByRole('link', { name: 'Gunnar Inge Gjøvik Sortland' })).toHaveAttribute('href', 'https://gunnaringe.sort.land');
   await expect(dialog.getByRole('link', { name: 'User guide' })).toHaveAttribute('href', /docs\/guide\.md$/);
   await expect(page).toHaveURL(/#\/first-church$/); // still on the page it was opened over
   await dialog.screenshot({ path: path.join(shots, 'about.png') });
