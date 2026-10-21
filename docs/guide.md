@@ -159,13 +159,14 @@ Each can have a label, which shows on the waveform.
   "preparing" tag while a recording is made ready.
 
 **Recordings may be any common audio or video file**: WAV, AIFF, FLAC, MP3, M4A/AAC, Ogg, Opus,
-WMA, or a video (MP4, MOV, MKV, WebM). As soon as one arrives (upload, inbox, share, or opening a
+WMA, CAF (Apple's Core Audio Format, from GarageBand or Logic), or a video (MP4, MOV, MKV, WebM). As soon as one arrives (upload, inbox, share, or opening a
 folder that has one):
 - **WAV and AIFF are converted to FLAC**, verified identical by MD5 of the audio, and then the
   original is removed;
 - **a video's sound is copied out**, unchanged, into `.mka` (Matroska audio), verified packet for
   packet, and then the video is removed;
-- **FLAC and compressed audio are kept as they are**: FLAC would only make an MP3 bigger.
+- **FLAC and compressed audio are kept as they are**: FLAC would only make an MP3 bigger. So is a
+  CAF, which may hold either lossless or compressed audio.
 
 Right after, the server prepares the waveform and the listening preview, so cutting can start
 at once.

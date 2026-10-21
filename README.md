@@ -34,7 +34,7 @@ with EBU R128, true peak limited), then encoded to **FLAC, MP3 and Opus**.
 
 **Recordings arrive however they arrive.** Upload from the browser (large files in chunks, resumable),
 let a recorder drop files in a church's inbox folder, or hand a sound technician a **share code** for a
-public upload page that needs no login. WAV, AIFF, FLAC, MP3, M4A, Ogg, Opus, WMA and video files
+public upload page that needs no login. WAV, AIFF, CAF, FLAC, MP3, M4A, Ogg, Opus, WMA and video files
 (the sound is copied out unchanged) all work.
 
 ![The recordings page: years, status, labels, search](docs/img/01-recordings.png)

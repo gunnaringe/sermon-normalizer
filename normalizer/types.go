@@ -34,7 +34,7 @@ var inputTypes = []struct {
 }{
 	{".flac", Kept}, {".mka", Kept},
 	{".wav", ToFLAC}, {".aiff", ToFLAC}, {".aif", ToFLAC},
-	{".mp3", Kept}, {".m4a", Kept}, {".aac", Kept}, {".ogg", Kept}, {".opus", Kept}, {".wma", Kept},
+	{".mp3", Kept}, {".m4a", Kept}, {".aac", Kept}, {".ogg", Kept}, {".opus", Kept}, {".wma", Kept}, {".caf", Kept},
 	{".mp4", FromVideo}, {".mov", FromVideo}, {".mkv", FromVideo}, {".webm", FromVideo},
 }
 
