@@ -154,7 +154,7 @@ export async function sharesView(box) {
   const ended = data.shares.filter((s) => s.state && s.state !== 'paused');
   const removeEnded = async () => {
     const ok = await confirmDialog({ title: t('Remove ended shares'), confirm: t('Remove'), danger: true,
-      body: tn(ended.length, '{n} share that has ended (expired, used up or full) is removed with its list of uploads. Files already sent stay; paused shares too.', '{n} shares that have ended (expired, used up or full) are removed with their lists of uploads. Files already sent stay; paused shares too.') });
+      body: tn(ended.length, '{n} share that has ended (expired, used up or full) is removed with its list. Recordings stay; paused shares too.', '{n} shares that have ended (expired, used up or full) are removed with their lists. Recordings stay; paused shares too.') });
     if (!ok) return;
     try {
       await api('POST', 'api/shares/remove-ended');

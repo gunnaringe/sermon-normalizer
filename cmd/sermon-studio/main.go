@@ -97,13 +97,13 @@ func run() error {
 	errc := make(chan error, 2)
 	go func() { errc <- hs.ListenAndServe() }()
 	logger.Printf("sermon-studio %s listening on %s (data dir %q, root %q)", version, *listen, *dataDir, *root)
-	// The public upload page: chunks are small, so it can have timeouts.
+	// The public share page: upload chunks are small, so it can have timeouts (a download sets its own).
 	var ss *http.Server
 	if share != nil {
 		ss = &http.Server{Addr: *shareListen, Handler: srv.ShareHandler(), ReadHeaderTimeout: 10 * time.Second,
 			ReadTimeout: 5 * time.Minute, WriteTimeout: 6 * time.Minute, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 16 << 10}
 		go func() { errc <- ss.ListenAndServe() }()
-		logger.Printf("upload page listening on %s", *shareListen)
+		logger.Printf("share page listening on %s", *shareListen)
 	}
 
 	select {

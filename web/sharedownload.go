@@ -26,6 +26,8 @@ const (
 	kindUpload   = "upload"
 	kindDownload = "download"
 	ticketFor    = 6 * time.Hour
+	// downloadWriteFor is how long one response with a file may take (the listener's own write timeout is short)
+	downloadWriteFor = 3 * time.Hour
 )
 
 // downloadFormats are what a download share can give, in the order shown.
@@ -350,6 +352,8 @@ func (a *App) handleShareDownloadFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errors.New("this file is not there now; ask the church that gave you the code"))
 		return
 	}
+	// The listener's write timeout is for short requests; a sermon to a slow phone takes longer.
+	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(downloadWriteFor))
 	w.Header().Set("Content-Type", downloadTypes[tk.Format])
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": st.Name()}))
 	http.ServeContent(w, r, st.Name(), st.ModTime(), f)

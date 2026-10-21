@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -241,5 +242,47 @@ func TestShareDownloadRefusals(t *testing.T) {
 	shares, err := readShares(st.church)
 	if err != nil || len(shares) != 2 || shares[0].Kind != "download" || shares[0].RecordingID == "" || shares[0].Formats[0] != "mp3" {
 		t.Errorf("shares.json: %v %+v", err, shares)
+	}
+}
+
+// A download takes as long as it takes: the listener's write timeout (minutes, for the upload chunks) does not cut it off.
+func TestShareDownloadOutlastsTheWriteTimeout(t *testing.T) {
+	st, code := downloadTest(t, `{"kind":"download","recording":"2026/2026-10-18 Advent","formats":["mp3"],"label":"Advent"}`)
+	big := bytes.Repeat([]byte("sermon "), 16<<20/7)
+	os.WriteFile(filepath.Join(st.church, "Taler", "2026", "2026-10-18 Advent", "2026-10-18 Advent.mp3"), big, 0o644)
+	srv := httptest.NewUnstartedServer(st.public)
+	srv.Config.WriteTimeout = 100 * time.Millisecond
+	srv.Start()
+	defer srv.Close()
+
+	req, _ := http.NewRequest("POST", srv.URL+"/api/share/downloads", strings.NewReader(`{"format":"mp3"}`))
+	req.Header.Set("Share-Code", code)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct{ URL string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("download: %d", resp.StatusCode)
+	}
+	resp, err = http.Get(srv.URL + "/" + out.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got int64
+	buf := make([]byte, 256<<10)
+	for {
+		n, err := resp.Body.Read(buf)
+		got += int64(n)
+		if err != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond) // a slow reader: well past the 100 ms in all
+	}
+	if got != int64(len(big)) {
+		t.Errorf("got %d of %d bytes", got, len(big))
 	}
 }
