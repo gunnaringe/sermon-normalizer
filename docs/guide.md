@@ -62,14 +62,14 @@ Each can have a label, which shows on the waveform.
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
   ocenaudio. The controls are in three groups. **Navigate:** play, jump between silences
   (grey on the waveform), zoom (slider, `+`/`-`, or scroll over the waveform: zooms at the
-  mouse; shift+scroll moves along; *Settings › Waveform* can make it need ctrl/cmd). **Sermon:** a recording
+  mouse; shift+scroll moves along; *Settings › Waveform* can make it need ctrl/cmd). **Sections:** the parts of the recording that make the sermon. A recording
   not cut yet opens with the sermon set to all of it but the silence at its start and end (only a start: nothing
   is kept until something is changed); drag the edges to adjust, set the start and end at the playhead, or drag on
   the waveform to select another part;
   *Hear start*, *Hear end* and *Hear the whole sermon* (in Navigate) check the cut as it will be published. The from/to fields follow the
   selection and can be typed in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed).
   The sermon can be **several sections** (below). **Cut out:** parts of the sermon that should
-  go, such as a song in the middle (below).
+  not be published, such as a cough, a song in the middle or something sensitive (below).
   Keys: `space` play, `s`/`e` start/end at the playhead (of the section there, or the next/previous one), `c` start or end a cut, `x` split,
   `[`/`]` previous/next silence, ←/→ 1 s (shift 0.1 s), `p` play the sermon, `ctrl+z` undo; *Keys…* under the waveform (or `?`)
   lists them all.
