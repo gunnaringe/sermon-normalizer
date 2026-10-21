@@ -17,12 +17,24 @@ function forget(folder) {
 }
 
 // openEditor opens a date folder and waits until the waveform is ready. The
-// saved sections and cuts of an earlier test are forgotten, unless keep is set.
+// saved sections and cuts of an earlier test are forgotten, unless keep is set,
+// and the section the editor starts an uncut recording with is removed: the tests make their own.
 async function openEditor(page, folder, { timeout = 60_000, keep = false } = {}) {
   if (!keep) forget(folder);
   await page.goto('#/folder/' + folder);
   await expect(page.locator('#waveform')).toBeVisible({ timeout });
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout });
+  if (!keep) await clearProposed(page, timeout);
+}
+
+// sectionHint is the line under the Sermon buttons; it is set once the waveform is ready.
+const sectionHint = (page) => page.locator('.section-hint');
+async function clearProposed(page, timeout = 60_000) {
+  await expect(sectionHint(page)).not.toHaveText('', { timeout });
+  if ((await sectionHint(page).textContent()).startsWith('The sermon is set to')) {
+    await page.locator('.section').getByRole('button', { name: 'Remove' }).click();
+    await expect(sectionHint(page)).toContainText('Drag on the waveform to select the sermon');
+  }
 }
 
 const editor = (page, fn, arg) => page.evaluate(fn, arg);
@@ -346,6 +358,49 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
   await expect(fadeKnob(page, 'fadeIn')).toHaveAttribute('aria-valuenow', '2');
   expect(read().adjusted).toBeNull();
   await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled();
+});
+
+test('a recording not cut yet starts with the sermon set to all of it but the silence at the ends', async ({ page }) => {
+  const folder = '2026/2026-06-14'; // a minute: silence, speech from 3 to 56 s, silence
+  const file = path.join(DATA, 'root', folder, 'recording.json');
+  const read = () => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {});
+  forget(folder);
+  await page.goto('#/folder/' + folder);
+  await expect(page.locator('#waveform')).toBeVisible({ timeout: 60_000 });
+  await expect(sectionHint(page)).toContainText('The sermon is set to the recording without the silence at its start and end.', { timeout: 60_000 });
+  const start = await selection(page);
+  expect(start.start).toBeGreaterThan(2.5);
+  expect(start.start).toBeLessThan(3.6);
+  expect(start.end).toBeGreaterThan(55.4);
+  expect(start.end).toBeLessThan(56.5);
+  await expect(page.getByText('Nothing is saved yet.')).toBeVisible();
+  await expect(page.getByText('Save keeps the edit, makes: FLAC, MP3, Opus.')).toBeVisible();
+
+  // It is only a start: nothing is kept until something is changed.
+  await page.waitForTimeout(1500);
+  expect(read().adjusted ?? null).toBeNull();
+  await page.getByLabel('Sermon from').fill('5');
+  await page.getByLabel('Sermon from').press('Enter');
+  await expect(page.getByText('Changes kept.')).toBeVisible();
+  await expect(sectionHint(page)).toContainText('Drag on an empty part of the waveform');
+  expect(read().adjusted.sections[0].start).toBe(5);
+
+  // Opened again, uncut: Save right away saves the start the page made.
+  forget(folder);
+  await page.reload();
+  await expect(sectionHint(page)).toContainText('The sermon is set to', { timeout: 60_000 });
+  for (const label of ['FLAC', 'MP3', 'Opus']) await pick(page, label).click();
+  await expect(page.getByText('Save keeps the edit.')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
+  expect(read().saved.sections[0].start).toBe(start.start);
+  await expect(sectionHint(page)).toContainText('Drag on an empty part of the waveform');
+
+  // With a saved version there is no start to make: it is what was saved.
+  await page.reload();
+  await page.waitForFunction(() => window.__editor && window.__editor.sections.length === 1, null, { timeout: 60_000 });
+  expect(await selection(page)).toEqual(start);
+  await expect(sectionHint(page)).toContainText('Drag on an empty part of the waveform');
 });
 
 // pill is a format's pill on the Output; pick is its button.

@@ -36,7 +36,12 @@ test('phone: the editor by touch', async ({ page }) => {
   fs.rmSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), { force: true });
   await page.goto('#/folder/2026/2026-10-04');
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });
-  await fits(page, 'editor-empty');
+  // The editor starts with the sermon set to the whole recording (it has no silence at the ends).
+  await expect(page.getByText('The sermon is set to the recording without the silence')).toBeVisible({ timeout: 60_000 });
+  await fits(page, 'editor-opened');
+  await page.locator('.section').getByRole('button', { name: 'Remove' }).tap();
+  await expect.poll(() => page.evaluate(() => window.__editor.sections.length)).toBe(0);
+  await page.evaluate(() => window.scrollTo(0, 0)); // the tap scrolled; the waveform must not sit under the header
 
   // A finger drag on the waveform selects the sermon.
   const box = await page.locator('#waveform').boundingBox();

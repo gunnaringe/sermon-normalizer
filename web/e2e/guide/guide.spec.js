@@ -23,12 +23,22 @@ async function openEditor(page, folder) {
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 120_000 });
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 120_000 });
 }
+// clearProposed removes the section the editor starts an uncut recording with, so the guide's own sections are made next.
+const sectionHint = (page) => page.locator('.section-hint');
+async function clearProposed(page) {
+  await expect(sectionHint(page)).not.toHaveText('', { timeout: 120_000 });
+  if ((await sectionHint(page).textContent()).startsWith('The sermon is set to')) {
+    await page.locator('.section').getByRole('button', { name: 'Remove' }).click();
+    await expect(sectionHint(page)).toContainText('Drag on the waveform to select the sermon');
+  }
+}
 
 test.describe.configure({ mode: 'serial' });
 
 test('earlier Sundays: three are done, the rest wait', async ({ page }) => {
   for (const day of ['2026-09-06', '2026-09-13', '2026-09-20']) {
     await openEditor(page, `2026/${day}`);
+    await clearProposed(page);
     await editor(page, () => window.__editor.addSection(8, 112));
     await save(page).click();
     await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible({ timeout: 120_000 });
@@ -55,9 +65,11 @@ test('upload, cut, save', async ({ page }) => {
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 300_000 });
   await expect(page.locator('.input-file')).not.toContainText('Reading', { timeout: 120_000 });
   await expect(page.locator('.input-file')).not.toContainText('Checking', { timeout: 120_000 });
+  await expect(sectionHint(page)).toContainText('The sermon is set to', { timeout: 120_000 });
   await shot(page, '03-editor');
 
   // Two sections, with what is between them left out, and a cough cut out of the second.
+  await clearProposed(page);
   await editor(page, () => {
     window.__editor.addSection(6, 250, 'Part one');
     window.__editor.addSection(298, 832, 'Part two');
