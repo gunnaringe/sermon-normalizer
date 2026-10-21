@@ -56,9 +56,9 @@ test('upload, cut, save', async ({ page }) => {
   await expect(page.locator('button.year-head', { hasText: '2026' })).toHaveAttribute('aria-expanded', 'true');
   await shot(page, '01-recordings');
 
-  // Upload: the date is taken from the file name; here it is typed.
-  await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'service.wav'));
-  await page.locator('input[name=date]').fill('2026-10-18');
+  // Upload: the date is taken from the file name, as the X32 names it.
+  await page.locator('input[type=file]').setInputFiles(path.join(DATA, 'R_20261018-104506.wav'));
+  await expect(page.locator('input[name=date]')).toHaveValue('2026-10-18');
   await shot(page, '02-upload', page.locator('.upload'));
   await page.getByRole('button', { name: 'Upload' }).click();
   await expect(page).toHaveURL(/#\/grace-chapel\/folder\/2026\/2026-10-18$/);
