@@ -97,6 +97,10 @@ Each can have a label, which shows on the waveform.
 - **Fades:** the sermon fades in from its start and out to its end. Drag the round knob at the start of the first section
   (or the end of the last) along the waveform; the arrow keys move a focused knob by half a second (`shift`: a tenth). A fade can be
   up to 30 seconds or half the sermon.
+- **Selecting:** click a section or cut on the waveform, or use its row, to select it: its row and its
+  region are marked. `Delete` removes it, `,`/`.` move its edge nearest the playhead by 0.1 s (shift 0.01 s), `Escape`
+  lets go. A double-click zooms to it. Between two sections, *Hear join* plays the last 3 s of the first and the first 3 s
+  of the next, as it will sound.
 - **Cutting parts out:** with the sermon selected, *Cut out here* (or `c`) marks 10 s from the
   playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
   dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut outside

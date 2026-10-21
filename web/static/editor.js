@@ -445,6 +445,23 @@ export async function editorView(view, path, config) {
       if (sectionOf(r)) tidySections();
       else if (cutOf(r)) { sortCuts(); renderCuts(); changed(); }
     });
+    // A click on a section or cut selects it (its row is marked); a double-click zooms to it.
+    regions.on('region-clicked', (r) => select(sectionOf(r) || cutOf(r) || null));
+    regions.on('region-double-clicked', (r) => {
+      const x = sectionOf(r) || cutOf(r);
+      if (!x) return;
+      select(x);
+      zoomTo(r.start, r.end);
+    });
+
+    // zoomTo zooms so start..end fills most of the waveform, and scrolls to it.
+    function zoomTo(start, end) {
+      const fit = waveEl.clientWidth / duration;
+      const want = (waveEl.clientWidth * 0.9) / Math.max(end - start, 0.05);
+      const top = Math.max(MAX_ZOOM / fit, 1);
+      zoom.value = top > 1 ? Math.min(100, Math.max(0, (100 * Math.log(Math.max(want / fit, 1))) / Math.log(top))) : 0;
+      applyZoom({ time: start, x: waveEl.clientWidth * 0.05 });
+    }
 
     // applyZoom zooms to the slider's value. With at ({ time, x }), time stays
     // x pixels from the left edge (under the mouse); without, the playhead is kept in view.
@@ -488,6 +505,13 @@ export async function editorView(view, path, config) {
         ArrowRight: () => seek(ws.getCurrentTime() + step),
         Home: () => seek(0),
         End: () => seek(duration),
+        Delete: removeSelected,
+        Backspace: removeSelected,
+        ',': () => nudge(-step / 10),
+        '.': () => nudge(step / 10),
+        '<': () => nudge(-step / 10),
+        '>': () => nudge(step / 10),
+        Escape: () => select(null),
       };
       const fn = keys[e.key];
       if (fn) {
@@ -499,7 +523,7 @@ export async function editorView(view, path, config) {
     cleanups.push(() => document.removeEventListener('keydown', onKey));
 
     const spans = (list) => list.map((x) => ({ start: x.region.start, end: x.region.end }));
-    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut, splitHere, setFade, undo, redo, get history() { record(); return { undo: undoStack.length, redo: redoStack.length }; }, get fades() { return { fadeIn: opts.fadeIn, fadeOut: opts.fadeOut }; } }; // for tests and the console
+    window.__editor = { ws, regions, get sections() { return spans(sections); }, get cuts() { return spans(cuts); }, addSection, addCut, splitHere, setFade, undo, redo, get selected() { return selected ? { kind: sections.includes(selected) ? 'section' : 'cut', start: selected.region.start, end: selected.region.end } : null; }, get history() { record(); return { undo: undoStack.length, redo: redoStack.length }; }, get fades() { return { fadeIn: opts.fadeIn, fadeOut: opts.fadeOut }; } }; // for tests and the console
     cleanups.push(() => { delete window.__editor; });
   }
 
@@ -681,6 +705,44 @@ export async function editorView(view, path, config) {
     tidySections();
   }
 
+  // ---- the selected section or cut: clicked on the waveform, or its row in use; the row and the region are marked ----
+
+  let selected = null;
+  function select(x) {
+    selected = x;
+    markSelected();
+  }
+  function markSelected() {
+    if (selected && !sections.includes(selected) && !cuts.includes(selected)) selected = null;
+    for (const y of [...sections, ...cuts]) {
+      const on = y === selected;
+      if (y.row) y.row.classList.toggle('selected', on);
+      if (!y.region.element) continue;
+      y.region.element.style.boxShadow = on ? 'inset 0 0 0 2px var(--accent)' : '';
+      // A cut is always above the section it is in, whichever was drawn last, so a click on it gets the cut.
+      y.region.element.style.zIndex = sections.includes(y) ? '1' : '2';
+    }
+  }
+
+  function removeSelected() {
+    if (!selected) return;
+    if (sections.includes(selected)) removeSection(selected);
+    else removeCut(selected);
+    selected = null;
+  }
+
+  // nudge moves the edge of the selected section or cut that is nearest the playhead by seconds (0.1 s, shift 0.01 s).
+  function nudge(seconds) {
+    if (!selected || !ws) return;
+    const r = selected.region, now = ws.getCurrentTime();
+    const which = Math.abs(now - r.start) <= Math.abs(now - r.end) ? 'start' : 'end';
+    const time = Math.max(0, Math.min(r[which] + seconds, duration));
+    if (which === 'start' ? time > r.end - 0.05 : time < r.start + 0.05) return;
+    r.setOptions({ [which]: time });
+    if (sections.includes(selected)) tidySections();
+    else { sortCuts(); renderCuts(); changed(); }
+  }
+
   function removeSection(x) {
     x.region.remove();
     sections.splice(sections.indexOf(x), 1);
@@ -749,9 +811,16 @@ export async function editorView(view, path, config) {
         labelInput(x, name),
         x === sections[sections.length - 1] ? '' : pauseInput(x, name, t('Silence put in after this section, in seconds')),
         h('button', { title: t('Play this section'), onclick: () => playFor(r.start, r.end - r.start) }, t('Play')),
+        i < sections.length - 1 ? h('button', { title: t('Play 3 s before the end of this section and 3 s from the start of the next, as it will sound'), onclick: () => {
+          const next = sections[i + 1].region, from = Math.max(r.end - 3, 0);
+          playFor(from, next.start + 3 - from, true);
+        } }, t('Hear join')) : '',
         h('button', { onclick: () => removeSection(x) }, t('Remove')));
+      x.row.addEventListener('focusin', () => select(x));
+      x.row.addEventListener('pointerdown', () => select(x));
       return x.row;
     }));
+    markSelected();
     syncSections();
     syncCuts();
   }
@@ -856,8 +925,11 @@ export async function editorView(view, path, config) {
         } }, t('Hear join')),
         h('button', { onclick: () => removeCut(c) }, t('Remove')),
         c.warn = h('p', { class: 'cut-warn', role: 'status' }));
+      c.row.addEventListener('focusin', () => select(c));
+      c.row.addEventListener('pointerdown', () => select(c));
       return c.row;
     }));
+    markSelected();
     syncCuts();
   }
 

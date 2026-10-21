@@ -972,6 +972,66 @@ test('undo and redo: buttons and keys, back to no section, kept, a field keeps i
   expect(await editor(page, () => window.__editor.cuts)).toEqual([{ start: 50, end: 55 }]);
 });
 
+test('a section or cut is selected by a click or its row; double-click zooms; Delete, comma and period; Hear join between sections', async ({ page }) => {
+  await openEditor(page, '2026/2026-10-04');
+  await editor(page, () => { window.__editor.addSection(10, 30); window.__editor.addSection(50, 70); window.__editor.addCut(55, 60); });
+  // at is the point on the waveform at t seconds, where it is now: focusing a field scrolls the page.
+  const at = async (t) => {
+    await page.locator('#waveform').scrollIntoViewIfNeeded();
+    const box = await page.locator('#waveform').boundingBox();
+    return [box.x + (t / 100) * box.width, box.y + box.height / 2];
+  };
+  const click = async (t) => page.mouse.click(...(await at(t)));
+  const selected = () => editor(page, () => window.__editor.selected);
+
+  // A click on a section selects it, and marks its row.
+  await click(20);
+  expect(await selected()).toEqual({ kind: 'section', start: 10, end: 30 });
+  await expect(page.locator('.section.selected')).toHaveCount(1);
+  await expect(page.locator('.section').first()).toHaveClass(/selected/);
+  await click(57.5);
+  expect(await selected()).toMatchObject({ kind: 'cut' });
+  await expect(page.locator('.cut.selected')).toHaveCount(1);
+  await expect(page.locator('.section.selected')).toHaveCount(0);
+
+  // Using a row selects its section.
+  await page.getByLabel('Section 2 from').focus();
+  expect(await selected()).toEqual({ kind: 'section', start: 50, end: 70 });
+  await page.getByLabel('Section 2 from').blur();
+
+  // Comma and period move the edge nearest the playhead by 0.1 s.
+  await editor(page, () => window.__editor.ws.setTime(69));
+  await page.locator('body').press('.');
+  await page.locator('body').press('.');
+  expect((await selected()).end).toBeCloseTo(70.2, 5);
+  await page.locator('body').press(',');
+  expect((await selected()).end).toBeCloseTo(70.1, 5);
+
+  // Escape lets go; Delete then does nothing. Selected again, Delete removes it.
+  await page.locator('body').press('Escape');
+  await expect(page.locator('.section.selected')).toHaveCount(0);
+  await page.locator('body').press('Delete');
+  expect((await sections(page)).length).toBe(2);
+  await click(57.5);
+  await page.locator('body').press('Delete');
+  expect(await editor(page, () => window.__editor.cuts)).toEqual([]);
+  expect(await selected()).toBeNull();
+
+  // Hear join plays over the gap between the two sections.
+  await page.locator('.section').first().getByRole('button', { name: 'Hear join' }).click();
+  await page.waitForFunction(() => window.__editor.ws.getCurrentTime() > 50.2, null, { timeout: 15_000 });
+  expect(await page.locator('.section').last().getByRole('button', { name: 'Hear join' }).count()).toBe(0); // the last has no next
+  await editor(page, () => window.__editor.ws.pause());
+
+  // A double-click zooms to a section.
+  await page.mouse.dblclick(...(await at(20)));
+  await expect.poll(() => page.getByRole('slider', { name: 'Zoom' }).inputValue().then(Number)).toBeGreaterThan(20);
+  const view = await editor(page, () => { const ws = window.__editor.ws, w = ws.getWrapper(); return { left: ws.getScroll() / (w.scrollWidth / ws.getDuration()) }; });
+  expect(view.left).toBeGreaterThan(8);
+  expect(view.left).toBeLessThan(10.5);
+  expect(await selected()).toEqual({ kind: 'section', start: 10, end: 30 });
+});
+
 test('split a section, put in a pause, and choose what Play plays', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
   await editor(page, () => window.__editor.addSection(10, 90));
