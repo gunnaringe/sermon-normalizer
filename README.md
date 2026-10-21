@@ -54,18 +54,12 @@ theme, and the editor works with a finger [on a phone](docs/img/18-phone-editor.
 
 ## How it works
 
-```
- recording ──► upload / inbox folder / share code
-                      │
-                      ▼
-           converted (WAV → FLAC, video → audio), checked identical
-                      │
-                      ▼
-      cut on the waveform: sections, cuts, labels, fades
-                      │  Save
-                      ▼
-   mono · noise reduction · loudness · FLAC, MP3, Opus   (original kept)
-```
+1. **A recording arrives:** by upload, the inbox folder or a share code.
+2. **It is made ready:** WAV and AIFF become FLAC, a video becomes its sound, each checked identical
+   to what came; other files are used as they are.
+3. **You cut it on the waveform:** sections, cuts, labels, fades.
+4. **Save makes the files:** mono or stereo, noise reduction, even loudness, as FLAC, MP3 and Opus.
+   The original is kept.
 
 A recording is a folder named after its date:
 
