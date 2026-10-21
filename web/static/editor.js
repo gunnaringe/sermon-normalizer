@@ -98,7 +98,7 @@ export async function editorView(view, path, config) {
   const waveSection = h('section', {});
   const lengthOut = h('p', { class: 'length' });
   const sectionList = h('div', { class: 'sections' });
-  const sectionHint = h('p', { class: 'muted' });
+  const sectionHint = h('p', { class: 'muted section-hint' });
   const cutList = h('div', { class: 'cuts' });
   const cutHint = h('p', { class: 'muted' });
   const inputPanel = h('div', { class: 'panel input-file' });
@@ -389,7 +389,7 @@ export async function editorView(view, path, config) {
       regions.enableDragSelection({ color: css('--selection') });
       const initial = sermon.adjusted || sermon.saved;
       if (initial) applySettings(initial);
-      else renderSections();
+      else proposeSection(data.silences);
     });
     buildFades();
     // A drag on the waveform makes a region: it becomes a section. Sections
@@ -570,6 +570,34 @@ export async function editorView(view, path, config) {
     }
   }
 
+  // ---- the first section: a recording not cut yet opens with the sermon set to all of it but the
+  // silence at its start and end. It is only a start: nothing is kept until something is changed. ----
+
+  let proposed = false; // the one section is that start, untouched
+  function proposeSection(silences) {
+    const lead = silences.find((s) => s.start <= 0.5);
+    const tail = [...silences].reverse().find((s) => s.end >= duration - 0.5);
+    const start = lead ? lead.end : 0, end = tail ? tail.start : duration;
+    restoring = true;
+    try {
+      if (end - start >= 1) addSection(start, end);
+    } finally {
+      restoring = false;
+    }
+    proposed = sections.length > 0;
+    lastSent = JSON.stringify(currentSettings());
+    renderSections();
+    check();
+  }
+
+  // adopt makes that start the user's own: from here on it is kept like any edit, even when a change
+  // leaves it as it was.
+  function adopt() {
+    proposed = false;
+    lastSent = '';
+    syncSections();
+  }
+
   // ---- sections: the parts of the recording that make the sermon ----
 
   // rebuild replaces a list's rows. Removing a focused field makes the browser
@@ -725,9 +753,11 @@ export async function editorView(view, path, config) {
       if (document.activeElement !== x.endIn) x.endIn.value = formatTime(r.end);
       x.info.textContent = t('length {time}', { time: formatTime(r.end - r.start, 1) });
     }
-    sectionHint.textContent = sections.length
-      ? t('Drag on an empty part of the waveform to add another section. Parts between sections are left out.')
-      : t('Drag on the waveform to select the sermon, or set its start and end at the playhead (s, e).');
+    sectionHint.textContent = !sections.length
+      ? t('Drag on the waveform to select the sermon, or set its start and end at the playhead (s, e).')
+      : proposed
+        ? t('The sermon is set to the recording without the silence at its start and end. Move its edges, or set its start and end at the playhead (s, e).')
+        : t('Drag on an empty part of the waveform to add another section. Parts between sections are left out.');
   }
 
   // skipped are the parts left out between the first section's start and the
@@ -1200,6 +1230,7 @@ export async function editorView(view, path, config) {
   }, 250);
 
   function changed() {
+    if (proposed && !restoring) adopt();
     saveOptions(opts);
     check();
     saveSoon();
@@ -1264,6 +1295,7 @@ export async function editorView(view, path, config) {
   // missing or out of date. The edit is saved even when the files cannot be
   // made now: the recordings page shows them as out of date.
   async function save() {
+    if (proposed) adopt(); // the start the page made has not been kept yet
     await persistAdjusted();
     const make = toMake(), del = toDelete();
     const replaced = make.map(outputState).filter((x) => x.file).map((x) => x.file.name);

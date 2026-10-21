@@ -29,7 +29,7 @@ saved with files. The search finds names, dates and labels.
 Drop a file on the top of the page or choose one; the date is taken from the file name or the file. The
 upload goes straight into its date folder and opens in the editor.
 
-![The editor: the whole service as a waveform](img/03-editor.png)
+![The editor: the whole service as a waveform, the sermon set to all of it but the silence at the ends](img/03-editor.png)
 
 ## Cutting: sections and cuts
 
@@ -60,8 +60,10 @@ Each can have a label, which shows on the waveform.
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
   ocenaudio. The controls are in three groups. **Navigate:** play, jump between silences
   (grey on the waveform), zoom (slider, `+`/`-`, or scroll over the waveform: zooms at the
-  mouse; shift+scroll moves along; *Settings › Waveform* can make it need ctrl/cmd). **Sermon:** drag on the waveform
-  to select the sermon and drag the edges to adjust, or set the start and end at the playhead;
+  mouse; shift+scroll moves along; *Settings › Waveform* can make it need ctrl/cmd). **Sermon:** a recording
+  not cut yet opens with the sermon set to all of it but the silence at its start and end (only a start: nothing
+  is kept until something is changed); drag the edges to adjust, set the start and end at the playhead, or drag on
+  the waveform to select another part;
   *Hear start*, *Hear end* and *Hear the whole sermon* (in Navigate) check the cut as it will be published. The from/to fields follow the
   selection and can be typed in (`h:mm:ss`, `mm:ss` or seconds, with decimals if needed).
   The sermon can be **several sections** (below). **Cut out:** parts of the sermon that should
