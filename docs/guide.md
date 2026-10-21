@@ -73,7 +73,7 @@ Each can have a label, which shows on the waveform.
   Keys: `space` play, `s`/`e` start/end at the playhead (of the section there, or the next/previous one), `c` cut out here, `[`/`]` previous/next
   silence, ←/→ 1 s (shift 0.1 s), `p` play the sermon.
 - **On a phone:** every page fits the screen. Drag a finger along the waveform to select (up and
-  down still scrolls the page); the section edges are wider to grab; cut with *Cut out here* and
+  down still scrolls the page); the section edges are wider to grab; cut with *Cut out here* and *End the cut here*, and
   zoom with the buttons.
 - **The page** has five parts: **Input file** (one line with the recording's name, size, length and whether it is
   stereo or mono in effect, which opens to its format, how it came and its metadata; and *Download original*), **Edit** (the
@@ -101,8 +101,9 @@ Each can have a label, which shows on the waveform.
   region are marked. `Delete` removes it, `,`/`.` move its edge nearest the playhead by 0.1 s (shift 0.01 s), `Escape`
   lets go. A double-click zooms to it. Between two sections, *Hear join* plays the last 3 s of the first and the first 3 s
   of the next, as it will sound.
-- **Cutting parts out:** with the sermon selected, *Cut out here* (or `c`) marks 10 s from the
-  playhead as a cut, shown in red; or hold shift and drag on the waveform. Adjust a cut by
+- **Cutting parts out:** with the sermon selected, press *Cut out here* (or `c`) where a cut starts: the cut, shown
+  in red, follows the playhead as you listen on or move it, and *End the cut here* (`c` again) ends it there;
+  `Escape` lets it go. Or hold shift and drag on the waveform. Adjust a cut by
   dragging its edges, typing its times, or *Set start* / *Set end* at the playhead. A cut outside
   the sections is allowed (what is outside is left out anyway) but does nothing, and a warning by it says so (also when it is only
   partly in a section). Every section and cut can have a **label** ("Intro", "Song"), shown on the waveform and kept

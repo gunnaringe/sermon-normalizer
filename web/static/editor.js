@@ -285,7 +285,7 @@ export async function editorView(view, path, config) {
         localStorage.setItem('playMode', mode);
         for (const b of e.currentTarget.parentElement.children) b.setAttribute('aria-pressed', String(b === e.currentTarget));
       } }, label);
-    addCutButton = h('button', { title: t('Cut out a part of the sermon, starting at the playhead (c)'), onclick: addCutHere }, t('Cut out here'));
+    addCutButton = h('button', { title: t('Start a cut at the playhead; press again where it ends (c)'), onclick: addCutHere }, t('Cut out here'));
     waveSection.replaceChildren(
       minimapEl, waveEl,
       h('div', { class: 'controls' },
@@ -326,7 +326,7 @@ export async function editorView(view, path, config) {
           cutHint,
           cutList)),
       h('p', { class: 'touch-hint' },
-        t('Drag along the waveform to select the sermon. Drag on an empty part to add another section. Drag the edges to adjust. To cut a part out, move the playhead there and press Cut out here. Grey marks silence.')),
+        t('Drag along the waveform to select the sermon. Drag on an empty part to add another section. Drag the edges to adjust. To cut a part out, press Cut out here where it starts and End the cut here where it ends. Grey marks silence.')),
       h('p', { class: 'keys' },
         kbdText(t('Drag on the waveform to select the sermon. Drag on an empty part to add another section, or hold <kbd>shift</kbd> and drag to cut out a part. Drag the edges to adjust. Grey marks silence. Keys:')), ' ',
         kbdText(t('<kbd>space</kbd> play · <kbd>s</kbd>/<kbd>e</kbd> start/end at the playhead · <kbd>c</kbd> cut out here · <kbd>x</kbd> split · <kbd>[</kbd>/<kbd>]</kbd> silences · <kbd>←</kbd>/<kbd>→</kbd> 1 s (shift 0.1 s) · <kbd>+</kbd>/<kbd>-</kbd> zoom · <kbd>p</kbd> play sermon.')), ' ',
@@ -363,6 +363,7 @@ export async function editorView(view, path, config) {
 
     ws.on('play', () => { playButton.textContent = t('⏸ Pause'); });
     ws.on('pause', () => { playButton.textContent = t('▶ Play'); });
+    ws.on('timeupdate', (now) => followOpenCut(now));
     ws.on('timeupdate', (now) => {
       clock.textContent = `${formatTime(now, 1)} / ${formatTime(duration, 0)}`;
       if (stopAt !== null && now >= stopAt) {
@@ -511,7 +512,7 @@ export async function editorView(view, path, config) {
         '.': () => nudge(step / 10),
         '<': () => nudge(-step / 10),
         '>': () => nudge(step / 10),
-        Escape: () => select(null),
+        Escape: () => { if (!cancelCut()) select(null); },
       };
       const fn = keys[e.key];
       if (fn) {
@@ -866,12 +867,51 @@ export async function editorView(view, path, config) {
     return cut;
   }
 
-  // addCutHere cuts out the next 10 s from the playhead (inside the sermon);
-  // the edges are then adjusted by dragging or typing.
+  // ---- cutting while listening: c (or Cut out here) starts a cut at the playhead, which then follows the
+  // playhead (played or moved) until c (End the cut here) ends it there; Escape lets it go. The open cut is
+  // only drawn: it is not one of the cuts, so playback does not jump over it. ----
+
+  let openCut = null; // { start, region }
+
   function addCutHere() {
-    if (!sections.length) return;
-    const start = Math.min(Math.max(ws.getCurrentTime(), first()), last() - 0.1);
-    addCut(start, Math.min(start + 10, last()));
+    if (!ws || !sections.length) return;
+    if (openCut) { closeCut(); return; }
+    const start = Math.min(Math.max(ws.getCurrentTime(), first()), last() - 0.05);
+    const region = regions.addRegion({ id: 'cut-open', start, end: start + 0.05, color: css('--cut'), drag: false, resize: false });
+    if (region.element) region.element.style.pointerEvents = 'none';
+    openCut = { start, region };
+    showOpenCut();
+  }
+
+  function followOpenCut(now) {
+    if (!openCut) return;
+    const a = Math.min(openCut.start, now), b = Math.max(openCut.start, now);
+    openCut.region.setOptions({ start: a, end: Math.max(b, a + 0.05) });
+  }
+
+  function closeCut() {
+    const { start, region } = openCut, now = ws.getCurrentTime();
+    region.remove();
+    openCut = null;
+    showOpenCut();
+    if (Math.abs(now - start) >= 0.05) addCut(Math.min(start, now), Math.max(start, now));
+  }
+
+  // cancelCut lets an open cut go; false if there was none.
+  function cancelCut() {
+    if (!openCut) return false;
+    openCut.region.remove();
+    openCut = null;
+    showOpenCut();
+    return true;
+  }
+
+  function showOpenCut() {
+    if (!addCutButton) return;
+    addCutButton.textContent = openCut ? t('End the cut here') : t('Cut out here');
+    addCutButton.title = openCut ? t('The cut ends at the playhead (c); Escape lets it go') : t('Start a cut at the playhead; press again where it ends (c)');
+    addCutButton.classList.toggle('primary', Boolean(openCut));
+    syncCuts();
   }
 
   function removeCut(c) {
@@ -950,8 +990,10 @@ export async function editorView(view, path, config) {
         : partly ? '⚠ ' + t('Cut {n} is only partially part of a section', { n }) : '';
       c.warn.hidden = !c.warn.textContent;
     }
+    if (!sections.length && openCut) cancelCut();
     cutHint.textContent = !sections.length ? t('Select the sermon first. Then cut out parts you do not want, such as a song.')
-      : cuts.length ? '' : t('Nothing cut out. Use the button, press c, or shift-drag on the waveform.');
+      : openCut ? t('Play or move the playhead to where the cut ends, then press End the cut here (c). Escape lets it go.')
+        : cuts.length ? '' : t('Nothing cut out. Press the button (or c) where a cut starts and again where it ends, or shift-drag on the waveform.');
     if (addCutButton) addCutButton.disabled = !sections.length;
     const parts = sections.length > 1 ? tn(sections.length, '{n} section', '{n} sections') : '';
     const pauses = activePauses();

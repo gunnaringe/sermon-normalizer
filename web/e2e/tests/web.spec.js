@@ -177,15 +177,30 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   await expect(cutOut.getByRole('button', { name: 'Cut out here' })).toBeEnabled();
   await expect(page.getByText('Length 1:20.0', { exact: true })).toBeVisible();
 
-  // The button cuts out 10 s from the playhead; the fields adjust it.
+  // The button starts a cut at the playhead, which follows the playhead until the button ends it there.
   await editor(page, () => window.__editor.ws.setTime(30));
   await cutOut.getByRole('button', { name: 'Cut out here' }).click();
-  expect((await cuts())[0].start).toBeCloseTo(30, 0);
-  expect((await cuts())[0].end).toBeCloseTo(40, 0);
+  await expect(cutOut.getByRole('button', { name: 'End the cut here' })).toBeVisible();
+  await expect(cutOut).toContainText('Play or move the playhead to where the cut ends');
+  expect(await cuts()).toEqual([]); // not a cut until it is ended
+  await editor(page, () => window.__editor.ws.setTime(40));
+  await page.locator('section.step').nth(1).screenshot({ path: path.join(shots, 'cut-open.png') });
+  await cutOut.getByRole('button', { name: 'End the cut here' }).click();
+  expect((await cuts())[0].start).toBeCloseTo(30, 1);
+  expect((await cuts())[0].end).toBeCloseTo(40, 1);
+  await expect(cutOut.getByRole('button', { name: 'Cut out here' })).toBeVisible();
   await expect(page.getByText('Length 1:10.0 (1 cut)')).toBeVisible();
   await page.getByLabel('Cut 1 to').fill('0:45');
   await page.getByLabel('Cut 1 to').press('Enter');
   expect((await cuts())[0].end).toBeCloseTo(45, 2);
+
+  // c does the same; Escape lets an open cut go.
+  await editor(page, () => window.__editor.ws.setTime(80));
+  await page.locator('body').press('c');
+  await editor(page, () => window.__editor.ws.setTime(84));
+  await page.locator('body').press('Escape');
+  await expect(cutOut.getByRole('button', { name: 'Cut out here' })).toBeVisible();
+  expect(await cuts()).toHaveLength(1);
 
   // Shift-drag on the waveform draws another one; the list stays in time order.
   const box = await page.locator('#waveform').boundingBox();
