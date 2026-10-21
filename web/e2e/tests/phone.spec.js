@@ -33,7 +33,13 @@ test('phone: every page fits the screen', async ({ page }) => {
 });
 
 test('phone: the editor by touch', async ({ page }) => {
-  fs.rmSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), { force: true });
+  // Forget the edit of earlier tests, and only that: what is known about the recording (such as the WAV
+  // it was converted from) is read by later tests.
+  const file = path.join(DATA, 'root/2026/2026-10-04/recording.json');
+  if (fs.existsSync(file)) {
+    const st = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify({ ...st, saved: null, savedAt: undefined, adjusted: null }));
+  }
   await page.goto('#/folder/2026/2026-10-04');
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });
   // The editor starts with the sermon set to the whole recording (it has no silence at the ends).
