@@ -189,17 +189,28 @@ func TestIntegrationRun(t *testing.T) {
 		t.Fatalf("run: %d %s", rec.Code, rec.Body)
 	}
 	id := decode[jobSnapshot](t, rec).ID
+	// Progress is watched in the job itself: the event stream sends at most ten updates a second, and on a fast
+	// machine a step can start and end between two of them.
+	progressSeen := make(chan bool, 1)
+	go func() {
+		j, seen := ts.jobs.get(id), false
+		for {
+			s := j.snapshot()
+			seen = seen || (s.State == "running" && s.Progress > 0 && s.Progress < 1)
+			if s.State != "queued" && s.State != "running" {
+				progressSeen <- seen
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
 	snaps := events(t, hs.URL+"/api/jobs/"+id+"/events")
 	last := snaps[len(snaps)-1]
 	if last.State != "done" || len(last.Outputs) != 1 || last.Outputs[0].Format != "mp3" || len(snaps) < 3 {
 		t.Fatalf("%d events, last %+v", len(snaps), last)
 	}
-	var sawProgress bool
-	for _, s := range snaps {
-		sawProgress = sawProgress || (s.State == "running" && s.Progress > 0 && s.Progress < 1)
-	}
-	if !sawProgress {
-		t.Error("no progress seen in the events")
+	if !<-progressSeen {
+		t.Error("no progress seen")
 	}
 	mp3 := filepath.Join(ts.root, "2026-10-04", "2026-10-04.mp3")
 	if d := duration(t, mp3); d < 42.9 || d > 43.2 {
