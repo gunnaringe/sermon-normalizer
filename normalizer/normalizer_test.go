@@ -386,6 +386,7 @@ func TestValidate(t *testing.T) {
 		"lufs":          func(o *Options) { o.TargetLUFS = 3 },
 		"peak":          func(o *Options) { o.TruePeak = 1 },
 		"bitrate":       func(o *Options) { o.Mp3Bitrate = " " },
+		"clip pause":    func(o *Options) { o.Intro, o.ClipPause = "intro.flac", MaxClipPause+1 },
 	} {
 		o := DefaultOptions()
 		change(&o)

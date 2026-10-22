@@ -654,3 +654,81 @@ func TestIntegrationVerdictAndProbe(t *testing.T) {
 		}
 	}
 }
+
+// clipFile writes a clip: a tone of amp for seconds, in the format of the extension, with a title tag.
+func clipFile(t *testing.T, ff FFmpeg, path string, amp, seconds float64, channels, rate int) {
+	t.Helper()
+	expr := fmt.Sprintf("%g*sin(2*PI*440*t)", amp)
+	if channels == 2 {
+		expr += "|" + expr
+	}
+	if _, err := ff.Run(context.Background(), "-y", "-f", "lavfi", "-i", fmt.Sprintf("aevalsrc=exprs='%s':s=%d:d=%g", expr, rate, seconds),
+		"-metadata", "title=Jingle", path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An intro and outro go around the sermon in the main files, each brought to the target loudness and the
+// sermon's rate and channels, with the pause at each join; the sermon only is made too, under _sermon.
+func TestIntegrationClips(t *testing.T) {
+	ff := requireFFmpeg(t)
+	clips := t.TempDir()
+	intro, outro := filepath.Join(clips, "intro.mp3"), filepath.Join(clips, "outro.wav")
+	clipFile(t, ff, intro, 0.5, 5, 2, 44100)  // loud, stereo, 44.1 kHz, with its own title
+	clipFile(t, ff, outro, 0.02, 3, 1, 48000) // quiet, mono
+
+	dir := dateFolder(t)
+	service(t, ff, filepath.Join(dir, date+"_raw.flac"), 1)
+	opt := DefaultOptions()
+	opt.Start, opt.End = 20, 80
+	opt.Intro, opt.Outro, opt.ClipPause = intro, outro, 0.5
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, ext := range []string{".flac", ".mp3", ".opus"} {
+		want = append(want, date+ext, date+SermonOnly+ext)
+	}
+	wantFiles(t, dir, append(want, "original/"+date+"_raw.flac")...)
+	checkOutputs(t, ff, dir, 5+0.5+60+0.5+3)
+	for _, ext := range []string{".flac", ".mp3", ".opus"} {
+		f := filepath.Join(dir, date+SermonOnly+ext)
+		if d := probeFile(t, f).duration; !near(d, 60, 0.1) {
+			t.Errorf("%s: %.2f s, want 60", filepath.Base(f), d)
+		}
+	}
+
+	master := filepath.Join(dir, date+".flac")
+	in, out := maxVolume(t, ff, master, 1, 3), maxVolume(t, ff, master, 66.5, 2)
+	if math.Abs(in-out) > 3 {
+		t.Errorf("intro %.1f dB, outro %.1f dB: both should be at the target", in, out)
+	}
+	if gap := maxVolume(t, ff, master, 5.1, 0.3); gap > -60 {
+		t.Errorf("the pause after the intro: %.1f dB", gap)
+	}
+	res, err := ff.Run(context.Background(), "-i", master, "-t", "0", "-f", "null", "-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(res.Stderr), "jingle") {
+		t.Errorf("the intro's tags leaked into the master:\n%s", res.Stderr)
+	}
+
+	// Without FLAC the masters are temporary; only the outro, and no pause.
+	dir = dateFolder(t)
+	service(t, ff, filepath.Join(dir, date+"_raw.flac"), 1)
+	opt.Intro, opt.ClipPause, opt.Outputs = "", 0, Outputs{Mp3: true}
+	if err := run(t, context.Background(), ff, dir, opt); err != nil {
+		t.Fatal(err)
+	}
+	wantFiles(t, dir, date+".mp3", date+SermonOnly+".mp3", "original/"+date+"_raw.flac")
+	if d := probeFile(t, filepath.Join(dir, date+".mp3")).duration; !near(d, 63, 0.1) {
+		t.Errorf("mp3 with the outro: %.2f s, want 63", d)
+	}
+
+	// A missing clip stops the run.
+	opt.Force, opt.Intro = true, filepath.Join(clips, "gone.flac")
+	if err := run(t, context.Background(), ff, dir, opt); err == nil || !strings.Contains(err.Error(), "the intro (gone.flac) is missing") {
+		t.Errorf("expected the missing intro, got %v", err)
+	}
+}
