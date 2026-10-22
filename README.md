@@ -108,8 +108,8 @@ docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
 Open <http://localhost:8080>. Each folder in `data/` is a church; add more from the app. All options
 and the public upload page are in [docs/running.md](docs/running.md).
 
-On one computer, without a server: `scripts/build-desktop.sh`, then start
-`dist/sermon-studio-desktop-<os>-<arch>` ([docs/desktop.md](docs/desktop.md)).
+On one computer, without a server: download the desktop app for Windows, macOS or Linux from the
+[releases](https://github.com/gunnaringe/sermon-studio/releases/latest) ([docs/desktop.md](docs/desktop.md)).
 
 ## License
 

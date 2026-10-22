@@ -3,9 +3,22 @@
 Sermon Studio on one computer: double-click it, and the studio opens in a window of its own. No server, no
 login, no Docker. The studio is the same as on a server; only the way in differs.
 
+## Getting it
+
+Download it from the [releases](https://github.com/gunnaringe/sermon-studio/releases/latest):
+
+| System | File | |
+|---|---|---|
+| Windows | `Sermon-Studio-<version>-windows-amd64.exe` | Start it. The first time Windows asks ("Windows protected your PC"): **More info → Run anyway**. |
+| Mac (Apple silicon) | `Sermon-Studio-<version>-macos-arm64.zip` | Unzip, move **Sermon Studio** to Applications and start it. The first time macOS refuses: **System Settings → Privacy & Security → Open Anyway**. |
+| Mac (Intel) | `Sermon-Studio-<version>-macos-amd64.zip` | As above. |
+| Linux | `sermon-studio-<version>-linux-amd64.tar.gz` (or `arm64`) | Unpack and run `./install.sh`: it is then in the applications menu. |
+
+The programs are not signed yet, which is why Windows and macOS ask the first time.
+
 ## Starting it
 
-Start `sermon-studio-desktop` (on Windows `sermon-studio-desktop-windows-amd64.exe`). It runs the studio on
+Start **Sermon Studio** (on Linux `sermon-studio-desktop`). It runs the studio on
 this computer only (`http://127.0.0.1:41917/`) and opens it in Edge, Chrome or Chromium as an app: a window
 without tabs or address bar. Without one of those it opens in the default browser.
 
@@ -51,8 +64,16 @@ computer. Posts from other sites are refused by the studio, as on a server.
 
 ## Building it
 
+A tag `v<version>` makes a release (`.github/workflows/release.yml`): the programs with ffmpeg built in, the
+Windows one with its icon (go-winres), a `Sermon Studio.app` for each Mac (ad hoc signed, no Dock icon: the
+window is the browser's), and for Linux a tar.gz with a `.desktop` file and `install.sh` (`packaging/`). A pull
+request that changes the packaging builds the same, without publishing it.
+
+By hand:
+
 ```bash
 scripts/build-desktop.sh [version]   # dist/sermon-studio-desktop-<os>-<arch>, for every system, ffmpeg built in
+scripts/package-desktop.sh linux <version>   # dist/release/: Linux tar.gz, the Windows .exe (macos: on a Mac)
 ```
 
 It fetches the ffmpeg for each system from the ffmpeg-lgpl release in `packaging/ffmpeg-release`, checked

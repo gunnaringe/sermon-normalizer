@@ -1,3 +1,6 @@
 /sermon-studio
 /sermon-studio.exe
 dist/
+
+# The Windows icon and details, made by the release workflow (go-winres)
+/cmd/sermon-studio-desktop/rsrc_*.syso

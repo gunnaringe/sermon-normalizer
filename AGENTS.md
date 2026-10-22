@@ -36,6 +36,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   with `-tags embedffmpeg` (`FFmpeg`: unpacked into the cache, checked by its hash); `scripts/build-desktop.sh`
   does that, with the release of github.com/gunnaringe/ffmpeg-lgpl pinned in `packaging/ffmpeg-release` and
   `packaging/ffmpeg.sha256` (that repo builds it and runs this repo's Go tests against every build).
+  A tag `v*` releases the desktop app (`release.yml`, `scripts/package-desktop.sh`, `packaging/`) and tags the
+  image `vX.Y.Z`.
 - `web/app.go`: `App` = the churches (tenants). A church is a folder in
   `--data-dir`: `<id>/church.json` (name, tags; optional), `<id>/Taler`,
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default

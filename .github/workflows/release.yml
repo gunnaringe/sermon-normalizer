@@ -1,0 +1,84 @@
+# The desktop app's release: on a v* tag, the program for every system with our ffmpeg built in, packaged
+# (Windows .exe, Sermon Studio.app for each Mac, Linux tar.gz with a .desktop file), published as a GitHub
+# release. On a pull request that changes the packaging, and when started by hand, the same is built as
+# artifacts, not published.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+    paths: [packaging/**, cmd/sermon-studio-desktop/**, scripts/build-desktop.sh, scripts/fetch-ffmpeg.sh, scripts/package-desktop.sh, .github/workflows/release.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - id: version
+        run: |
+          if [ "${{ github.ref_type }}" = tag ]; then v=${GITHUB_REF_NAME#v}; else v=0.0.0; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: The Windows program's icon and details
+        run: |
+          v=${{ steps.version.outputs.version }}
+          go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --icon web/static/icons/icon-512.png \
+            --manifest gui --product-name "Sermon Studio" --file-description "Sermon Studio" \
+            --product-version "$v" --file-version "$v" --out cmd/sermon-studio-desktop/rsrc
+      - run: scripts/build-desktop.sh "${{ steps.version.outputs.version }}"
+      - run: scripts/package-desktop.sh linux "${{ steps.version.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-windows
+          path: dist/release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: darwin
+          path: dist/sermon-studio-desktop-darwin-*
+
+  macos:
+    needs: build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: darwin
+          path: dist
+      - run: scripts/package-desktop.sh macos "${{ needs.build.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/release/
+
+  publish:
+    needs: [build, macos]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist/release
+          merge-multiple: true
+      - run: |
+          v=${{ needs.build.outputs.version }}
+          (cd dist/release && sha256sum * > SHA256SUMS)
+          . packaging/ffmpeg-release
+          sed -e "s/{version}/$v/g" -e "s/{ffmpeg}/$FFMPEG_RELEASE/g" packaging/release-notes.md > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/release/* --verify-tag --title "Sermon Studio $v" --notes-file notes.md
