@@ -865,6 +865,15 @@ test('settings: a church logo replaces the app logo in the header', async ({ pag
   await page.locator('input[name=logo]').setInputFiles({ name: 'logo.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(svg) });
   await expect(brand).toHaveAttribute('src', /api\/logo\?tenant=.*&v=/);
   await expect(page.locator('.logo-row img')).toBeVisible();
+  await expect(page.getByText('This logo is wide')).toHaveCount(0); // square: no warning
+  const wide = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><rect width="120" height="40" fill="#b00020"/></svg>';
+  await page.locator('input[name=logo]').setInputFiles({ name: 'wide.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(wide) });
+  await expect(page.getByText('This logo is wide, so it is small in the header.')).toBeVisible();
+  await page.locator('.logo-row').screenshot({ path: path.join(shots, 'settings-logo-wide.png') });
+  const box = await brand.boundingBox();
+  expect([box.width, box.height]).toEqual([28, 28]); // a square in the header, whatever the shape
+  await page.locator('input[name=logo]').setInputFiles({ name: 'logo.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(svg) });
+  await expect(page.getByText('This logo is wide')).toHaveCount(0);
   await page.locator('input[name=logo]').setInputFiles({ name: 'x.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
   await expect(page.getByText('must be a PNG, JPEG, WebP or SVG')).toBeVisible();
   await page.locator('header').screenshot({ path: path.join(shots, 'header-logo.png') });

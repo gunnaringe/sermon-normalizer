@@ -154,6 +154,9 @@ Each can have a label, which shows on the waveform.
   left (30 days, `--trash-days`), and has *Restore* (back where it was, unless that date has a recording again) and
   *Delete now* (for good, after a confirmation). After the time, the server removes it by itself. A recording that is
   being processed cannot be deleted.
+- **The church's logo** (**Settings → Church**) is shown in the header instead of Sermon Studio's, in a square: use a
+  square one, like an app icon. Another shape is shrunk to fit, and Settings says so. On a phone the logo gives way when
+  the church's name would be cut, and comes back when there is room.
 - **Inbox** (with `--inbox`): recordings that arrive by other means go into their date folder
   by themselves (see below); there is no inbox page. The recordings list shows a "converting" or
   "preparing" tag while a recording is made ready.

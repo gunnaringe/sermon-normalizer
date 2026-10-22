@@ -323,9 +323,18 @@ async function settingsView(box, part) {
   const logoBox = h('div', { class: 'logo-row' });
   const logoStatus = h('span', { class: 'muted' });
   const logoInput = h('input', { type: 'file', name: 'logo', accept: 'image/png,image/jpeg,image/webp,image/svg+xml', hidden: true });
+  const shape = h('span', { class: 'muted' });
+  // A logo far from square is small in the header: say so once it has loaded and its shape is known.
+  const sizeUp = (img) => img.addEventListener('load', () => {
+    const r = img.naturalWidth / img.naturalHeight;
+    shape.textContent = !r ? '' : r > 1.25 ? t('This logo is wide, so it is small in the header.') : r < 0.8 ? t('This logo is tall, so it is small in the header.') : '';
+  });
   const showLogo = (logo) => {
+    shape.textContent = '';
+    const img = logo && h('img', { src: forTenant('api/logo') + '&v=' + logo, alt: t('Logo') });
+    if (img) sizeUp(img);
     logoBox.replaceChildren(
-      logo ? h('img', { src: forTenant('api/logo') + '&v=' + logo, alt: t('Logo') }) : h('span', { class: 'muted' }, t('The Sermon Studio logo is used.')),
+      img || h('span', { class: 'muted' }, t('The Sermon Studio logo is used.')),
       h('button', { type: 'button', name: 'upload-logo', onclick: () => logoInput.click() }, logo ? t('Change logo…') : t('Upload logo…')),
       logo ? h('button', { type: 'button', name: 'remove-logo', onclick: async () => {
         try {
@@ -334,7 +343,7 @@ async function settingsView(box, part) {
           window.dispatchEvent(new Event('churches-changed'));
         } catch (err) { logoStatus.textContent = err.message; }
       } }, t('Remove')) : '',
-      logoInput, logoStatus);
+      logoInput, logoStatus, shape);
   };
   logoInput.addEventListener('change', async () => {
     const file = logoInput.files[0];
@@ -366,7 +375,7 @@ async function settingsView(box, part) {
     appearance(),
     h('h2', {}, t('Church')),
     h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, t('Name')), nameInput), h('div', {}, saveName, ' ', nameStatus),
-      h('p', { class: 'muted' }, t('Logo, shown in the header. PNG, JPEG, WebP or SVG, up to 1 MB.')), logoBox),
+      h('p', { class: 'muted' }, t('Logo, shown in a square in the header: use a square one, like an app icon; other shapes are shrunk to fit. PNG, JPEG, WebP or SVG, up to 1 MB.')), logoBox),
     h('h2', {}, t('Default tags')),
     h('p', { class: 'muted' }, t('Written into all generated recordings. You can change them for one recording in the editor. Placeholders:'), ' ',
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + tr(p.help) + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
@@ -419,7 +428,28 @@ function fillPicker() {
   select.replaceChildren(...churches.tenants.map((t) => h('option', { value: t.id, selected: t.id === cur }, t.name)),
     churches.canAdd ? h('option', { value: '+' }, t('+ Add church…')) : '');
   select.value = cur;
+  fitHeader();
 }
+
+// fitHeader hides the logo when the church's name would be cut with it there, and shows it again when there is room (a wider
+// window, another church). Only when hiding it gives the name more room: on a wide screen the name has its own limit.
+const header = document.querySelector('header');
+const measure = document.createElement('canvas').getContext('2d');
+function fitHeader() {
+  header.classList.remove('no-logo');
+  const el = select.hidden ? nameText : select;
+  const text = select.hidden ? nameText.textContent : select.selectedOptions[0]?.textContent || '';
+  const cs = getComputedStyle(el);
+  measure.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const need = Math.ceil(measure.measureText(text).width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight));
+  const room = el.clientWidth;
+  if (need <= room) return;
+  header.classList.add('no-logo');
+  if (el.clientWidth <= room) header.classList.remove('no-logo');
+}
+new ResizeObserver(() => fitHeader()).observe(header);
+brand.querySelector('img').addEventListener('load', () => fitHeader());
+document.fonts.ready.then(() => fitHeader());
 
 async function loadChurches() {
   churches = await api('GET', 'api/tenants');
