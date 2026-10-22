@@ -491,13 +491,11 @@ func (a *App) finishShareUpload(t *tenant, sh *Share, id string, p pendingUpload
 	a.shareMu.Unlock()
 	a.cfg.Base.Logger.Printf("share: received %s (%s) from %s with share %s", name, sizeText(p.Size), p.IP, sh.ID)
 	s := t.srv
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.background(func() {
 		if err := s.ingest(name); err != nil {
 			s.cfg.Logger.Printf("inbox: %s: %v", name, err) // the watcher retries when it changes
 		}
-	}()
+	})
 	return name, nil
 }
 

@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gunnaringe/sermon-studio/normalizer"
@@ -68,6 +69,10 @@ type Server struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup // background work: analyses and jobs
+	// working counts the background work started by background (analyses, conversions, imports, runs), for
+	// Busy; lastChunk is when the last upload chunk arrived (Unix nanoseconds).
+	working   atomic.Int32
+	lastChunk atomic.Int64
 
 	limits   *limits // shared by all churches: one encode, one decode at a time
 	jobs     *jobs
@@ -143,6 +148,23 @@ func realDir(dir string) (string, error) {
 func (s *Server) Close() {
 	s.cancel()
 	s.wg.Wait()
+}
+
+// background runs fn in its own goroutine as background work: Close waits for it, and Busy reports it.
+func (s *Server) background(fn func()) {
+	s.wg.Add(1)
+	s.working.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer s.working.Add(-1)
+		fn()
+	}()
+}
+
+// Busy reports whether the church is doing something that stopping would break: an analysis, conversion,
+// import or run, or an upload that had a chunk lately (between two chunks no request is open).
+func (s *Server) Busy() bool {
+	return s.working.Load() > 0 || time.Since(time.Unix(0, s.lastChunk.Load())) < uploadStale
 }
 
 // Handler is the whole site for one church: the front end and the API.
