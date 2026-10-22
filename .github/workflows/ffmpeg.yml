@@ -90,9 +90,12 @@ jobs:
           ext=; [ "${{ matrix.target }}" = windows-amd64 ] && ext=.exe
           mv "ffmpeg-${{ matrix.target }}$ext" "ffmpeg$ext" && mv "ffprobe-${{ matrix.target }}$ext" "ffprobe$ext"
           chmod +x ff*
-          echo "$PWD" >> "$GITHUB_PATH"
+          # On Windows as a Windows path: Go does not know bash's /d/a/...
+          if command -v cygpath >/dev/null; then cygpath -w "$PWD"; else echo "$PWD"; fi >> "$GITHUB_PATH"
       - run: ffmpeg -hide_banner -version | head -1 && ffmpeg/check.sh "$(command -v ffmpeg)"
       - run: go test ./...
+        env:
+          FFMPEG_REQUIRED: 1 # fail, not skip, when ffmpeg is not found
 
   release:
     needs: test

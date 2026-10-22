@@ -50,7 +50,7 @@ unit)
 	;;
 all)
 	[ $# -eq 0 ] && set -- ./...
-	IMAGE=$(testimage go "$golang") incontainer 'test -z "$(gofmt -l cmd normalizer web)" && go vet ./... && go test "$@"' "$@"
+	IMAGE=$(testimage go "$golang") incontainer 'test -z "$(gofmt -l cmd normalizer web)" && go vet ./... && FFMPEG_REQUIRED=1 go test "$@"' "$@"
 	;;
 e2e)
 	incontainer 'go build -o web/e2e/bin/sermon-studio ./cmd/sermon-studio'

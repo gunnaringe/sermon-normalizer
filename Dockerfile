@@ -14,7 +14,7 @@ RUN go mod download
 COPY cmd ./cmd
 COPY normalizer ./normalizer
 COPY web ./web
-RUN go vet ./... && go test ./...
+RUN go vet ./... && FFMPEG_REQUIRED=1 go test ./...
 ARG VERSION=dev
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /sermon-studio ./cmd/sermon-studio
