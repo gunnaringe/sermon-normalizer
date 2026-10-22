@@ -47,7 +47,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   Settings → Processing is `processing.js`.
 - `web/logo.go`: a church's own logo, `<church>/logo.png|jpg|webp|svg` (`PUT/GET/DELETE api/logo`, ≤1 MB, type sniffed; served
   with a sandbox CSP); its version is `logo` in the church list, and the header shows it instead of the app's, always in a square
-  (another shape shrunk to fit; Settings warns), hidden when the church's name would be cut (`fitHeader` in `app.js`).
+  (another shape shrunk to fit; Settings warns), so the header is the same for every church.
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/trash.go`: deleting a recording moves its date folder to `<root>/.trash/<id>/` (+ `trash.json`: where from, when); `GET api/trash`,

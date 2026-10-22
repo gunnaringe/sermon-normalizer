@@ -138,10 +138,9 @@ header select { appearance: none; max-width: 14rem; padding: 0.25rem 1.3rem 0.25
 header select:hover, header select:focus-visible { color: var(--fg); border-color: var(--line); }
 header select[hidden] { display: none; }
 header select option { color: initial; }
-/* The logo is an icon next to the name: always a square, another shape shrunk to fit in it. fitHeader (app.js) hides it
-   (no-logo) when the church's name would be cut. */
+/* The logo is an icon next to the name: always a square, another shape shrunk to fit in it, so the header is the same
+   whichever church is picked. */
 header .brand img { width: 28px; height: 28px; flex: none; object-fit: contain; }
-header.no-logo .brand img { display: none; }
 .logo-row { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 .logo-row img { width: 40px; height: 40px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; padding: 2px; background: #fff; }
 
@@ -404,7 +403,6 @@ details.share-group > summary { color: var(--fg); font-weight: 600; margin: 0.8r
   header { padding: 0.4rem 0.8rem; gap: 0.5rem; flex-wrap: nowrap; }
   header .brand img { width: 34px; height: 34px; }
   header .brand-name { display: none; }
-  header.no-logo .brand { display: none; } /* nothing left of it */
   header select, header .church-name { flex: 1; min-width: 0; max-width: none; font-size: 1.05rem; padding: 0.6rem 1.6rem 0.6rem 0.4rem; }
   header .church-name { padding-right: 0.4rem; }
   header .tools { gap: 0.2rem; }

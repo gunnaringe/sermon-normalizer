@@ -37,29 +37,18 @@ test('phone: every page fits the screen', async ({ page }) => {
   await fits(page, 'about');
 });
 
-test('phone: the logo is a square, and gives way when the church name would be cut', async ({ page }) => {
-  let name = 'Grace Chapel';
+test('phone: the logo is a square, so a long church name has the room it can', async ({ page }) => {
   await page.route('**/api/tenants', (r) => r.fulfill({ json: {
-    tenants: [{ id: 'first-church', name, logo: '1' }], default: 'first-church', canAdd: false, shares: true } }));
+    tenants: [{ id: 'first-church', name: 'Norkirken Melhus kirke', logo: '1' }], default: 'first-church', canAdd: false, shares: true } }));
   await page.route('**/api/logo*', (r) => r.fulfill({ contentType: 'image/svg+xml',
     body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><rect width="120" height="40" fill="#b00020"/></svg>' }));
   await page.goto('');
   const logo = page.locator('header .brand img');
   await expect(logo).toBeVisible();
   const box = await logo.boundingBox();
-  expect([box.width, box.height]).toEqual([34, 34]);
+  expect([box.width, box.height]).toEqual([34, 34]); // a wide logo too
+  await expect(page.locator('#church-name')).toHaveText('Norkirken Melhus kirke');
   await page.locator('header').screenshot({ path: path.join(shots, 'phone-header-logo.png') });
-
-  name = 'Norkirken Melhus kirke'; // fits only without the logo
-  await page.reload();
-  const shown = page.locator('#church-name');
-  await expect(shown).toHaveText(name);
-  await expect(page.locator('header .brand')).toBeHidden();
-  expect(await shown.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true); // all of it
-  await page.locator('header').screenshot({ path: path.join(shots, 'phone-header-long-name.png') });
-  // Turned sideways there is room for both.
-  await page.setViewportSize({ width: 844, height: 390 });
-  await expect(logo).toBeVisible();
 });
 
 test('phone: the editor by touch', async ({ page }) => {

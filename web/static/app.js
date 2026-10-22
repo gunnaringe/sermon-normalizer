@@ -428,28 +428,7 @@ function fillPicker() {
   select.replaceChildren(...churches.tenants.map((t) => h('option', { value: t.id, selected: t.id === cur }, t.name)),
     churches.canAdd ? h('option', { value: '+' }, t('+ Add church…')) : '');
   select.value = cur;
-  fitHeader();
 }
-
-// fitHeader hides the logo when the church's name would be cut with it there, and shows it again when there is room (a wider
-// window, another church). Only when hiding it gives the name more room: on a wide screen the name has its own limit.
-const header = document.querySelector('header');
-const measure = document.createElement('canvas').getContext('2d');
-function fitHeader() {
-  header.classList.remove('no-logo');
-  const el = select.hidden ? nameText : select;
-  const text = select.hidden ? nameText.textContent : select.selectedOptions[0]?.textContent || '';
-  const cs = getComputedStyle(el);
-  measure.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-  const need = Math.ceil(measure.measureText(text).width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight));
-  const room = el.clientWidth;
-  if (need <= room) return;
-  header.classList.add('no-logo');
-  if (el.clientWidth <= room) header.classList.remove('no-logo');
-}
-new ResizeObserver(() => fitHeader()).observe(header);
-brand.querySelector('img').addEventListener('load', () => fitHeader());
-document.fonts.ready.then(() => fitHeader());
 
 async function loadChurches() {
   churches = await api('GET', 'api/tenants');
