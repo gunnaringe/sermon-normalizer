@@ -10,10 +10,17 @@ import (
 	"time"
 )
 
-// aliveScript is added to the page: while a window is open it holds a connection to /_desktop/alive. A held
-// connection and not a timer, since browsers slow timers down in a minimised window.
-const aliveScript = `// Sermon Studio desktop: keeps the program running while this window is open.
-new EventSource('/_desktop/alive');
+// aliveScript is added to the page: while a window is open, a connection to /_desktop/alive is held. A held
+// connection and not a timer, since browsers slow timers down in a minimised window. One connection for all
+// windows, held by a shared worker: a browser opens only six connections at a time to one address, and the
+// editor needs some of them.
+const aliveScript = `// Sermon Studio desktop: keeps the program running while a window is open.
+if (window.SharedWorker) new SharedWorker('/_desktop/alive-worker.js').port.start();
+else new EventSource('/_desktop/alive');
+`
+
+// aliveWorker is the shared worker: it lives while a window of the studio is open.
+const aliveWorker = `new EventSource('/_desktop/alive');
 `
 
 // Presence knows whether the studio is in use: windows open (a connection to /_desktop/alive each) and
@@ -55,11 +62,8 @@ func (p *Presence) IdleFor() time.Duration {
 func (p *Presence) Handler(token string, next http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /_desktop/alive", p.alive)
-	mux.HandleFunc("GET /_desktop/alive.js", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
-		fmt.Fprint(w, aliveScript)
-	})
+	mux.HandleFunc("GET /_desktop/alive.js", script(aliveScript))
+	mux.HandleFunc("GET /_desktop/alive-worker.js", script(aliveWorker))
 	mux.HandleFunc("GET /_desktop/hello", hello(token))
 	mux.Handle("/", withScript(next))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +99,14 @@ func (p *Presence) alive(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		}
+	}
+}
+
+func script(js string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		fmt.Fprint(w, js)
 	}
 }
 

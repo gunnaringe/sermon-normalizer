@@ -68,8 +68,11 @@ func TestScriptInPage(t *testing.T) {
 	if w := get("/nothing"); w.Code != http.StatusNotFound {
 		t.Errorf("404 became %d", w.Code)
 	}
-	if w := get("/_desktop/alive.js"); !strings.Contains(w.Body.String(), "EventSource('/_desktop/alive')") {
+	if w := get("/_desktop/alive.js"); !strings.Contains(w.Body.String(), "SharedWorker('/_desktop/alive-worker.js')") {
 		t.Errorf("alive.js: %s", w.Body)
+	}
+	if w := get("/_desktop/alive-worker.js"); !strings.Contains(w.Body.String(), "EventSource('/_desktop/alive')") {
+		t.Errorf("alive-worker.js: %s", w.Body)
 	}
 }
 

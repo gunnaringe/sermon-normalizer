@@ -71,6 +71,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if ln != nil {
+		defer ln.Close() // also when the start fails: a second start must not wait on a port nobody answers
+	}
 	if running {
 		logger.Printf("already running on port %d: opening a window", settings.Port)
 		if *noWindow {
