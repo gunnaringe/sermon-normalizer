@@ -14,7 +14,9 @@ Download it from the [releases](https://github.com/gunnaringe/sermon-studio/rele
 | Mac (Intel) | `Sermon-Studio-<version>-macos-amd64.zip` | As above. |
 | Linux | `sermon-studio-<version>-linux-amd64.tar.gz` (or `arm64`) | Unpack and run `./install.sh`: it is then in the applications menu. |
 
-The programs are not signed yet, which is why Windows and macOS ask the first time.
+The programs are not signed (signing costs a yearly fee, and Sermon Studio is free), which is why Windows and
+macOS ask the first time. After that they start as any other program. `SHA256SUMS` in the release has the
+checksum of each file.
 
 ## Starting it
 

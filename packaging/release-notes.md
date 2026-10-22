@@ -8,7 +8,7 @@ its own. ffmpeg is built in. See [the desktop app](https://github.com/gunnaringe
 | Mac with Intel | `Sermon-Studio-{version}-macos-amd64.zip` |
 | Linux | `sermon-studio-{version}-linux-amd64.tar.gz` (or `arm64`): unpack, run `./install.sh` |
 
-The programs are not signed yet:
+The programs are not signed (signing costs a yearly fee, and Sermon Studio is free), so the first start asks:
 
 - **Windows** asks on the first start ("Windows protected your PC"): **More info → Run anyway**.
 - **macOS**: unzip and move **Sermon Studio** to Applications. On the first start macOS refuses it; open
