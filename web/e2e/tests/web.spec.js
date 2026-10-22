@@ -7,13 +7,23 @@ const DATA = process.env.DATA;
 const shots = path.join(import.meta.dirname, '..', 'screenshots');
 fs.mkdirSync(shots, { recursive: true });
 
-// forget drops the saved and adjusted sermon of a folder from its
-// recording.json; what is known about the recording and the outputs stays.
+// forget drops the saved sermon of a folder from its recording.json, and its draft.json; what is known about
+// the recording and the outputs stays.
 function forget(folder) {
+  fs.rmSync(path.join(DATA, 'root', folder, 'draft.json'), { force: true });
   const file = path.join(DATA, 'root', folder, 'recording.json');
   if (!fs.existsSync(file)) return;
   const st = JSON.parse(fs.readFileSync(file, 'utf8'));
-  fs.writeFileSync(file, JSON.stringify({ ...st, saved: null, savedAt: undefined, adjusted: null }));
+  fs.writeFileSync(file, JSON.stringify({ ...st, saved: null, savedAt: undefined }));
+}
+
+// sermonOf is a folder's sermon as the API gives it: saved (recording.json) and adjusted (draft.json).
+function sermonOf(folder) {
+  const read = (name) => {
+    const file = path.join(DATA, 'root', folder, name);
+    return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  };
+  return { ...read('recording.json'), adjusted: read('draft.json').sermon ?? null };
 }
 
 // openEditor opens a date folder and waits until the waveform is ready. The
@@ -244,7 +254,7 @@ test('cut parts out of the sermon: button, fields, shift-drag, checked and remov
   await page.getByLabel('Section label').fill('Main part');
   await page.getByLabel('Cut 1 label').fill('Song');
   await expect.poll(() => {
-    const st = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+    const st = sermonOf('2026/2026-10-04');
     const set = st.adjusted || st.saved;
     return [set.sections[0].label, set.cuts[0].label];
   }, { timeout: 10_000 }).toEqual(['Main part', 'Song']);
@@ -320,10 +330,9 @@ test('several sections: drag to add, gaps left out, overlaps merge, keys, remove
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 });
 
-test('recording.json keeps the adjustments; Save makes them the saved version, Revert goes back', async ({ page }) => {
+test('the adjustments are kept as you go (draft.json); Save makes them the saved version, Revert goes back', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
-  const file = path.join(DATA, 'root/2026/2026-10-04/recording.json');
-  const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
+  const read = () => sermonOf('2026/2026-10-04');
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await expect(page.getByText('Nothing is saved yet.')).toBeVisible();
 
@@ -381,8 +390,7 @@ test('recording.json keeps the adjustments; Save makes them the saved version, R
 
 test('a recording not cut yet starts with the sermon set to all of it but the silence at the ends', async ({ page }) => {
   const folder = '2026/2026-06-14'; // a minute: silence, speech from 3 to 56 s, silence
-  const file = path.join(DATA, 'root', folder, 'recording.json');
-  const read = () => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {});
+  const read = () => sermonOf(folder);
   forget(folder);
   await page.goto('#/folder/' + folder);
   await expect(page.locator('#waveform')).toBeVisible({ timeout: 60_000 });
@@ -505,8 +513,7 @@ test('Save makes the chosen formats, and only what is missing or out of date', a
   // Back as it was made: up to date again.
   await setFade(page, 'fadeIn', 1);
   await expect(pill(page, 'MP3')).toContainText('up to date');
-  const stateFile = path.join(DATA, 'root/2026/2026-10-04/recording.json');
-  await expect.poll(() => JSON.parse(fs.readFileSync(stateFile, 'utf8')).adjusted).toBeNull(); // kept: the same as saved
+  await expect.poll(() => sermonOf('2026/2026-10-04').adjusted).toBeNull(); // kept: the same as saved, so no draft
 
   // After a reload the recording's files decide what is chosen; the fade and the finished run stay.
   await page.reload();
@@ -1119,8 +1126,7 @@ test('the recording keeps the name it arrived with: in the conversion note and i
 
 test('undo and redo: buttons and keys, back to no section, kept, a field keeps its own undo', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
-  const file = path.join(DATA, 'root/2026/2026-10-04/recording.json');
-  const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
+  const read = () => sermonOf('2026/2026-10-04');
   const history = () => editor(page, () => window.__editor.history);
   const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
   const redoButton = page.getByRole('button', { name: 'Redo', exact: true });
@@ -1160,6 +1166,27 @@ test('undo and redo: buttons and keys, back to no section, kept, a field keeps i
   await label.fill('Preken');
   await label.press('Control+z');
   expect(await editor(page, () => window.__editor.cuts)).toEqual([{ start: 50, end: 55 }]);
+
+  // The steps outlive a reload (kept in this browser), as long as they lead to the edit that is kept.
+  await expect.poll(() => read().adjusted?.cuts.length, { timeout: 5000 }).toBe(1);
+  const steps = (await history()).undo;
+  await page.reload();
+  await page.waitForFunction(() => window.__editor && window.__editor.cuts.length === 1, null, { timeout: 30_000 });
+  await expect.poll(() => history()).toEqual({ undo: steps, redo: 0 });
+  await expect(undoButton).toBeEnabled();
+  await page.locator('.save-bar').screenshot({ path: path.join(shots, 'undo-after-reload.png') });
+  await undoButton.click();
+  expect(await editor(page, () => window.__editor.cuts)).toEqual([]);
+
+  // Changed elsewhere (another browser, another computer), the steps no longer lead to it: they are dropped.
+  await expect.poll(() => read().adjusted?.cuts.length, { timeout: 5000 }).toBe(0);
+  const draft = path.join(DATA, 'root/2026/2026-10-04/draft.json');
+  const d = JSON.parse(fs.readFileSync(draft, 'utf8'));
+  fs.writeFileSync(draft, JSON.stringify({ ...d, sermon: { ...d.sermon, cuts: [{ start: 70, end: 75 }] } }));
+  await page.reload();
+  await page.waitForFunction(() => window.__editor && window.__editor.cuts.length === 1, null, { timeout: 30_000 });
+  expect(await history()).toEqual({ undo: 0, redo: 0 });
+  await expect(undoButton).toBeDisabled();
 });
 
 test('a section or cut is selected by a click or its row; double-click zooms; Delete, comma and period; Hear join between sections', async ({ page }) => {
@@ -1258,7 +1285,7 @@ test('split a section, put in a pause, and choose what Play plays', async ({ pag
   await page.locator('section.step').nth(1).screenshot({ path: path.join(shots, 'edit-split-pause.png') });
   await expect.poll(() => editor(page, () => window.__editor.regions.getRegions().filter((r) => r.id.startsWith('pause-')).map((r) => r.start))).toEqual([50]);
   await expect.poll(() => {
-    const st = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+    const st = sermonOf('2026/2026-10-04');
     const set = st.adjusted || st.saved;
     return set && JSON.stringify(set.sections.map((x) => [x.start, x.end, x.pause || 0]));
   }, { timeout: 15_000 }).toBe(JSON.stringify([[10, 50, 2], [50, 90, 0]]));
@@ -1327,7 +1354,7 @@ test('fades are set with the knobs on the waveform: drag, keys, kept', async ({ 
   // Kept as you go, and back after a reload. A fade cannot be longer than half the sermon.
   const want = await editor(page, () => window.__editor.fades);
   await expect.poll(() => {
-    const st = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+    const st = sermonOf('2026/2026-10-04');
     const set = st.adjusted || st.saved;
     return set && [set.fadeIn, set.fadeOut];
   }, { timeout: 15_000 }).toEqual([want.fadeIn, want.fadeOut]);
@@ -1404,7 +1431,7 @@ test('processing: the choices are kept with the sermon, and a sample can be hear
   await page.locator('input[name=noiseReduction]').fill('8');
   await page.locator('input[name=targetLufs]').fill('-17');
   const sound = () => {
-    const st = JSON.parse(fs.readFileSync(path.join(DATA, 'root/2026/2026-10-04/recording.json'), 'utf8'));
+    const st = sermonOf('2026/2026-10-04');
     return (st.adjusted || st.saved)?.sound;
   };
   await expect.poll(sound, { timeout: 15_000 }).toMatchObject({ leveling: 'gentle', compression: 'normal', roomSound: 40, noiseReduction: 8, targetLufs: -17, stereo: false });

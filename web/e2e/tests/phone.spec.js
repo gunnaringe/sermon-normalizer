@@ -54,10 +54,11 @@ test('phone: the logo is a square, so a long church name has the room it can', a
 test('phone: the editor by touch', async ({ page }) => {
   // Forget the edit of earlier tests, and only that: what is known about the recording (such as the WAV
   // it was converted from) is read by later tests.
+  fs.rmSync(path.join(DATA, 'root/2026/2026-10-04/draft.json'), { force: true });
   const file = path.join(DATA, 'root/2026/2026-10-04/recording.json');
   if (fs.existsSync(file)) {
     const st = JSON.parse(fs.readFileSync(file, 'utf8'));
-    fs.writeFileSync(file, JSON.stringify({ ...st, saved: null, savedAt: undefined, adjusted: null }));
+    fs.writeFileSync(file, JSON.stringify({ ...st, saved: null, savedAt: undefined }));
   }
   await page.goto('#/folder/2026/2026-10-04');
   await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });

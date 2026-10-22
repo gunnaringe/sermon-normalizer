@@ -77,9 +77,20 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 	if c != http.StatusOK || f.Saved == nil || start(f.Saved) != 20 || f.Adjusted == nil || start(f.Adjusted) != 10 || len(f.Adjusted.Sections) != 2 {
 		t.Fatalf("adjust again: %d %+v", c, f)
 	}
+	// The saved version is in recording.json, the adjustments in draft.json: recording.json does not change
+	// while someone edits.
 	data, _ := os.ReadFile(filepath.Join(ts.root, folder, "recording.json"))
-	if !strings.Contains(string(data), `"saved"`) || !strings.Contains(string(data), `"adjusted"`) {
-		t.Errorf("file: %s", data)
+	if !strings.Contains(string(data), `"saved"`) || strings.Contains(string(data), `"adjusted"`) {
+		t.Errorf("recording.json: %s", data)
+	}
+	before, _ := os.Stat(filepath.Join(ts.root, folder, "recording.json"))
+	draft, _ := os.ReadFile(filepath.Join(ts.root, folder, "draft.json"))
+	if !strings.Contains(string(draft), `"sermon"`) || !strings.Contains(string(draft), `"updatedAt"`) {
+		t.Errorf("draft.json: %s", draft)
+	}
+	call("PUT", "", strings.Replace(sermonB, `"fadeOut":0`, `"fadeOut":3`, 1))
+	if after, _ := os.Stat(filepath.Join(ts.root, folder, "recording.json")); !after.ModTime().Equal(before.ModTime()) {
+		t.Error("recording.json was written for an adjustment")
 	}
 	// Adjusting back to the saved version leaves no adjustments.
 	if _, f = call("PUT", "", sermonA); f.Adjusted != nil || f.Saved == nil {
@@ -136,8 +147,12 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 		t.Errorf("after rename: %+v", renamed)
 	}
 	os.WriteFile(filepath.Join(ts.root, "2026/2026-10-11 Kveld/recording.json"), []byte("{oops"), 0o644)
+	if got := decode[folderInfo](t, ts.do(t, "GET", "/api/folder?path="+url.QueryEscape("2026/2026-10-11 Kveld"), nil)).Sermon; got == nil || got.Saved != nil || got.Adjusted == nil {
+		t.Errorf("damaged recording.json (the draft is a file of its own): %+v", got)
+	}
+	os.WriteFile(filepath.Join(ts.root, "2026/2026-10-11 Kveld/draft.json"), []byte("{oops"), 0o644)
 	if got := decode[folderInfo](t, ts.do(t, "GET", "/api/folder?path="+url.QueryEscape("2026/2026-10-11 Kveld"), nil)).Sermon; got != nil {
-		t.Errorf("damaged file: %+v", got)
+		t.Errorf("damaged files: %+v", got)
 	}
 }
 

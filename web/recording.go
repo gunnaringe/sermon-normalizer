@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -36,7 +37,9 @@ type folderState struct {
 	// Labels are the user's own tags on the recording ("Easter"), searched
 	// on the recordings page; not the title/artist/album written into files.
 	Labels []string `json:"labels,omitempty"`
-	sermonFile
+	// Saved is the sermon as last saved; what is being edited is in draft.json (draft.go).
+	Saved   *sermonSettings `json:"saved"`
+	SavedAt *time.Time      `json:"savedAt,omitempty"`
 	// Outputs is how each output (flac, mp3, opus) was made, by the format.
 	Outputs map[string]outputMade `json:"outputs"`
 }
@@ -84,22 +87,13 @@ const stateName = "recording.json"
 func statePath(folder string) string { return filepath.Join(folder, stateName) }
 
 // readState returns a folder's recording.json; an empty one if there is none
-// or it cannot be read. Saved or adjusted settings that are not valid any more
-// are dropped.
+// or it cannot be read. A saved sermon that is not valid any more is dropped.
 func readState(folder string) *folderState {
 	st := &folderState{}
 	if data, err := os.ReadFile(statePath(folder)); err == nil && json.Unmarshal(data, st) != nil {
 		st = &folderState{}
 	}
-	for _, c := range []**sermonSettings{&st.Saved, &st.Adjusted} {
-		if *c == nil {
-			continue
-		}
-		(*c).normalize()
-		if (*c).Validate() != nil {
-			*c = nil
-		}
-	}
+	st.Saved = validSermon(st.Saved)
 	if st.Saved == nil {
 		st.SavedAt = nil
 	}
@@ -113,24 +107,37 @@ var errStateWrite = errors.New("could not save in the folder")
 
 // updateState reads the folder's recording.json, applies fn and writes it
 // (atomically), as one step: several things change it (the editor, the
-// analysis, finished runs), and none may undo another's change.
+// analysis, finished runs), and none may undo another's change. Unchanged, it
+// is not written: the fewer writes, the fewer for a sync tool to carry.
 func (s *Server) updateState(folder string, fn func(*folderState) error) (*folderState, error) {
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
 	st := readState(folder)
+	before, _ := json.MarshalIndent(st, "", "  ")
 	if err := fn(st); err != nil {
 		return st, err
 	}
 	data, _ := json.MarshalIndent(st, "", "  ")
-	tmp := filepath.Join(folder, "."+stateName+".partial")
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
-		return st, errStateWrite
+	if bytes.Equal(data, before) && fileExists(statePath(folder)) {
+		return st, nil
 	}
-	if err := normalizer.Rename(tmp, statePath(folder)); err != nil {
-		normalizer.Remove(tmp)
+	if writeFileAtomic(statePath(folder), append(data, '\n')) != nil {
 		return st, errStateWrite
 	}
 	return st, nil
+}
+
+// writeFileAtomic writes path through a hidden .partial next to it, renamed when whole.
+func writeFileAtomic(path string, data []byte) error {
+	tmp := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".partial")
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := normalizer.Rename(tmp, path); err != nil {
+		normalizer.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // markImported notes in the folder that its recording has just arrived.
