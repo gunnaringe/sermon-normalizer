@@ -1,0 +1,8 @@
+# The checksums of the release in ffmpeg/versions (from its SHA256SUMS): scripts/fetch-ffmpeg.sh refuses
+# anything else. Update them with a new RELEASE.
+534e84cf26a952ee8a31a0475440974452838df47e258b3fd4fe296b29d1d559  LICENSES.txt
+4388e98feeb560a9f28f9adc30ba1d976c8949c634aad8aeda094adea63c0e8a  ffmpeg-darwin-amd64
+6b8176fba46aac180f6d447ba95e0dca97f69057fb60e51dc86cc8d60ec41d10  ffmpeg-darwin-arm64
+144d85a8b2a816419a4c679ad1d4d16d5e0878d4ee37545dd2fcc1991c3883d6  ffmpeg-linux-amd64
+534d0e303a4784ad810daa21cce4aa459e423760d87b9a71c918ba7b858c05fe  ffmpeg-linux-arm64
+1300ad8772ca04c41049647f08288ac6835fda8c95f4b2d08e97615203c39260  ffmpeg-windows-amd64.exe

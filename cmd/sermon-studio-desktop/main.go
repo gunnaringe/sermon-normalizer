@@ -6,6 +6,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -40,9 +41,14 @@ func run() error {
 	noWindow := flag.Bool("no-window", false, "do not open a window")
 	idleAfter := flag.Duration("idle-after", 5*time.Minute, "stop when no window has been open and nothing has run for this long")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	licenses := flag.Bool("licenses", false, "print the licences of the ffmpeg built in and exit")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("sermon-studio-desktop", version)
+		return nil
+	}
+	if *licenses {
+		fmt.Print(cmp.Or(desktop.Licenses(), "No ffmpeg is built in.\n"))
 		return nil
 	}
 
@@ -92,13 +98,15 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("making the first church in %s: %w", settings.DataDir, err)
 	}
-	bin, err := desktop.FindFFmpeg()
+	bin, err := desktop.FFmpeg(cacheDir)
 	if err != nil {
 		return err
 	}
-	web.CleanCache(cacheDir, 30*24*time.Hour)
+	// The studio's own cache (waveforms, previews) in a folder of its own: CleanCache removes what is old there.
+	studioCache := filepath.Join(cacheDir, "studio")
+	web.CleanCache(studioCache, 30*24*time.Hour)
 	app, err := web.NewApp(web.AppConfig{
-		Base: web.Config{CacheDir: cacheDir, Layout: web.DefaultLayout, TrashDays: web.DefaultTrashDays,
+		Base: web.Config{CacheDir: studioCache, Layout: web.DefaultLayout, TrashDays: web.DefaultTrashDays,
 			FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
 		DataDir: settings.DataDir,
 	})

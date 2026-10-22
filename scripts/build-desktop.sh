@@ -1,20 +1,27 @@
 #!/bin/sh
-# Builds the desktop program for every system into dist/ (host Go, or a container without one):
+# Builds the desktop program for every system into dist/, with our ffmpeg built in (scripts/fetch-ffmpeg.sh,
+# from the release in ffmpeg/versions). Host Go, or a container without one.
 #
 #   scripts/build-desktop.sh [version]
 #
-# On Windows it is a GUI program (-H windowsgui): no console window opens. ffmpeg is not in it yet; it looks
-# for ffmpeg next to itself, then in PATH.
+# On Windows it is a GUI program (-H windowsgui): no console window opens.
 set -eu
 cd "$(dirname "$0")/.."
 version=${1:-dev}
+targets="windows-amd64 darwin-arm64 darwin-amd64 linux-amd64 linux-arm64"
+for t in $targets; do
+	scripts/fetch-ffmpeg.sh "$t"
+done
 build='
-for target in windows/amd64 darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
-	os=${target%/*} arch=${target#*/} ext= flags=
+embed=cmd/sermon-studio-desktop/internal/desktop/ffmpeg
+trap "rm -f $embed/ffmpeg.gz $embed/LICENSES.txt" EXIT
+for t in '"$targets"'; do
+	os=${t%-*} arch=${t#*-} ext= flags=
 	[ "$os" = windows ] && ext=.exe flags=-H=windowsgui
-	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags="-s -w $flags -X main.version=$1" \
-		-o "dist/sermon-studio-desktop-$os-$arch$ext" ./cmd/sermon-studio-desktop
-	echo "dist/sermon-studio-desktop-$os-$arch$ext"
+	cp "ffmpeg/out/embed/$t/ffmpeg.gz" "ffmpeg/out/embed/$t/LICENSES.txt" "$embed/"
+	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -tags embedffmpeg -trimpath -ldflags="-s -w $flags -X main.version=$1" \
+		-o "dist/sermon-studio-desktop-$t$ext" ./cmd/sermon-studio-desktop
+	echo "dist/sermon-studio-desktop-$t$ext"
 done'
 mkdir -p dist
 if command -v go >/dev/null; then
