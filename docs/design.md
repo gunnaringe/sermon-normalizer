@@ -42,7 +42,7 @@ Go also fits since it was already chosen, and its standard library has the web s
 
 ## Architecture
 
-Module `github.com/gunnaringe/sermon-studio`, standard library only.
+Module `github.com/gunnaringe/sermon-studio`: the standard library and `golang.org/x/sys` (free disk space on Windows).
 
 - `cmd/sermon-studio/`: the server (flags, startup, clean shutdown)
 - `web/`: JSON API, jobs, waveform analysis, inbox, and the embedded front end

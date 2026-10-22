@@ -4,7 +4,7 @@ Agent notes (`CLAUDE.md` imports this file).
 
 Go web service: cut a church service recording on a waveform, get
 loudness-normalised FLAC/MP3/Opus. `README.md` = what it is, `docs/` = guide, running, outputs, design (was PLAN.md).
-Standard library only (ffmpeg is run as a command).
+The standard library and `golang.org/x/sys` (for Windows); ffmpeg is run as a command. Keep dependencies few.
 
 ## Checks (use these, in this order; output is already short)
 
