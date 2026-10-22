@@ -138,9 +138,11 @@ header select { appearance: none; max-width: 14rem; padding: 0.25rem 1.3rem 0.25
 header select:hover, header select:focus-visible { color: var(--fg); border-color: var(--line); }
 header select[hidden] { display: none; }
 header select option { color: initial; }
-header .brand img { height: 28px; width: auto; max-width: 9rem; object-fit: contain; }
+/* The logo is an icon next to the name: always a square, another shape shrunk to fit in it, so the header is the same
+   whichever church is picked. */
+header .brand img { width: 28px; height: 28px; flex: none; object-fit: contain; }
 .logo-row { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
-.logo-row img { height: 40px; max-width: 12rem; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; padding: 2px; background: #fff; }
+.logo-row img { width: 40px; height: 40px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; padding: 2px; background: #fff; }
 
 footer { padding: 0 1.5rem 1.5rem; text-align: center; font-size: 0.85rem; }
 footer a { color: var(--muted); text-decoration: none; padding: 0.3rem 0.8rem; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); transition: color 0.15s, border-color 0.15s; }
@@ -399,7 +401,7 @@ details.share-group > summary { color: var(--fg); font-weight: 600; margin: 0.8r
 @media (max-width: 640px) {
   /* One row, big enough for a thumb: the logo, the church, the icons. */
   header { padding: 0.4rem 0.8rem; gap: 0.5rem; flex-wrap: nowrap; }
-  header .brand img { height: 34px; max-width: 7rem; }
+  header .brand img { width: 34px; height: 34px; }
   header .brand-name { display: none; }
   header select, header .church-name { flex: 1; min-width: 0; max-width: none; font-size: 1.05rem; padding: 0.6rem 1.6rem 0.6rem 0.4rem; }
   header .church-name { padding-right: 0.4rem; }
