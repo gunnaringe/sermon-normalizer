@@ -23,6 +23,16 @@ import (
 
 const date = "2026-10-04"
 
+// noFFmpeg skips the test, or fails it when FFMPEG_REQUIRED is set: where ffmpeg should be (CI, the image
+// build), a skip would hide that it was not found.
+func noFFmpeg(t *testing.T, why string) {
+	t.Helper()
+	if os.Getenv("FFMPEG_REQUIRED") != "" {
+		t.Fatal(why)
+	}
+	t.Skip(why)
+}
+
 func requireFFmpeg(t *testing.T) FFmpeg {
 	t.Helper()
 	if testing.Short() {
@@ -30,10 +40,10 @@ func requireFFmpeg(t *testing.T) FFmpeg {
 	}
 	bin, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		t.Skip("ffmpeg not in PATH")
+		noFFmpeg(t, "ffmpeg not in PATH")
 	}
 	if _, err := exec.LookPath("ffprobe"); err != nil {
-		t.Skip("ffprobe not in PATH")
+		noFFmpeg(t, "ffprobe not in PATH")
 	}
 	return FFmpeg{Bin: bin}
 }
