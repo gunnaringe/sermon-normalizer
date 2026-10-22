@@ -7,7 +7,7 @@ import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
 import { confirmDialog, infoDialog } from './dialog.js';
 import { t, tn, tr, lang } from './i18n.js';
-import { api, q, h, href, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
+import { api, q, h, href, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, currentTenant, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
 
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
 
@@ -392,6 +392,7 @@ export async function editorView(view, path, config) {
       if (initial) applySettings(initial);
       else proposeSection(data.silences);
       present = snapshot(); // what undo goes back to, at most
+      loadHistory();
     });
     buildFades();
     // A drag on the waveform makes a region: it becomes a section. Sections
@@ -1165,6 +1166,33 @@ export async function editorView(view, path, config) {
   function showHistory() {
     undoButton.disabled = !undoStack.length;
     redoButton.disabled = !redoStack.length;
+    keepHistory();
+  }
+
+  // The steps are kept in this browser, so they outlive a reload: for the last recordings edited, and only
+  // while they lead to the edit the page opens with. Changed elsewhere (another browser or computer), they
+  // would undo into something else, and are dropped.
+  const historyKey = 'history:' + currentTenant() + ':' + path;
+  function loadHistory() {
+    try {
+      const kept = JSON.parse(localStorage.getItem(historyKey));
+      if (kept && kept.present === present) {
+        undoStack.push(...kept.undo);
+        redoStack.push(...kept.redo);
+        showHistory();
+      }
+      // Only the last 20 recordings' steps are kept.
+      const all = Object.keys(localStorage).filter((k) => k.startsWith('history:'))
+        .map((k) => [k, JSON.parse(localStorage.getItem(k))?.at || 0]).sort((a, b) => b[1] - a[1]);
+      for (const [k] of all.slice(20)) localStorage.removeItem(k);
+    } catch { /* none kept, or not readable: start without */ }
+  }
+  // keepHistory is called with every step (they come at most every 0.4 s), so a reload loses none.
+  function keepHistory() {
+    if (!alive || present === null) return;
+    try {
+      localStorage.setItem(historyKey, JSON.stringify({ present, undo: undoStack, redo: redoStack, at: Date.now() }));
+    } catch { /* the browser's storage is full: undo still works until the page is left */ }
   }
 
   // ctrl+z undoes, ctrl+shift+z and ctrl+y redo; in a field they are the field's own.

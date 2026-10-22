@@ -81,12 +81,13 @@ Each can have a label, which shows on the waveform.
   waveform, sections, cuts and fades), **Metadata added to the file** (title, artist, album), **Processing** and **Output**.
   Under them, a **bar** sticks to the bottom of the window: whether the edit is saved (hover it to see both versions),
   what Save will do, **Undo** and **Redo** (also `ctrl+z` and `ctrl+shift+z`; they cover the sections, cuts, labels,
-  pauses and fades, not the processing and the tags, whose fields have their own undo), **Revert…** and **Save**.
-- **Saved version:** the sections, the cuts and the fades are kept in `recording.json` in the date
+  pauses and fades, not the processing and the tags, whose fields have their own undo; the steps are kept in the
+  browser, so they are still there after a reload), **Revert…** and **Save**.
+- **Saved version:** the sections, the cuts and the fades are kept in `draft.json` in the date
   folder (it follows a rename) as you change them: these are the *adjustments*, and they are back
   the next time the sermon is opened. **Save** (in the bar) makes them the *saved version*,
   which stays as it is while you adjust further, and makes the files; **Revert…** (after a
-  confirmation) throws the adjustments away and goes back to it. Both versions are in the file.
+  confirmation) throws the adjustments away and goes back to it. The saved version is in `recording.json`.
 - **Several sections:** drag on an empty part of the waveform to add another section; the parts
   between sections are left out, as if cut. Use whichever feels natural: one section with cuts,
   or several sections (or both). Sections that come to overlap become one; sections that only touch stay two.

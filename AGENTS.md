@@ -72,11 +72,15 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/trash.go`: deleting a recording moves its date folder to `<root>/.trash/<id>/` (+ `trash.json`: where from, when); `GET api/trash`,
   restore, remove for good, and the purge after `--trash-days` (hourly, with the leftovers sweep). Hidden, so no path of the API reaches it.
-- `web/recording.go`: `<folder>/recording.json`, the one state file per recording: `recording` (format, metadata,
+- `web/recording.go`: `<folder>/recording.json`, the recording's state: `recording` (format, metadata,
   channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV, AIFF or video it was made from), `imported` (when it arrived: `markImported`; `recentImports` lists the last `newFor` on top of the first page), the sermon, and `outputs`
-  (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock).
-- `web/sermon.go`: the sermon part of it: `saved` (the version the user saved) + `adjusted`
-  (what the editor keeps as you edit; null when equal to saved): sections, cuts, fades.
+  (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock;
+  not written when nothing changed). It must stay quiet while someone edits: it is what a sync tool will carry (#50).
+- `web/sermon.go`, `web/draft.go`: the sermon: `saved` (in recording.json, the version the user saved) + `adjusted`
+  (`<folder>/draft.json`, what the editor keeps as you edit, per recording, with when and on which machine; removed
+  when equal to saved, by Save and by Revert): sections, cuts, fades. The API gives both as one (`sermonFile`).
+  The editor's undo/redo steps are kept in the browser (localStorage `history:<church>:<path>`, the last 20
+  recordings), used only while their last step is the edit the page opens with.
   `cutting` (`folders.go`) turns sections + cuts into the pipeline's Start/End/Cuts (gaps become cuts; a cut outside the
   sermon is clipped to it or dropped, never an error; sections and cuts have an optional `label`, which is not part of `cutOf`, and an optional `pause`: silence put in where a section ends or a cut starts, which is; sections that only touch stay two).
   `PUT api/sermon` (adjust), `POST api/sermon/save`, `POST api/sermon/revert`; returned as

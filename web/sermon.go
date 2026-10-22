@@ -43,13 +43,24 @@ func (s *soundSettings) applyTo(q *runRequest) {
 	q.TargetLUFS, q.TruePeak, q.Mp3Bitrate, q.OpusBitrate = s.TargetLUFS, s.TruePeak, s.Mp3Bitrate, s.OpusBitrate
 }
 
-// sermonFile is the sermon's part of recording.json: the editor keeps the
-// adjustments as you make them; saving makes them the saved version, and
-// reverting drops them. It is also what the sermon API returns.
+// sermonFile is the sermon as the API gives it: the saved version (recording.json) and the adjustments the
+// editor keeps as you make them (draft.json); saving makes them the saved version, and reverting drops them.
 type sermonFile struct {
 	Saved    *sermonSettings `json:"saved"`
 	SavedAt  *time.Time      `json:"savedAt,omitempty"`
 	Adjusted *sermonSettings `json:"adjusted"` // nil when it is the same as Saved
+}
+
+// validSermon is c normalized, or nil if it is not valid (any more).
+func validSermon(c *sermonSettings) *sermonSettings {
+	if c == nil {
+		return nil
+	}
+	c.normalize()
+	if c.Validate() != nil {
+		return nil
+	}
+	return c
 }
 
 // Validate checks the settings the way a run would. c must be normalized.
@@ -72,14 +83,15 @@ func (c sermonSettings) Validate() error {
 
 // readSermon returns the sermon of a folder, or nil if nothing is kept.
 func readSermon(folder string) *sermonFile {
-	f := readState(folder).sermonFile
+	st := readState(folder)
+	f := sermonFile{Saved: st.Saved, SavedAt: st.SavedAt, Adjusted: readDraft(folder)}
 	if f.Saved == nil && f.Adjusted == nil {
 		return nil
 	}
 	return &f
 }
 
-// changeSermon changes the sermon in the folder's recording.json and returns it.
+// changeSermon changes the sermon in the folder (recording.json and draft.json) and returns it.
 func (s *Server) changeSermon(w http.ResponseWriter, r *http.Request, fn func(f *sermonFile) error) {
 	abs, ok := s.pathParam(w, r)
 	if !ok {
@@ -89,14 +101,25 @@ func (s *Server) changeSermon(w http.ResponseWriter, r *http.Request, fn func(f 
 		writeError(w, http.StatusBadRequest, errors.New("there is no such folder"))
 		return
 	}
-	st, err := s.updateState(abs, func(st *folderState) error { return fn(&st.sermonFile) })
+	var f sermonFile
+	_, err := s.updateState(abs, func(st *folderState) error {
+		f = sermonFile{Saved: st.Saved, SavedAt: st.SavedAt, Adjusted: readDraft(abs)}
+		if err := fn(&f); err != nil {
+			return err
+		}
+		st.Saved, st.SavedAt = f.Saved, f.SavedAt
+		if writeDraft(abs, f.Adjusted) != nil {
+			return errStateWrite
+		}
+		return nil
+	})
 	switch {
 	case errors.Is(err, errStateWrite):
 		writeError(w, http.StatusInternalServerError, errors.New("could not save in the folder"))
 	case err != nil:
 		writeError(w, http.StatusBadRequest, err)
 	default:
-		writeJSON(w, http.StatusOK, st.sermonFile)
+		writeJSON(w, http.StatusOK, f)
 	}
 }
 
