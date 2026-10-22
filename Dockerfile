@@ -9,7 +9,8 @@ FROM --platform=$BUILDPLATFORM golang:1.25-alpine3.22 AS build
 # ffmpeg as the final image
 RUN apk add --no-cache ffmpeg
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY cmd ./cmd
 COPY normalizer ./normalizer
 COPY web ./web

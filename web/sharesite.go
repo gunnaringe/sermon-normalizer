@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unicode"
 )
@@ -257,14 +256,6 @@ func containsExt(types []string, name string) bool {
 		}
 	}
 	return false
-}
-
-func freeSpace(dir string) (uint64, error) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(dir, &st); err != nil {
-		return 0, err
-	}
-	return st.Bavail * uint64(st.Bsize), nil
 }
 
 func partialPath(t *tenant, id string) string {

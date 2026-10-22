@@ -80,7 +80,7 @@ func probeFile(t *testing.T, path string) probe {
 	}
 	var p probe
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		k, v, _ := strings.Cut(line, "=")
+		k, v, _ := strings.Cut(strings.TrimSpace(line), "=") // \r\n on Windows
 		switch k {
 		case "duration":
 			p.duration, _ = strconv.ParseFloat(v, 64)

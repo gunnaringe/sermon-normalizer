@@ -5,7 +5,7 @@ Cut the sermon out on a waveform. Get evenly loud FLAC, MP3 and Opus, ready for 
 
 [![Build](https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml/badge.svg)](https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-![Go, standard library only](https://img.shields.io/badge/go-stdlib%20only-00ADD8)
+![Go, the standard library and x/sys](https://img.shields.io/badge/go-stdlib%20%2B%20x%2Fsys-00ADD8)
 ![English, Norwegian bokmål and nynorsk](https://img.shields.io/badge/UI-English%20%C2%B7%20bokm%C3%A5l%20%C2%B7%20nynorsk-lightgrey)
 
 ![The editor: a 14-minute speech as a waveform, two sections kept, a cough cut out](docs/img/hero.png)
@@ -73,7 +73,7 @@ A recording is a folder named after its date:
 
 ## Under the hood
 
-One Go binary, **standard library only**, with ffmpeg run as a command. The frontend is plain
+One Go binary with **one dependency** (`golang.org/x/sys`, for Windows) and ffmpeg run as a command. The frontend is plain
 JavaScript with [wavesurfer.js](https://wavesurfer.xyz/) for the waveform: no framework and no build
 step. State is plain files in the data folder, so there is no database to run or back up. The
 studio has no login of its own: put it behind your login proxy, or on a trusted network. The

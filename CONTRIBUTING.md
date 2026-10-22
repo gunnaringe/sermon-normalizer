@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. The code is Go (standard library only; ffmpeg is run as a command) with a
+Thanks for helping. The code is Go (the standard library and `golang.org/x/sys`; ffmpeg is run as a command) with a
 plain-JS frontend: no build step, no framework.
 
 ## Checks
