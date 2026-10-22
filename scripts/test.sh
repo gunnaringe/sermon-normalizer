@@ -5,6 +5,8 @@
 #   scripts/test.sh all [args] vet + all tests with ffmpeg, in a container;
 #                              args go to "go test" (default ./...), e.g.
 #                              scripts/test.sh all ./web/ -run Inbox
+#   scripts/test.sh desktop    the desktop program as released (ffmpeg built in, Linux amd64) from the
+#                              outside: start, upload, make a sermon, stop by itself (TestEndToEnd)
 #   scripts/test.sh e2e [args] browser tests (Playwright); args go to playwright,
 #                              e.g. scripts/test.sh e2e -g upload
 #   scripts/test.sh guide      the pictures of the documentation (docs/img), from a real speech;
@@ -51,6 +53,10 @@ unit)
 all)
 	[ $# -eq 0 ] && set -- ./...
 	IMAGE=$(testimage go "$golang") incontainer 'test -z "$(gofmt -l cmd normalizer web)" && go vet ./... && FFMPEG_REQUIRED=1 go test "$@"' "$@"
+	;;
+desktop)
+	TARGETS=linux-amd64 scripts/build-desktop.sh test >/dev/null
+	IMAGE=$(testimage go "$golang") incontainer 'DESKTOP_BIN=/src/dist/sermon-studio-desktop-linux-amd64 DESKTOP_EMBEDDED=1 go test -count=1 -run EndToEnd ./cmd/sermon-studio-desktop/'
 	;;
 e2e)
 	incontainer 'go build -o web/e2e/bin/sermon-studio ./cmd/sermon-studio'

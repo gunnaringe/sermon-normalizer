@@ -13,6 +13,8 @@ scripts/test.sh                       # unit tests, seconds — run after every 
 scripts/test.sh all ./web/ -run X     # with real ffmpeg, one package/test (container)
 scripts/test.sh all                   # everything (~3 min, normalizer integration is slow)
 scripts/test.sh e2e [-g name]         # browser tests (~1.5 min); after changing web/static
+scripts/test.sh desktop               # the desktop program as released, from the outside (~15 s); after
+                                      # changing cmd/sermon-studio-desktop or what it uses of web
 scripts/test.sh image                 # Docker build; before release changes
 scripts/fetch-sample.sh && scripts/test.sh guide   # redo docs/img (the guide's pictures) when the UI changes
 scripts/check-links.sh                # relative links and pictures in the Markdown files
@@ -21,7 +23,16 @@ scripts/check-links.sh                # relative links and pictures in the Markd
 ffmpeg is not on the dev host; `all`/`e2e` run in podman, in images with ffmpeg that `test.sh` builds
 once (`scripts/test-images/`, retagged when the file or the base image changes). The browser tests keep
 `node_modules` until the lock file changes, and the test recordings in `web/e2e/fixtures/made/` (delete the
-folder to make them again). Don't run `go test -v`
+folder to make them again). With `FFMPEG_REQUIRED` set (CI, the image build, `all`) a missing ffmpeg fails
+the tests instead of skipping them; a test run much faster than usual still means something was skipped.
+
+**Never start the desktop program against the real home folder**: it makes `~/Sermon Studio`, settings and a
+cache, and on an error it opens a dialog on the user's screen. `TestEndToEnd` (`cmd/sermon-studio-desktop`)
+starts it with folders of its own (and `--no-window`, which also keeps error dialogs away); use it, or the
+same variables (`HOME`, `XDG_*`, `APPDATA`, `LOCALAPPDATA`) in a temporary folder, for one-off checks. It runs
+on Windows, macOS and Linux in CI, and on every release program before it is published.
+
+Don't run `go test -v`
 over the whole tree, and don't paste whole files into output: read the part you
 need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 — look at them only when changing visible UI.
@@ -150,7 +161,15 @@ merge; never ask them to check out a branch, pull, rebase or retarget. Prefer on
 `main`. Stack one on another only when it must be, and then say so, because a PR merged into its parent's
 branch never reaches `main`: once the parent is merged, retarget the child (`gh pr edit --base main`)
 before it is merged, or open a new PR from the same branch. After a merge, check that the change is
-really in `origin/main`, and bring the local checkout up to date (`git switch main && git pull`). A PR that changes anything visible includes screenshots of it:
+really in `origin/main`, and bring the local checkout up to date (`git switch main && git pull`).
+
+```bash
+scripts/ci-wait.sh [pr]     # wait for every check; one line each, the end of a failed job's log; exit 1 on failure
+scripts/pr-land.sh [pr]     # only when the user has said to merge: ci-wait, squash-merge, check main has the
+                            # PR's files, delete the branch, update the local main
+```
+
+Don't hand-roll waiting loops around `gh run watch`/`gh run view`: they have stalled and spun on empty run ids. A PR that changes anything visible includes screenshots of it:
 
 ```bash
 scripts/test.sh e2e [-g name]                 # saves web/e2e/screenshots/<name>.png

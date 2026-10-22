@@ -31,7 +31,9 @@ var version = "dev"
 func main() {
 	if err := run(); err != nil {
 		log.Print("error: ", err)
-		desktop.ShowError(err.Error())
+		if f := flag.Lookup("no-window"); f == nil || f.Value.String() != "true" { // unattended: no dialog to wait on
+			desktop.ShowError(err.Error())
+		}
 		os.Exit(1)
 	}
 }
@@ -135,7 +137,7 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	tick := time.NewTicker(10 * time.Second)
+	tick := time.NewTicker(min(10*time.Second, max(*idleAfter/4, 100*time.Millisecond)))
 	defer tick.Stop()
 wait:
 	for {

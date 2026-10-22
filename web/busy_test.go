@@ -36,6 +36,15 @@ func TestBusy(t *testing.T) {
 	if ts.Busy() {
 		t.Error("busy with an upload that stopped long ago")
 	}
+	// The last chunk ends it.
+	if rec := chunk(t, ts, "2026-10-04", "x.flac", 6, 3, "def", time.Time{}); rec.Code >= 300 {
+		t.Fatalf("last chunk: %d %s", rec.Code, rec.Body)
+	}
+	for deadline := time.Now().Add(2 * time.Second); ts.Busy(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("still busy after the upload finished")
+		}
+	}
 }
 
 func TestAppBusy(t *testing.T) {

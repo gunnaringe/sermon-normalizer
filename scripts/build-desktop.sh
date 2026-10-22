@@ -3,12 +3,13 @@
 # from the release in packaging/ffmpeg-release). Host Go, or a container without one.
 #
 #   scripts/build-desktop.sh [version]
+#   TARGETS="linux-amd64" scripts/build-desktop.sh     only these systems
 #
 # On Windows it is a GUI program (-H windowsgui): no console window opens.
 set -eu
 cd "$(dirname "$0")/.."
 version=${1:-dev}
-targets="windows-amd64 darwin-arm64 darwin-amd64 linux-amd64 linux-arm64"
+targets=${TARGETS:-windows-amd64 darwin-arm64 darwin-amd64 linux-amd64 linux-arm64}
 for t in $targets; do
 	scripts/fetch-ffmpeg.sh "$t"
 done
