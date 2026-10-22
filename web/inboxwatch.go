@@ -91,6 +91,8 @@ func (w *inboxWatcher) scan() {
 // The inbox may be on another disk: MoveFile then copies, verifies and
 // deletes, so keep them on one if recordings are long.
 func (s *Server) ingest(name string) error {
+	s.working.Add(1) // Busy while a file is moved in; its conversion is background work of its own
+	defer s.working.Add(-1)
 	s.ingestMu.Lock()
 	defer s.ingestMu.Unlock()
 	src := filepath.Join(s.cfg.Inbox, name)

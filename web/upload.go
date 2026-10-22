@@ -89,6 +89,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.lastChunk.Store(time.Now().UnixNano())
 	n, err := io.Copy(f, http.MaxBytesReader(w, r.Body, min(MaxChunk, size-offset)))
 	if err == nil {
 		err = f.Sync()

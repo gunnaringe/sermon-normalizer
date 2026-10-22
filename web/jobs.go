@@ -157,8 +157,7 @@ func (js *jobs) start(pl plan) (*job, error) {
 	js.byID[j.ID] = j
 	js.all = append(js.all, j)
 	js.prune()
-	js.s.wg.Add(1)
-	go js.run(ctx, j, pl)
+	js.s.background(func() { js.run(ctx, j, pl) })
 	return j, nil
 }
 
@@ -180,7 +179,6 @@ func (js *jobs) prune() {
 }
 
 func (js *jobs) run(ctx context.Context, j *job, pl plan) {
-	defer js.s.wg.Done()
 	defer close(j.finished)
 	defer j.cancel()
 	select {

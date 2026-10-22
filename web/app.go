@@ -276,6 +276,25 @@ func (a *App) update(t *tenant, change func(*churchConfig)) error {
 	return nil
 }
 
+// Busy reports whether stopping now would break something: a church is busy (Server.Busy), or the share
+// page is receiving or sending.
+func (a *App) Busy() bool {
+	a.mu.Lock()
+	tenants := append([]*tenant(nil), a.tenants...)
+	a.mu.Unlock()
+	for _, t := range tenants {
+		if t.srv.Busy() {
+			return true
+		}
+	}
+	if a.share == nil {
+		return false
+	}
+	a.shareMu.Lock()
+	defer a.shareMu.Unlock()
+	return len(a.share.busy) > 0 || len(a.share.sending) > 0
+}
+
 // Close stops every church's background work.
 func (a *App) Close() {
 	if a.share != nil {

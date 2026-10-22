@@ -86,6 +86,7 @@ public share page is a separate listener that reaches nothing but itself and the
 |---|---|
 | [User guide](docs/guide.md) | Uploading, cutting, saving, sharing: with pictures |
 | [Running it](docs/running.md) | Docker, the data folder, all flags |
+| [The desktop app](docs/desktop.md) | Sermon Studio on one computer, without a server |
 | [Access control](docs/access.md) | Which user sees which church |
 | [What a run makes](docs/outputs.md) | The files, loudness targets and options |
 | [Design](docs/design.md) | Background and decisions |
@@ -106,6 +107,9 @@ docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
 
 Open <http://localhost:8080>. Each folder in `data/` is a church; add more from the app. All options
 and the public upload page are in [docs/running.md](docs/running.md).
+
+On one computer, without a server: `scripts/build-desktop.sh`, then start
+`dist/sermon-studio-desktop-<os>-<arch>` ([docs/desktop.md](docs/desktop.md)).
 
 ## License
 

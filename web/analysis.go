@@ -100,9 +100,7 @@ func (a *analyses) state(raw string, start bool) analysisState {
 		st.Stage = "convert"
 	}
 	a.current[key] = st
-	a.s.wg.Add(1)
-	go func() {
-		defer a.s.wg.Done()
+	a.s.background(func() {
 		keys := []string{key}
 		err := a.run(raw, key, st, &keys)
 		a.mu.Lock()
@@ -115,7 +113,7 @@ func (a *analyses) state(raw string, start bool) analysisState {
 		for _, k := range keys {
 			delete(a.current, k)
 		}
-	}()
+	})
 	return *st
 }
 
@@ -256,9 +254,7 @@ func (a *analyses) lookLater(raw, key string) {
 	}
 	a.looking[key] = true
 	a.mu.Unlock()
-	a.s.wg.Add(1)
-	go func() {
-		defer a.s.wg.Done()
+	a.s.background(func() {
 		defer func() {
 			a.mu.Lock()
 			delete(a.looking, key)
@@ -271,7 +267,7 @@ func (a *analyses) lookLater(raw, key string) {
 			return
 		}
 		a.lookAt(a.s.ctx, raw)
-	}()
+	})
 }
 
 // analyze decodes raw once: levels for the waveform from one output, and a

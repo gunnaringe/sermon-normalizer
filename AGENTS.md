@@ -29,6 +29,10 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 ## Map
 
 - `cmd/sermon-studio/main.go`: flags, startup, shutdown. No logic.
+- `cmd/sermon-studio-desktop/`: the desktop app (docs/desktop.md), a wrapper around `web.App`: `main.go`
+  starts it; `internal/desktop/` has its folders and `settings.json`, the Host check (`Guard`), the window
+  (`OpenWindow`), one copy at a time (`/_desktop/hello` with the token) and stopping when idle (`Presence`:
+  `/_desktop/alive`, an event stream held by a script it adds to the page, plus `App.Busy`).
 - `web/app.go`: `App` = the churches (tenants). A church is a folder in
   `--data-dir`: `<id>/church.json` (name, tags; optional), `<id>/Taler`,
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default
@@ -115,7 +119,10 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - The input types are one table, `normalizer/types.go`; `INPUT_TYPES` in `util.js` and the
   upload page's `magicOK` follow it (tests check both).
 - No long work inside a request: it sits behind Cloudflare (100 MB bodies,
-  ~100 s timeout). Start background work on `s.ctx` under `s.wg`.
+  ~100 s timeout). Start background work on `s.ctx` with `s.background` (Close waits for it, `Busy` reports it).
+- `web/` and `normalizer/` know nothing of the desktop app: no desktop flags, settings or branches. It uses
+  the studio's public API only (`NewApp`, `Handler`, `Busy`, `Close`); what it needs more goes in
+  `cmd/sermon-studio-desktop/`, so it can be removed by deleting that folder (and its docs and build script).
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.
 - Messages from `normalizer` show in the web UI: use the form's names
   (Start, Save, mono), not flags. English everywhere.
