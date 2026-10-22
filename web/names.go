@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/gunnaringe/sermon-studio/normalizer"
@@ -26,10 +28,42 @@ func cleanName(name string) (string, error) {
 		return "", fmt.Errorf("the name is too long (at most %d characters)", maxName)
 	case strings.HasPrefix(name, "."):
 		return "", errors.New("the name cannot start with a dot")
+	case strings.HasSuffix(name, "."):
+		return "", errors.New("the name cannot end with a dot") // Windows drops it
 	case strings.ContainsFunc(name, func(r rune) bool { return unicode.IsControl(r) || strings.ContainsRune(`/\:*?"<>|`, r) }):
 		return "", errors.New(`the name cannot contain / \ : * ? " < > | or control characters`)
 	}
 	return name, nil
+}
+
+// windowsDevice reports the names Windows keeps for devices (CON, NUL, COM1 ...), also with an extension
+// (nul.wav): no file or folder can have them there.
+func windowsDevice(name string) bool {
+	base, _, _ := strings.Cut(name, ".")
+	switch b := strings.ToUpper(strings.TrimRight(base, " ")); b {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	default:
+		return len(b) == 4 && (strings.HasPrefix(b, "COM") || strings.HasPrefix(b, "LPT")) && b[3] >= '0' && b[3] <= '9'
+	}
+}
+
+// maxWindowsPath is the longest path most Windows programs open, ffmpeg among them (MAX_PATH less the closing
+// zero). Go's own file functions take longer ones.
+const maxWindowsPath = 259
+
+// fitsWindows reports whether path is short enough for Windows programs; always true elsewhere.
+func fitsWindows(path string) bool {
+	return runtime.GOOS != "windows" || len(utf16.Encode([]rune(path))) <= maxWindowsPath
+}
+
+// folderFits refuses a sermon folder whose files would not fit (fitsWindows). The longest is the recording
+// kept in original/ while it is written: <folder>_raw.aiff.partial.
+func folderFits(folder string) error {
+	if fitsWindows(filepath.Join(folder, "original", filepath.Base(folder)+"_raw.aiff.partial")) {
+		return nil
+	}
+	return fmt.Errorf("the path of %s would be too long for Windows: use a shorter name, or a data folder nearer the top of the disk", filepath.Base(folder))
 }
 
 // folderName is the folder (and file prefix) of a sermon: <date> or <date> <name>.
@@ -95,6 +129,8 @@ func (s *Server) renameTarget(folder, date, name string) (string, int, error) {
 	switch {
 	case dst == folder:
 		return "", http.StatusBadRequest, errors.New("nothing to change")
+	case folderFits(dst) != nil:
+		return "", http.StatusBadRequest, folderFits(dst)
 	case fileExists(dst):
 		return "", http.StatusConflict, fmt.Errorf("%s already exists", filepath.Base(dst))
 	case s.jobs.active(s.relPath(folder)) != nil:
@@ -122,7 +158,7 @@ func (s *Server) rename(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	if err := os.Rename(src, dst); err != nil {
+	if err := normalizer.Rename(src, dst); err != nil {
 		return err
 	}
 	for _, dir := range []string{dst, filepath.Join(dst, normalizer.OriginalDir)} {
@@ -132,7 +168,7 @@ func (s *Server) rename(src, dst string) error {
 			if !ok || de.IsDir() || rest == "" || (rest[0] != '_' && rest[0] != '.') {
 				continue
 			}
-			if err := os.Rename(filepath.Join(dir, de.Name()), filepath.Join(dir, newBase+rest)); err != nil {
+			if err := normalizer.Rename(filepath.Join(dir, de.Name()), filepath.Join(dir, newBase+rest)); err != nil {
 				return fmt.Errorf("the folder was renamed, but %s was not: %w", de.Name(), err)
 			}
 		}

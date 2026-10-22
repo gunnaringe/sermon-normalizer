@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -200,7 +201,8 @@ func (js *jobs) run(ctx context.Context, j *job, pl plan) {
 			}
 		})
 	}}
-	if sn := readState(pl.paths.Folder).SourceName; sn != "" {
+	// The name it arrived with, unless that makes the path too long for Windows (then <folder>_raw).
+	if sn := readState(pl.paths.Folder).SourceName; sn != "" && fitsWindows(filepath.Join(pl.paths.Folder, "original", stemOf(sn)+".aiff.partial")) {
 		pl.opt.OriginalName = stemOf(sn)
 	}
 	p := &normalizer.Pipeline{P: pl.paths, Opt: pl.opt, FF: js.s.cfg.FFmpeg, Out: lw,

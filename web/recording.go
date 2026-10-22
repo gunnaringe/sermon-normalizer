@@ -126,8 +126,8 @@ func (s *Server) updateState(folder string, fn func(*folderState) error) (*folde
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
 		return st, errStateWrite
 	}
-	if err := os.Rename(tmp, statePath(folder)); err != nil {
-		os.Remove(tmp)
+	if err := normalizer.Rename(tmp, statePath(folder)); err != nil {
+		normalizer.Remove(tmp)
 		return st, errStateWrite
 	}
 	return st, nil
@@ -167,7 +167,7 @@ func cleanSourceName(name string) string {
 		name = string(r[:maxSourceName-len(ext)]) + string(ext)
 	}
 	name = strings.Trim(name, " ._")
-	if filepath.Ext(name) == "" || strings.TrimSuffix(name, filepath.Ext(name)) == "" {
+	if filepath.Ext(name) == "" || strings.TrimSuffix(name, filepath.Ext(name)) == "" || windowsDevice(name) {
 		return ""
 	}
 	return name

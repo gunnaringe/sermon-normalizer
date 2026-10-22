@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/gunnaringe/sermon-studio/normalizer"
@@ -97,5 +99,32 @@ func TestRename(t *testing.T) {
 	}
 	if c := post("2026", `{"date":"2026-10-05","name":""}`); c != http.StatusBadRequest {
 		t.Errorf("not a date folder: %d", c)
+	}
+}
+
+func TestWindowsNames(t *testing.T) {
+	for name, want := range map[string]bool{"CON": true, "nul": true, "nul.wav": true, "Com1.flac": true, "LPT9": true,
+		"aux ": true, "CONSOLE": false, "com": false, "COM10": false, "2026-10-04 CON": false, "con-gress": false} {
+		if got := windowsDevice(name); got != want {
+			t.Errorf("windowsDevice(%q) = %v", name, got)
+		}
+	}
+	if got, err := cleanName("Påske."); err == nil {
+		t.Errorf("cleanName with a dot at the end = %q", got)
+	}
+	if got := cleanSourceName("nul.wav"); got != "" {
+		t.Errorf("cleanSourceName(nul.wav) = %q", got)
+	}
+	if !reservedID("nul") || !reservedID("com3") || reservedID("norkirken") {
+		t.Error("reservedID and Windows' device names")
+	}
+
+	short := filepath.Join(t.TempDir(), "2026-10-04 Kveld")
+	long := filepath.Join(t.TempDir(), strings.Repeat("d", 120), "2026-10-04 "+strings.Repeat("n", 60))
+	if err := folderFits(short); err != nil {
+		t.Error(err)
+	}
+	if err := folderFits(long); (err != nil) != (runtime.GOOS == "windows") {
+		t.Errorf("a folder of %d characters on %s: %v", len(long), runtime.GOOS, err)
 	}
 }

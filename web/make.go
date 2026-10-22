@@ -78,7 +78,7 @@ func (s *Server) handleRemoveOutputs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, f := range formats {
-		if err := os.Remove(byFormat[f]); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := normalizer.Remove(byFormat[f]); err != nil && !errors.Is(err, os.ErrNotExist) {
 			writeError(w, http.StatusInternalServerError, errors.New("could not delete "+filepath.Base(byFormat[f])))
 			return
 		}

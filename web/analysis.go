@@ -144,7 +144,7 @@ func (a *analyses) carry(oldKey, newPath string) {
 	if err != nil || oldKey == "" || !a.done(oldKey) || a.done(newKey) {
 		return
 	}
-	if err := os.Rename(a.dir(oldKey), a.dir(newKey)); err != nil {
+	if err := normalizer.Rename(a.dir(oldKey), a.dir(newKey)); err != nil {
 		a.s.cfg.Logger.Printf("analysis cache: %v", err)
 	}
 }
@@ -194,7 +194,7 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 		if err := ff.Convert(ctx, raw, flac, progress); err != nil {
 			return err
 		}
-		if err := os.Remove(raw); err != nil {
+		if err := normalizer.Remove(raw); err != nil {
 			return err
 		}
 		if _, err := a.s.updateState(folderOfRecording(flac), func(st *folderState) error {
@@ -222,7 +222,7 @@ func (a *analyses) run(raw, key string, st *analysisState, keys *[]string) error
 	}
 	data, err := analyze(ctx, ff, raw, dir, progress)
 	if err != nil {
-		os.RemoveAll(dir)
+		normalizer.RemoveAll(dir)
 		return err
 	}
 	if err := writePeaks(filepath.Join(dir, "peaks.json.gz"), data); err != nil {
@@ -296,7 +296,7 @@ func analyze(ctx context.Context, ff normalizer.FFmpeg, raw, dir string, progres
 	data, readErr := normalizer.ReadLevels(out, peakWindow, progress)
 	io.Copy(io.Discard, out)
 	if err := cmd.Wait(); err != nil {
-		os.Remove(tmp)
+		normalizer.Remove(tmp)
 		if ctx.Err() != nil {
 			return data, ctx.Err()
 		}
@@ -308,7 +308,7 @@ func analyze(ctx context.Context, ff normalizer.FFmpeg, raw, dir string, progres
 	if len(data.Peak) == 0 {
 		return data, errors.New("the recording is empty")
 	}
-	return data, os.Rename(tmp, preview)
+	return data, normalizer.Rename(tmp, preview)
 }
 
 // writePeaks stores the waveform data as gzipped JSON, written compactly by
@@ -339,10 +339,10 @@ func writePeaks(path string, data normalizer.LevelData) error {
 	w.WriteString("]}")
 	err = errors.Join(w.Flush(), zw.Close(), f.Close())
 	if err != nil {
-		os.Remove(tmp)
+		normalizer.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, path)
+	return normalizer.Rename(tmp, path)
 }
 
 // rawFor is the raw recording of the folder in the path parameter.
@@ -436,7 +436,7 @@ func CleanCache(dir string, maxAge time.Duration) {
 	}
 	for _, de := range des {
 		if info, err := de.Info(); err == nil && de.IsDir() && time.Since(info.ModTime()) > maxAge {
-			os.RemoveAll(filepath.Join(dir, de.Name()))
+			normalizer.RemoveAll(filepath.Join(dir, de.Name()))
 		}
 	}
 }

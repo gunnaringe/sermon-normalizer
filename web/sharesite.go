@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // The public upload page. It is its own handler, served on its own listener,
@@ -424,7 +426,7 @@ func (a *App) dropUpload(t *tenant, sh *Share, id string) {
 		return
 	}
 	delete(sh.Pending, id)
-	os.Remove(partialPath(t, id))
+	normalizer.Remove(partialPath(t, id))
 	if err := a.saveShares(t); err != nil {
 		a.cfg.Base.Logger.Printf("share: saving %s: %v", sharesFile, err)
 	}
@@ -466,7 +468,7 @@ func (a *App) finishShareUpload(t *tenant, sh *Share, id string, p pendingUpload
 		// A hard link never replaces a file; then the partial goes.
 		err := os.Link(tmp, filepath.Join(t.srv.cfg.Inbox, name))
 		if err == nil {
-			os.Remove(tmp)
+			normalizer.Remove(tmp)
 			if p.Modified > 0 { // the file's own time, now that the sweep cannot take it for a stopped upload
 				mt := time.UnixMilli(p.Modified)
 				os.Chtimes(filepath.Join(t.srv.cfg.Inbox, name), mt, mt)
@@ -521,7 +523,7 @@ func (a *App) sweepShares(now time.Time) {
 				if e := sh.endedAt(now); !e.IsZero() && now.Sub(e) > time.Duration(days)*24*time.Hour {
 					for uid := range sh.Pending {
 						if !a.share.busy[uid] {
-							os.Remove(partialPath(t, uid))
+							normalizer.Remove(partialPath(t, uid))
 						}
 					}
 					changed = true
@@ -539,7 +541,7 @@ func (a *App) sweepShares(now time.Time) {
 					last = st.ModTime()
 				}
 				if now.Sub(last) > pendingStale && !a.share.busy[id] {
-					os.Remove(partialPath(t, id))
+					normalizer.Remove(partialPath(t, id))
 					delete(sh.Pending, id)
 					changed = true
 					a.cfg.Base.Logger.Printf("share: dropped unfinished upload %s from %s", p.Name, p.IP)

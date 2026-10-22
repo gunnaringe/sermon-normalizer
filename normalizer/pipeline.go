@@ -347,7 +347,7 @@ func (p *Pipeline) lengthFor(ctx context.Context, path string) float64 {
 func (p *Pipeline) Run(ctx context.Context) error {
 	defer func() {
 		for _, f := range p.cleanup {
-			os.Remove(f)
+			Remove(f)
 		}
 	}()
 	if !p.Opt.cutting() {
@@ -421,13 +421,13 @@ func (p *Pipeline) ingest(ctx context.Context) (string, error) {
 		if err := p.FF.Convert(ctx, src, dst, progress); err != nil {
 			return "", err
 		}
-		if err := os.Remove(src); err != nil {
+		if err := Remove(src); err != nil {
 			return "", err
 		}
 		p.logf("OK: %s has exactly the audio of %s. Deleted %s.", filepath.Base(dst), filepath.Base(src), filepath.Base(src))
 	}
 	if have != "" && have != dst { // the one it replaces, of another type
-		os.Remove(have)
+		Remove(have)
 	}
 	return dst, nil
 }
@@ -689,7 +689,7 @@ func (f FFmpeg) Sample(ctx context.Context, raw string, o Options, start, second
 	p := &Pipeline{FF: f, Opt: o, Out: io.Discard, raw: raw}
 	defer func() {
 		for _, name := range p.cleanup {
-			os.Remove(name)
+			Remove(name)
 		}
 	}()
 	return p.renderMaster(ctx, dst, seconds, []string{"-c:a", "libmp3lame", "-b:a", "96k"})
