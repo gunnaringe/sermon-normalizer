@@ -14,7 +14,7 @@ without tabs or address bar. Without one of those it opens in the default browse
   conversion, an upload). Close the window while a sermon is being made, and it is finished first.
 - **The first time**, it makes a church called "My church" and opens **Settings**, to give it its name and logo.
 
-ffmpeg is built in: our own small LGPL build ([ffmpeg/README.md](../ffmpeg/README.md)), unpacked into the cache
+ffmpeg is built in: a small LGPL build from [ffmpeg-lgpl](https://github.com/gunnaringe/ffmpeg-lgpl), unpacked into the cache
 folder on the first start and checked by its SHA-256 on every start. Its licences: `--licenses`, or
 `LICENSES.txt` next to it. A build without it (`go build ./cmd/sermon-studio-desktop`, without
 `-tags embedffmpeg`) looks for `ffmpeg` next to the program, in PATH, and where Homebrew puts it.
@@ -55,5 +55,5 @@ computer. Posts from other sites are refused by the studio, as on a server.
 scripts/build-desktop.sh [version]   # dist/sermon-studio-desktop-<os>-<arch>, for every system, ffmpeg built in
 ```
 
-It fetches our ffmpeg for each system from the release in `ffmpeg/versions`, checked against
-`ffmpeg/release.sha256` (`scripts/fetch-ffmpeg.sh`).
+It fetches the ffmpeg for each system from the ffmpeg-lgpl release in `packaging/ffmpeg-release`, checked
+against `packaging/ffmpeg.sha256` (`scripts/fetch-ffmpeg.sh`).

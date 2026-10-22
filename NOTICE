@@ -9,8 +9,8 @@ Licensed under the Apache License 2.0 (LICENSE), except:
   Sermon Studio and its copies, unchanged.
 - web/static/vendor/wavesurfer/ is wavesurfer.js, under its own licence (see
   that folder).
-- The desktop app has ffmpeg built in (ffmpeg/README.md): FFmpeg under the LGPL
+- The desktop app has ffmpeg built in (github.com/gunnaringe/ffmpeg-lgpl): FFmpeg under the LGPL
   2.1 or later, with LAME (LGPL), Opus (BSD) and zlib (zlib licence). Their
   licences come with it (sermon-studio-desktop --licenses, and LICENSES.txt next
   to the unpacked ffmpeg); the exact sources are in the release named in
-  ffmpeg/versions.
+  packaging/ffmpeg-release.
