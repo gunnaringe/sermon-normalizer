@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Sermon Studio
+Comment=Turn a church service recording into a publish-ready sermon
+Exec=sermon-studio-desktop
+Icon=sermon-studio
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupNotify=false
