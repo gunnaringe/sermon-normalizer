@@ -32,6 +32,12 @@
 - MP3 and Opus are encoded, measured and re-encoded with adjusted gain if true peak > -1 dBTP or
   the loudness is off. They are always made from the master; without FLAC it is a temporary
   hidden file in the date folder, removed when the run ends.
+- **Intro and outro.** A recording can have a clip before and after the sermon (the church's, or its own). The
+  clips are made elsewhere, often with music, so they get no noise reduction or leveling: each is brought to the target
+  loudness (gain and the same limiter) and to the sermon's rate and channels, and joined to the finished sermon with a
+  short pause at each join (0.5 s unless the church chooses otherwise); the sermon keeps its own fades and tags. A run
+  with clips makes two versions of each output: with them (the main files, `<date>.flac/.mp3/.opus`) and the sermon
+  only (`<date>_sermon.flac/.mp3/.opus`). The one with them is made from the sermon's master.
 - Up-to-date outputs are kept; Save redoes those that are out of date (and cuts again). Output is written to a `.partial` file and
   renamed when done, so an interrupted run never leaves a half-written file behind.
 - Mono is the usual choice for speech, and mono and stereo recordings both work either way.

@@ -39,6 +39,12 @@ type Options struct {
 	Pauses       []Pause // silences put into the sermon, at times in the recording
 	FadeIn       float64 // seconds at the start of the sermon; 0 = off
 	FadeOut      float64 // seconds at the end of the sermon; 0 = off
+	// Intro and Outro are clips put before and after the sermon (paths; "" = none). They are made
+	// elsewhere, often with music, so only their level, rate and channels are set; ClipPause is the
+	// silence (seconds) at each join. With either, a run makes two versions of each output: with the
+	// clips (the main files) and the sermon only (Paths.Sermon*).
+	Intro, Outro string
+	ClipPause    float64
 	Outputs      Outputs
 	Tags         Tags // written into every output; empty fields are left out
 }
@@ -62,6 +68,12 @@ func (t Tags) args() []string {
 	}
 	return a
 }
+
+// clips reports whether an intro or outro goes around the sermon.
+func (o Options) clips() bool { return o.Intro != "" || o.Outro != "" }
+
+// MaxClipPause is the longest pause at a join with a clip, in seconds.
+const MaxClipPause = 10.0
 
 // cutting reports whether a sermon is selected in the recording.
 func (o Options) cutting() bool { return o.Start > 0 || o.End > 0 }
@@ -211,7 +223,12 @@ type Paths struct {
 	Master   string
 	Mp3      string
 	Opus     string
+	// The sermon only, without the intro and outro: made when a run has them, <date>_sermon.<ext>.
+	SermonMaster, SermonMp3, SermonOpus string
 }
+
+// SermonOnly is what the names of the sermon-only outputs end in, before the extension.
+const SermonOnly = "_sermon"
 
 // OriginalDir is the folder in a date folder that holds the whole recording
 // once a run has been made.
@@ -234,6 +251,10 @@ func NewPaths(folder string) (Paths, error) {
 		Master:   filepath.Join(abs, date+".flac"),
 		Mp3:      filepath.Join(abs, date+".mp3"),
 		Opus:     filepath.Join(abs, date+".opus"),
+
+		SermonMaster: filepath.Join(abs, date+SermonOnly+".flac"),
+		SermonMp3:    filepath.Join(abs, date+SermonOnly+".mp3"),
+		SermonOpus:   filepath.Join(abs, date+SermonOnly+".opus"),
 	}, nil
 }
 
@@ -295,7 +316,8 @@ type Pipeline struct {
 	OnProgress func(fraction float64)
 
 	raw     string   // the whole recording, if any
-	master  string   // the master that MP3/Opus are made from
+	master  string   // the master of the sermon only
+	full    string   // the master with the intro and outro (p.master without them)
 	cleanup []string // temporary files to remove when the run ends
 }
 
@@ -353,10 +375,18 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	if !p.Opt.cutting() {
 		return errors.New("select where the sermon starts and ends")
 	}
+	for _, c := range [][2]string{{"intro", p.Opt.Intro}, {"outro", p.Opt.Outro}} {
+		if c[1] != "" && !exists(c[1]) {
+			return fmt.Errorf("the %s (%s) is missing", c[0], filepath.Base(c[1]))
+		}
+	}
 	if err := p.stepRaw(ctx); err != nil {
 		return err
 	}
 	if err := p.stepMaster(ctx); err != nil {
+		return err
+	}
+	if err := p.stepClips(ctx); err != nil {
 		return err
 	}
 	if err := p.stepLossy(ctx); err != nil {
@@ -598,11 +628,7 @@ func (p *Pipeline) tidyFilter() string {
 // true-peak ceiling (with half a dB to spare for what resampling adds), and the fades, last, so nothing
 // lifts them again. length (seconds) is only needed for a fade-out.
 func (p *Pipeline) finalFilter(gain, length float64) string {
-	f := []string{
-		fmt.Sprintf("volume=%.2fdB", gain),
-		fmt.Sprintf("alimiter=limit=%.4f:attack=5:release=50:level=0", math.Pow(10, (p.Opt.TruePeak-0.5)/20)),
-		"aresample=48000",
-	}
+	f := []string{fmt.Sprintf("volume=%.2fdB", gain), p.limiter(), "aresample=48000"}
 	if p.Opt.FadeIn > 0 {
 		f = append(f, fmt.Sprintf("afade=t=in:d=%g", p.Opt.FadeIn))
 	}
@@ -612,9 +638,16 @@ func (p *Pipeline) finalFilter(gain, length float64) string {
 	return strings.Join(f, ",")
 }
 
+// limiter keeps the peaks under the true-peak ceiling, with half a dB to spare for what resampling adds.
+func (p *Pipeline) limiter() string {
+	return fmt.Sprintf("alimiter=limit=%.4f:attack=5:release=50:level=0", math.Pow(10, (p.Opt.TruePeak-0.5)/20))
+}
+
 // tidyName is the hidden temporary file a master is made from (in the folder of dst).
 func tidyName(dst, stage string) string {
-	return filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+"."+stage+".tidy.flac")
+	// Short, so it fits Windows' paths wherever the outputs do (folderFits in web).
+	name := filepath.Base(dst)
+	return filepath.Join(filepath.Dir(dst), "."+strings.TrimSuffix(name, filepath.Ext(name))+".t"+stage+".flac")
 }
 
 // renderMaster makes dst, the sermon with the processing of Opt, in three steps: the cut and the noise
@@ -698,22 +731,53 @@ func (f FFmpeg) Sample(ctx context.Context, raw string, o Options, start, second
 // pending reports whether an output file needs to be made.
 func (p *Pipeline) pending(path string) bool { return p.Opt.Force || !exists(path) }
 
+// version is one set of outputs: the main files, or with an intro or outro also the sermon only.
+type version struct {
+	label             string // for the log: "" for the main files
+	master, mp3, opus string
+	from              string // the master MP3 and Opus are made from: p.full or p.master
+}
+
+// versions are the sets of outputs a run makes.
+func (p *Pipeline) versions() []version {
+	main := version{"", p.P.Master, p.P.Mp3, p.P.Opus, p.full}
+	if !p.Opt.clips() {
+		return []version{main}
+	}
+	return []version{main, {" (sermon only)", p.P.SermonMaster, p.P.SermonMp3, p.P.SermonOpus, p.master}}
+}
+
+// lossyPending reports whether an MP3 or Opus of v needs to be made.
+func (p *Pipeline) lossyPending(v version) bool {
+	o := p.Opt.Outputs
+	return (o.Mp3 && p.pending(v.mp3)) || (o.Opus && p.pending(v.opus))
+}
+
+// stepMaster makes the master of the sermon: <date>.flac, or with an intro or outro <date>_sermon.flac,
+// which the one with them is made from.
 func (p *Pipeline) stepMaster(ctx context.Context) error {
 	o := p.Opt.Outputs
-	lossy := (o.Mp3 && p.pending(p.P.Mp3)) || (o.Opus && p.pending(p.P.Opus))
-	p.master = p.P.Master
+	vs := p.versions()
+	p.master = vs[len(vs)-1].master
+	needed := false // by an output made from it
+	for _, v := range vs {
+		needed = needed || p.lossyPending(v)
+	}
+	if p.Opt.clips() {
+		needed = needed || (o.Flac && p.pending(p.P.Master))
+	}
 	switch {
 	case o.Flac:
 		p.step(fmt.Sprintf("3. Master (%s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
-		if !p.pending(p.P.Master) {
+		if !p.pending(p.master) {
 			p.logf("Already exists, skipping (Save and generate redoes it).")
 			return nil
 		}
-	case !lossy:
+	case !needed:
 		return nil // no master wanted, and nothing to make from one
-	case !p.pending(p.P.Master):
+	case !p.pending(p.master):
 		p.step("3. Master")
-		p.logf("Using the existing %s for MP3/Opus.", filepath.Base(p.P.Master))
+		p.logf("Using the existing %s for MP3/Opus.", filepath.Base(p.master))
 		return nil
 	default:
 		// Not wanted as output, but MP3/Opus are made from it. Kept in the
@@ -740,6 +804,112 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 		length, _ = p.sermonLength(ctx)
 	}
 	return p.renderMaster(ctx, p.master, length, []string{"-c:a", "flac", "-sample_fmt", "s32"})
+}
+
+// --- 4. intro and outro ---------------------------------------------------
+
+// stepClips makes the master with the intro and outro (<date>.flac) from the sermon's.
+func (p *Pipeline) stepClips(ctx context.Context) error {
+	p.full = p.master
+	if !p.Opt.clips() {
+		return nil
+	}
+	o := p.Opt.Outputs
+	p.full = p.P.Master
+	switch {
+	case o.Flac:
+		p.step("4. Intro and outro")
+		if !p.pending(p.full) {
+			p.logf("Already exists, skipping (Save and generate redoes it).")
+			return nil
+		}
+	case !p.lossyPending(p.versions()[0]):
+		return nil
+	case !p.pending(p.full):
+		p.step("4. Intro and outro")
+		p.logf("Using the existing %s for MP3/Opus.", filepath.Base(p.full))
+		return nil
+	default:
+		p.step("4. Intro and outro")
+		p.full = filepath.Join(p.P.Folder, "."+p.P.Date+".full.flac")
+		p.cleanup = append(p.cleanup, p.full)
+	}
+	return p.join(ctx, p.full)
+}
+
+// join makes dst: the intro, the sermon's master and the outro, with ClipPause of silence at each join.
+// Each clip is brought to the target loudness (gain and the limiter, no other processing) and to the
+// sermon's rate and channels; the sermon is used as it is, with its own fades. The tags are the sermon's.
+func (p *Pipeline) join(ctx context.Context, dst string) error {
+	same := "aformat=sample_fmts=flt:sample_rates=48000:channel_layouts=" + p.Opt.Channels()
+	var args, graph []string
+	var order string // the parts in the order they are joined
+	var total float64
+	n, sermonIn := 0, 0
+	add := func(filter string, seconds float64) {
+		graph = append(graph, fmt.Sprintf("%s,%s[j%d]", filter, same, n))
+		order += fmt.Sprintf("[j%d]", n)
+		total += seconds
+		n++
+	}
+	pause := func() {
+		if p.Opt.ClipPause > 0 {
+			add(fmt.Sprintf("anullsrc=r=48000:cl=%s:d=%g", p.Opt.Channels(), p.Opt.ClipPause), p.Opt.ClipPause)
+		}
+	}
+	clip := func(what, path string) error {
+		m, err := p.FF.Measure(ctx, path)
+		if err != nil {
+			return err
+		}
+		if m.LUFS < -70 {
+			return fmt.Errorf("the %s is silent", what)
+		}
+		length, err := p.FF.Duration(ctx, path)
+		if err != nil {
+			return err
+		}
+		gain := math.Min(p.Opt.TargetLUFS-m.LUFS, 70)
+		p.logf("%s %s: %s, %.1f LUFS; gain %+.1f dB.", strings.ToUpper(what[:1])+what[1:], filepath.Base(path), FormatTime(math.Round(length)), m.LUFS, gain)
+		add(fmt.Sprintf("[%d:a:0]aformat=channel_layouts=%s,aresample=48000,volume=%.2fdB,%s", len(args)/2, p.Opt.Channels(), gain, p.limiter()), length)
+		args = append(args, "-i", path)
+		return nil
+	}
+	if p.Opt.Intro != "" {
+		if err := clip("intro", p.Opt.Intro); err != nil {
+			return err
+		}
+		pause()
+	}
+	length, err := p.FF.Duration(ctx, p.master)
+	if err != nil {
+		return err
+	}
+	sermonIn = len(args) / 2
+	add(fmt.Sprintf("[%d:a:0]anull", sermonIn), length)
+	args = append(args, "-i", p.master)
+	if p.Opt.Outro != "" {
+		pause()
+		if err := clip("outro", p.Opt.Outro); err != nil {
+			return err
+		}
+	}
+	graph = append(graph, fmt.Sprintf("%sconcat=n=%d:v=0:a=1[out]", order, n))
+	args = append(args, "-filter_complex", strings.Join(graph, ";"), "-map", "[out]", "-map_metadata", strconv.Itoa(sermonIn),
+		"-c:a", "flac", "-sample_fmt", "s32")
+	progress := total
+	if p.OnProgress == nil {
+		progress = 0
+	}
+	if err := p.runTo(ctx, dst, progress, append(args, p.Opt.Tags.args()...)...); err != nil {
+		return err
+	}
+	m, err := p.FF.Measure(ctx, dst)
+	if err != nil {
+		return err
+	}
+	p.logf("With intro and outro: %s, %.1f LUFS.", FormatTime(math.Round(total)), m.LUFS)
+	return nil
 }
 
 // checkStereo warns when stereo output would add nothing: the part that
@@ -795,14 +965,14 @@ func correction(target float64, m Loudness) (gain float64, needed bool) {
 	return gain, needed
 }
 
-func (p *Pipeline) encodeLossy(ctx context.Context, name, dst string, codec []string) error {
+func (p *Pipeline) encodeLossy(ctx context.Context, name, src, dst string, codec []string) error {
 	if exists(dst) && !p.Opt.Force {
 		p.logf("%s exists, skipping.", name)
 		return nil
 	}
-	total := p.lengthFor(ctx, p.master)
+	total := p.lengthFor(ctx, src)
 	enc := func(gain *float64) error {
-		args := []string{"-i", p.master}
+		args := []string{"-i", src}
 		if gain != nil {
 			args = append(args, "-af", fmt.Sprintf("volume=%.2fdB", *gain))
 		}
@@ -835,20 +1005,24 @@ func (p *Pipeline) stepLossy(ctx context.Context) error {
 	if len(names) == 0 {
 		return nil
 	}
-	p.step("4. " + strings.Join(names, " and ") + ", " + p.Opt.Channels())
+	p.step("5. " + strings.Join(names, " and ") + ", " + p.Opt.Channels())
 	ac := "1"
 	if p.Opt.Stereo {
 		ac = "2"
 	}
-	if o.Mp3 {
-		if err := p.encodeLossy(ctx, "mp3", p.P.Mp3,
-			[]string{"-ar", "44100", "-ac", ac, "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate, "-id3v2_version", "3"}); err != nil {
-			return err
+	for _, v := range p.versions() {
+		if o.Mp3 {
+			if err := p.encodeLossy(ctx, "mp3"+v.label, v.from, v.mp3,
+				[]string{"-ar", "44100", "-ac", ac, "-c:a", "libmp3lame", "-b:a", p.Opt.Mp3Bitrate, "-id3v2_version", "3"}); err != nil {
+				return err
+			}
 		}
-	}
-	if o.Opus {
-		return p.encodeLossy(ctx, "opus", p.P.Opus,
-			[]string{"-ar", "48000", "-ac", ac, "-c:a", "libopus", "-b:a", p.Opt.OpusBitrate, "-application", "voip"})
+		if o.Opus {
+			if err := p.encodeLossy(ctx, "opus"+v.label, v.from, v.opus,
+				[]string{"-ar", "48000", "-ac", ac, "-c:a", "libopus", "-b:a", p.Opt.OpusBitrate, "-application", "voip"}); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -860,12 +1034,14 @@ func (p *Pipeline) report(ctx context.Context) error {
 	tw := tabwriter.NewWriter(p.Out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "File\tLUFS\tTP\tLRA\tMB")
 	var files []string
-	for _, f := range []struct {
-		on   bool
-		path string
-	}{{p.Opt.Outputs.Flac, p.P.Master}, {p.Opt.Outputs.Mp3, p.P.Mp3}, {p.Opt.Outputs.Opus, p.P.Opus}} {
-		if f.on {
-			files = append(files, f.path)
+	for _, v := range p.versions() {
+		for _, f := range []struct {
+			on   bool
+			path string
+		}{{p.Opt.Outputs.Flac, v.master}, {p.Opt.Outputs.Mp3, v.mp3}, {p.Opt.Outputs.Opus, v.opus}} {
+			if f.on {
+				files = append(files, f.path)
+			}
 		}
 	}
 	for _, f := range files {

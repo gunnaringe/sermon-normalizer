@@ -122,7 +122,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   entry in `locales.js` (`TestLocales` fails otherwise). Never name a variable `t` where `t()` is called. The language is the
   browser's (`no` = bokmål) unless chosen in Settings → Appearance (or on the public page's header); stored in localStorage.
 - `normalizer/`: the pipeline (`pipeline.go`; `Options.Cuts` = parts left out of
-  Start..End, each kept part is its own ffmpeg input joined by `cutInput`'s filter graph),
+  Start..End, each kept part is its own ffmpeg input joined by `cutInput`'s filter graph; `Intro`/`Outro` clips are
+  joined around the finished sermon by `join`, making the main files with them and `<date>_sermon.*` without, `versions`),
   ffmpeg wrapper (`ffmpeg.go`:
   `Run`, `RunTo`), `ToFlac`/`SameAudio` (`flac.go`), `MoveFile` (`files.go`),
   `Validate` (`validate.go`), levels/silences, channel checks.

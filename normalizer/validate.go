@@ -35,6 +35,8 @@ func (o Options) Validate() error {
 		return fmt.Errorf("compression must be one of %s", strings.Join(CompressionNames, ", "))
 	case strings.TrimSpace(o.Mp3Bitrate) == "" || strings.TrimSpace(o.OpusBitrate) == "":
 		return errors.New("bitrates cannot be empty")
+	case o.ClipPause < 0 || o.ClipPause > MaxClipPause:
+		return fmt.Errorf("the pause at the intro and outro can be from 0 to %g seconds", MaxClipPause)
 	}
 	for _, p := range o.Pauses {
 		if p.At < 0 || p.Seconds < 0 || p.Seconds > MaxPause {
