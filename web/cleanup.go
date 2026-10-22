@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -37,10 +38,14 @@ func (s *Server) sweepLeftovers(now time.Time) {
 			if err != nil || now.Sub(info.ModTime()) < leftoverAge {
 				return nil
 			}
-			if normalizer.Remove(path) != nil {
+			// Gone already is as good: the sweep at start may be at the same file (and on Windows a file being
+			// removed is "in use" until it is gone), but the folder it leaves empty must go all the same.
+			switch err := normalizer.Remove(path); {
+			case err == nil:
+				s.cfg.Logger.Printf("cleanup: removed %s, untouched since %s", path, info.ModTime().Format(time.DateTime))
+			case !errors.Is(err, fs.ErrNotExist):
 				return nil
 			}
-			s.cfg.Logger.Printf("cleanup: removed %s, untouched since %s", path, info.ModTime().Format(time.DateTime))
 			if parent := filepath.Dir(path); parent != dir && strings.HasSuffix(d.Name(), ".upload") {
 				normalizer.Remove(parent) // only if it is empty now
 			}
