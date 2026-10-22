@@ -129,6 +129,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		t := time.UnixMilli(ms)
 		os.Chtimes(final, t, t)
 	}
+	s.lastChunk.Store(0) // finished: no longer one that stopping would break
 	s.markImported(folder, name)
 	s.cfg.Logger.Printf("upload: received %s as %s", name, s.relPath(final))
 	s.analyses.state(final, true)

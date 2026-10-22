@@ -1,7 +1,8 @@
 # The desktop app's release: on a v* tag, the program for every system with our ffmpeg built in, packaged
 # (Windows .exe, Sermon Studio.app for each Mac, Linux tar.gz with a .desktop file), published as a GitHub
-# release. On a pull request that changes the packaging, and when started by hand, the same is built as
-# artifacts, not published.
+# release, after each program passed the end-to-end test on its own system (verify). On a pull request that
+# changes the packaging or the desktop program, and when started by hand, the same is built and verified, not
+# published.
 name: Release
 
 on:
@@ -43,8 +44,8 @@ jobs:
           path: dist/release/
       - uses: actions/upload-artifact@v4
         with:
-          name: darwin
-          path: dist/sermon-studio-desktop-darwin-*
+          name: programs
+          path: dist/sermon-studio-desktop-*
 
   macos:
     needs: build
@@ -53,7 +54,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: darwin
+          name: programs
           path: dist
       - run: scripts/package-desktop.sh macos "${{ needs.build.outputs.version }}"
       - uses: actions/upload-artifact@v4
@@ -61,8 +62,39 @@ jobs:
           name: release-macos
           path: dist/release/
 
+  # The programs as released, each on its own system: the end-to-end test (cmd/sermon-studio-desktop) starts it,
+  # uploads a recording, makes a sermon with the ffmpeg built in, and sees it stop by itself.
+  verify:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-amd64, os: ubuntu-24.04 }
+          - { target: linux-arm64, os: ubuntu-24.04-arm }
+          - { target: windows-amd64, os: windows-latest, ext: .exe }
+          - { target: darwin-arm64, os: macos-15 }
+          - { target: darwin-amd64, os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: programs
+          path: dist
+      - run: chmod +x dist/* && go test -count=1 -v -run EndToEnd ./cmd/sermon-studio-desktop/
+        env:
+          DESKTOP_BIN: ${{ github.workspace }}/dist/sermon-studio-desktop-${{ matrix.target }}${{ matrix.ext }}
+          DESKTOP_EMBEDDED: 1
+
   publish:
-    needs: [build, macos]
+    needs: [build, macos, verify]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
