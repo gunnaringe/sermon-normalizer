@@ -32,7 +32,8 @@ func (f FFmpeg) Run(ctx context.Context, args ...string) (Result, error) {
 func (f FFmpeg) run(ctx context.Context, progress func(seconds float64), args []string) (Result, error) {
 	full := []string{"-nostdin", "-hide_banner", "-nostats"}
 	if progress != nil {
-		full = append(full, "-progress", "pipe:1")
+		// Every 0.1 s instead of 0.5: on a fast machine a step can be over before the first report.
+		full = append(full, "-progress", "pipe:1", "-stats_period", "0.1")
 	}
 	cmd := exec.CommandContext(ctx, f.Bin, append(full, args...)...)
 	var out, errb bytes.Buffer
@@ -41,12 +42,15 @@ func (f FFmpeg) run(ctx context.Context, progress func(seconds float64), args []
 		cmd.Stdout = &progressWriter{fn: progress}
 	}
 	cmd.Stderr = &errb
-	res := func() Result { return Result{Stdout: out.String(), Stderr: errb.String()} }
+	// ffmpeg on Windows ends its lines with \r\n; the parsers expect \n.
+	res := func() Result {
+		return Result{Stdout: out.String(), Stderr: strings.ReplaceAll(errb.String(), "\r\n", "\n")}
+	}
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
 			return res(), ctx.Err()
 		}
-		return res(), fmt.Errorf("ffmpeg failed (%w):\n%s", err, lastLines(errb.String(), 15))
+		return res(), fmt.Errorf("ffmpeg failed (%w):\n%s", err, lastLines(res().Stderr, 15))
 	}
 	return res(), nil
 }

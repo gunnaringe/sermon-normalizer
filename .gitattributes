@@ -1,0 +1,8 @@
+# The same files on every system: tests compare texts (locales.js, golden files) byte for byte.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.woff2 binary
+*.flac binary
+*.mp3 binary
+*.opus binary
