@@ -32,7 +32,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `cmd/sermon-studio-desktop/`: the desktop app (docs/desktop.md), a wrapper around `web.App`: `main.go`
   starts it; `internal/desktop/` has its folders and `settings.json`, the Host check (`Guard`), the window
   (`OpenWindow`), one copy at a time (`/_desktop/hello` with the token) and stopping when idle (`Presence`:
-  `/_desktop/alive`, an event stream held by a script it adds to the page, plus `App.Busy`).
+  `/_desktop/alive`, an event stream held by a script it adds to the page, plus `App.Busy`). ffmpeg is built in
+  with `-tags embedffmpeg` (`FFmpeg`: unpacked into the cache, checked by its hash); `scripts/build-desktop.sh`
+  does that. `ffmpeg/`: our LGPL ffmpeg, built and released by the ffmpeg workflow (ffmpeg/README.md).
 - `web/app.go`: `App` = the churches (tenants). A church is a folder in
   `--data-dir`: `<id>/church.json` (name, tags; optional), `<id>/Taler`,
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default
