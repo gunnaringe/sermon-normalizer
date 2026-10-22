@@ -63,12 +63,13 @@ cp "$work/opus-$OPUS_VERSION/config.guess" "$work/opus-$OPUS_VERSION/config.sub"
 
 cd "$work/ffmpeg-$FFMPEG_VERSION"
 # shellcheck disable=SC2086
-./configure --prefix="$prefix" $cross --pkg-config-flags=--static \
+./configure --prefix="$prefix" $cross --pkg-config=pkg-config --pkg-config-flags=--static \
 	--extra-cflags="-I$prefix/include $extra_cflags" --extra-ldflags="-L$prefix/lib $extra_ldflags" \
 	--disable-debug --disable-doc --disable-ffplay --disable-network --disable-autodetect \
 	--disable-indevs --enable-indev=lavfi --disable-outdevs \
-	--enable-zlib --enable-libmp3lame --enable-libopus --enable-static --disable-shared >/dev/null
-make -s -j"$jobs" ffmpeg ffprobe >/dev/null
+	--enable-zlib --enable-libmp3lame --enable-libopus --enable-static --disable-shared >/dev/null ||
+	{ tail -40 ffbuild/config.log >&2; exit 1; }
+make -s -j"$jobs" "ffmpeg$ext" "ffprobe$ext" >/dev/null
 cp "ffmpeg$ext" "$out/ffmpeg-$target$ext"
 cp "ffprobe$ext" "$out/ffprobe-$target$ext"
 strip "$out/ffmpeg-$target$ext" "$out/ffprobe-$target$ext" 2>/dev/null || "${host:+$host-}strip" "$out/ffmpeg-$target$ext" "$out/ffprobe-$target$ext"
