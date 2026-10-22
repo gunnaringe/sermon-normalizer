@@ -95,7 +95,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if err := os.Rename(abs, dst); err != nil {
+	if err := normalizer.Rename(abs, dst); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("could not move it to the trash: %w", err))
 		return
 	}
@@ -104,7 +104,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		s.cfg.Logger.Printf("trash: no note in %s: %v", dst, err)
 	}
 	if parent := filepath.Dir(abs); parent != s.root {
-		os.Remove(parent) // the year, if it is empty now
+		normalizer.Remove(parent) // the year, if it is empty now
 	}
 	s.cfg.Logger.Printf("trash: %s moved to the trash as %s", rel, id)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "days": s.trashDays()})
@@ -182,9 +182,9 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, fmt.Errorf("%s exists again: rename or delete that recording first", filepath.Base(dst)))
 		return
 	}
-	os.Remove(filepath.Join(dir, trashNote))
+	normalizer.Remove(filepath.Join(dir, trashNote))
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err == nil {
-		err = os.Rename(dir, dst)
+		err = normalizer.Rename(dir, dst)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("could not restore it: %w", err))
@@ -201,7 +201,7 @@ func (s *Server) handleTrashRemove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
-	if err := os.RemoveAll(dir); err != nil {
+	if err := normalizer.RemoveAll(dir); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -215,7 +215,7 @@ func (s *Server) purgeTrash(now time.Time) {
 		if it.DaysLeft > 0 {
 			continue
 		}
-		if err := os.RemoveAll(filepath.Join(s.trashRoot(), it.ID)); err != nil {
+		if err := normalizer.RemoveAll(filepath.Join(s.trashRoot(), it.ID)); err != nil {
 			s.cfg.Logger.Printf("trash: could not remove %s: %v", it.ID, err)
 			continue
 		}

@@ -123,6 +123,10 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/` and `normalizer/` know nothing of the desktop app: no desktop flags, settings or branches. It uses
   the studio's public API only (`NewApp`, `Handler`, `Busy`, `Close`); what it needs more goes in
   `cmd/sermon-studio-desktop/`, so it can be removed by deleting that folder (and its docs and build script).
+- Rename and remove with `normalizer.Rename`/`Remove`/`RemoveAll`, not the `os` ones: on Windows they try
+  again for a few seconds while a file is in use (a preview playing, a virus scan). A sermon folder's path
+  must fit Windows' 259 characters with its longest file (`folderFits`); names cannot end in a dot, and
+  Windows' device names (`nul`, `com1` ...) are not churches or kept file names (`windowsDevice`).
 - Measure with `ebur128` (`FFmpeg.Measure`), not `loudnorm`.
 - Messages from `normalizer` show in the web UI: use the form's names
   (Start, Save, mono), not flags. English everywhere.

@@ -2,10 +2,11 @@ package web
 
 import (
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // leftoverAge is how long a half-written file may sit untouched before it is
@@ -36,12 +37,12 @@ func (s *Server) sweepLeftovers(now time.Time) {
 			if err != nil || now.Sub(info.ModTime()) < leftoverAge {
 				return nil
 			}
-			if os.Remove(path) != nil {
+			if normalizer.Remove(path) != nil {
 				return nil
 			}
 			s.cfg.Logger.Printf("cleanup: removed %s, untouched since %s", path, info.ModTime().Format(time.DateTime))
 			if parent := filepath.Dir(path); parent != dir && strings.HasSuffix(d.Name(), ".upload") {
-				os.Remove(parent) // only if it is empty now
+				normalizer.Remove(parent) // only if it is empty now
 			}
 			return nil
 		})

@@ -256,7 +256,7 @@ func (a *App) saveShares(t *tenant) error {
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return normalizer.Rename(tmp, path)
 }
 
 // findShare is the church and share of a code, or nil.
@@ -592,7 +592,7 @@ func (a *App) setPaused(w http.ResponseWriter, r *http.Request, pause bool) {
 	if pause {
 		for uid := range pending {
 			if !a.share.busy[uid] {
-				os.Remove(partialPath(t, uid))
+				normalizer.Remove(partialPath(t, uid))
 			}
 		}
 	}
@@ -668,7 +668,7 @@ func (a *App) removeShares(t *tenant, pick func(*Share) bool) (n int, open bool,
 	for _, sh := range gone {
 		for uid := range sh.Pending {
 			if !a.share.busy[uid] {
-				os.Remove(partialPath(t, uid))
+				normalizer.Remove(partialPath(t, uid))
 			}
 		}
 		a.cfg.Base.Logger.Printf("share: %s removed share %s (%q)", t.id, sh.ID, sh.Label)

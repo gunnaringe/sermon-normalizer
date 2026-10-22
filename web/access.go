@@ -23,9 +23,9 @@ const (
 // reservedID reports ids that cannot be churches: "default" is the church
 // of --root, no church may have the administrators' group, and the first
 // words of the page addresses (#/<church>/folder/...; old ones had no church)
-// would be mistaken for a church.
+// would be mistaken for a church. Nor can a church have a name Windows keeps for a device (nul).
 func reservedID(id string) bool {
-	return id == RootTenant || groupOf(id) == groupOf(AdminID) || reservedPages[id]
+	return id == RootTenant || groupOf(id) == groupOf(AdminID) || reservedPages[id] || windowsDevice(id)
 }
 
 var reservedPages = map[string]bool{"folder": true, "folders": true, "recording": true, "recordings": true, "settings": true, "upload": true, "shares": true}

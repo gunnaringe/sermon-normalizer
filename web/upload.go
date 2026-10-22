@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // MaxChunk is the largest upload chunk accepted. Browsers send recordings in
@@ -114,11 +116,11 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if fileExists(final) {
-		os.Remove(tmp)
+		normalizer.Remove(tmp)
 		writeError(w, http.StatusConflict, fmt.Errorf("%s appeared meanwhile", filepath.Base(final)))
 		return
 	}
-	if err := os.Rename(tmp, final); err != nil {
+	if err := normalizer.Rename(tmp, final); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

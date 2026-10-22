@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // A church can have its own logo, shown in the header instead of the app's:
@@ -113,8 +115,8 @@ func (a *App) handleLogoPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.removeLogos(t) // another type from before
-	if err := os.Rename(tmp, dst); err != nil {
-		os.Remove(tmp)
+	if err := normalizer.Rename(tmp, dst); err != nil {
+		normalizer.Remove(tmp)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -136,6 +138,6 @@ func (a *App) removeLogos(t *tenant) {
 		return
 	}
 	for _, ext := range logoTypes {
-		os.Remove(filepath.Join(t.dir, "logo"+ext))
+		normalizer.Remove(filepath.Join(t.dir, "logo"+ext))
 	}
 }

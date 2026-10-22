@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -67,10 +66,10 @@ func (f FFmpeg) RunToProgress(ctx context.Context, dst string, progress func(sec
 	ext := filepath.Ext(dst) // ffmpeg picks the format from the extension
 	tmp := strings.TrimSuffix(dst, ext) + ".partial" + ext
 	if _, err := f.run(ctx, progress, append(append([]string{"-y"}, args...), tmp)); err != nil {
-		os.Remove(tmp)
+		Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, dst)
+	return Rename(tmp, dst)
 }
 
 // progressWriter reads ffmpeg's -progress output (key=value lines) and

@@ -107,6 +107,9 @@ func (s *Server) newRawFolder(date, name string) (string, int, error) {
 			return "", http.StatusBadRequest, err
 		}
 	}
+	if err := folderFits(folder); err != nil {
+		return "", http.StatusBadRequest, err
+	}
 	if !fileExists(folder) {
 		return folder, 0, nil
 	}

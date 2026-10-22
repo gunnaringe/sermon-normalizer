@@ -72,7 +72,7 @@ func (s *Server) handleSample(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tmp.Close()
-	defer os.Remove(tmp.Name())
+	defer normalizer.Remove(tmp.Name())
 	if err := s.cfg.FFmpeg.Sample(r.Context(), raw, o, at, sampleSeconds, tmp.Name()); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return

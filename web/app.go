@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/gunnaringe/sermon-studio/normalizer"
 )
 
 // A church is a folder in the data dir:
@@ -219,7 +221,7 @@ func writeChurch(dir string, cc churchConfig) error {
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return normalizer.Rename(tmp, path)
 }
 
 // start brings up the Server of one church and adds it to the list.

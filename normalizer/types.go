@@ -3,7 +3,6 @@ package normalizer
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -94,7 +93,7 @@ func (f FFmpeg) Convert(ctx context.Context, src, dst string, progress func(seco
 		err = fmt.Errorf("%s does not have exactly the audio of %s", filepath.Base(dst), filepath.Base(src))
 	}
 	if err != nil {
-		os.Remove(dst)
+		Remove(dst)
 	}
 	return err
 }
