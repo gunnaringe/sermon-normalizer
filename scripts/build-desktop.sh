@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the desktop program for every system into dist/, with our ffmpeg built in (scripts/fetch-ffmpeg.sh,
-# from the release in ffmpeg/versions). Host Go, or a container without one.
+# from the release in packaging/ffmpeg-release). Host Go, or a container without one.
 #
 #   scripts/build-desktop.sh [version]
 #
@@ -18,7 +18,7 @@ trap "rm -f $embed/ffmpeg.gz $embed/LICENSES.txt" EXIT
 for t in '"$targets"'; do
 	os=${t%-*} arch=${t#*-} ext= flags=
 	[ "$os" = windows ] && ext=.exe flags=-H=windowsgui
-	cp "ffmpeg/out/embed/$t/ffmpeg.gz" "ffmpeg/out/embed/$t/LICENSES.txt" "$embed/"
+	cp "dist/ffmpeg/embed/$t/ffmpeg.gz" "dist/ffmpeg/embed/$t/LICENSES.txt" "$embed/"
 	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -tags embedffmpeg -trimpath -ldflags="-s -w $flags -X main.version=$1" \
 		-o "dist/sermon-studio-desktop-$t$ext" ./cmd/sermon-studio-desktop
 	echo "dist/sermon-studio-desktop-$t$ext"

@@ -34,7 +34,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   (`OpenWindow`), one copy at a time (`/_desktop/hello` with the token) and stopping when idle (`Presence`:
   `/_desktop/alive`, an event stream held by a script it adds to the page, plus `App.Busy`). ffmpeg is built in
   with `-tags embedffmpeg` (`FFmpeg`: unpacked into the cache, checked by its hash); `scripts/build-desktop.sh`
-  does that. `ffmpeg/`: our LGPL ffmpeg, built and released by the ffmpeg workflow (ffmpeg/README.md).
+  does that, with the release of github.com/gunnaringe/ffmpeg-lgpl pinned in `packaging/ffmpeg-release` and
+  `packaging/ffmpeg.sha256` (that repo builds it and runs this repo's Go tests against every build).
 - `web/app.go`: `App` = the churches (tenants). A church is a folder in
   `--data-dir`: `<id>/church.json` (name, tags; optional), `<id>/Taler`,
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default

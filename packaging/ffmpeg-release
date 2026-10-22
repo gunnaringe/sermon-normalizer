@@ -1,0 +1,5 @@
+# The ffmpeg built into the desktop app: a release of github.com/gunnaringe/ffmpeg-lgpl (a small static LGPL
+# build, tested with this repo's Go tests on every system). packaging/ffmpeg.sha256 has the SHA-256 of its
+# files, from its SHA256SUMS: scripts/fetch-ffmpeg.sh refuses anything else. Change both together.
+FFMPEG_REPO=gunnaringe/ffmpeg-lgpl
+FFMPEG_RELEASE=9.0.2-1

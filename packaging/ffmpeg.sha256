@@ -1,0 +1,8 @@
+# SHA-256 of the files of the ffmpeg-lgpl release in packaging/ffmpeg-release (from its SHA256SUMS):
+# scripts/fetch-ffmpeg.sh refuses anything else. Change it with the release.
+534e84cf26a952ee8a31a0475440974452838df47e258b3fd4fe296b29d1d559  LICENSES.txt
+c52d9aa9b172d929e416f8c98d075435fab6b11e407625df7dc31abda10cf746  ffmpeg-darwin-amd64
+51104cf67913e9fd125fbe78896c2dd0ba783a94d4ac1d82c1629d20fe612f60  ffmpeg-darwin-arm64
+144d85a8b2a816419a4c679ad1d4d16d5e0878d4ee37545dd2fcc1991c3883d6  ffmpeg-linux-amd64
+534d0e303a4784ad810daa21cce4aa459e423760d87b9a71c918ba7b858c05fe  ffmpeg-linux-arm64
+46e1d6e621899d3f589ee48a488b3ef9562149f487b5b1a29ca1b78dc00d4fdb  ffmpeg-windows-amd64.exe
