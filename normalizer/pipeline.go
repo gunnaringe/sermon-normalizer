@@ -862,7 +862,7 @@ func (p *Pipeline) join(ctx context.Context, dst string) error {
 		if err != nil {
 			return err
 		}
-		if m.LUFS < -70 {
+		if m.LUFS <= -70 {
 			return fmt.Errorf("the %s is silent", what)
 		}
 		length, err := p.FF.Duration(ctx, path)
