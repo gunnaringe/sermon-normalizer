@@ -3,7 +3,7 @@
 // been processed, only a way into the editor.
 import { api, q, h, href, formatSize, formatTime, forTenant } from './util.js';
 import { alertDialog, confirmDialog } from './dialog.js';
-import { showCode, parseExpiry, recordingShares } from './shares.js';
+import { showCode, expiryInput, recordingShares } from './shares.js';
 import { t, tn, tr } from './i18n.js';
 
 const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
@@ -16,8 +16,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const DOWNLOAD_ICON = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
   + '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 // SHARE_ICON is the header's share icon (Feather, MIT), for the buttons that share.
+// EDIT_ICON, COPY_ICON and CHECK_ICON are Feather's edit-2, copy and check (MIT), on the icon buttons.
 const SHARE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/>'
   + '<circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+const EDIT_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+const COPY_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+  + '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const CHECK_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+
+// iconButton is a round button with only an icon; label is its name and its tooltip.
+function iconButton(tag, icon, label, attrs = {}) {
+  const el = h(tag, { ...(tag === 'button' ? { type: 'button' } : {}), ...attrs,
+    class: 'icon-button' + (attrs.class ? ' ' + attrs.class : ''), 'aria-label': label, title: label });
+  el.innerHTML = icon;
+  return el;
+}
 
 // keptSeconds is what the saved version lasts: its sections without the cuts.
 function keptSeconds(s) {
@@ -127,27 +140,22 @@ export function sermonDetail(entry, ctx = {}) {
     return box;
   }
 
-  // shareLink shares the address of this recording, as the other shares do: the device's share sheet where
-  // there is one, else the clipboard. It opens the recordings page at it, in this church, for those with a login.
-  function shareLink() {
+  // copyLink copies the address of this recording: it opens the recordings page at it, in this church, for those
+  // with a login. A tick shows for a moment that it was copied.
+  function copyLink() {
     const url = location.origin + location.pathname + href('recording', entry.path);
     const note = h('span', { class: 'muted', role: 'status' });
-    const b = h('button', { type: 'button', name: 'share-link', class: 'with-icon', title: t('A link to this recording in the studio, for those who can log in'),
-      onclick: async () => {
-        if (navigator.share) {
-          try { await navigator.share({ title: entry.name, url }); } catch { /* closed */ }
-          return;
-        }
-        try {
-          await navigator.clipboard.writeText(url);
-          note.textContent = t('Link copied.');
-          setTimeout(() => { note.textContent = ''; }, 2500);
-        } catch (err) {
-          alertDialog({ title: t('Link to this recording'), body: url });
-        }
-      } });
-    b.innerHTML = SHARE_ICON;
-    b.append(t('Share link'));
+    const b = iconButton('button', COPY_ICON, t('Copy link'), { name: 'copy-link', onclick: async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        alertDialog({ title: t('Link to this recording'), body: url });
+        return;
+      }
+      b.innerHTML = CHECK_ICON;
+      note.textContent = t('Link copied.');
+      setTimeout(() => { b.innerHTML = COPY_ICON; note.textContent = ''; }, 2500);
+    } });
     return [b, note];
   }
 
@@ -219,7 +227,7 @@ export function sermonDetail(entry, ctx = {}) {
       } }, label);
     draw();
     const menu = h('details', { class: 'menu download-menu', open: menuOpen },
-      h('summary', { class: 'button primary' }, t('Download'), h('span', { class: 'caret', 'aria-hidden': 'true' }, '▾')),
+      Object.assign(h('summary', { class: 'button primary icon-button', 'aria-label': t('Download'), title: t('Download') }), { innerHTML: DOWNLOAD_ICON }),
       h('div', { class: 'menu-panel' },
         only ? h('span', { class: 'mode', role: 'group', 'aria-label': t('Version') },
           versionButton('', t('With intro and outro')), versionButton(SERMON_ONLY, t('Sermon only'))) : '',
@@ -231,7 +239,7 @@ export function sermonDetail(entry, ctx = {}) {
   // shareButton makes a download share of the files that have been made: a code and a link that let
   // someone without a login download them on the public share page, as often as it allows.
   function shareButton(info) {
-    return h('button', { type: 'button', name: 'share-download', onclick: async () => {
+    return iconButton('button', SHARE_ICON, t('Share for download…'), { name: 'share-download', onclick: async () => {
       const made = FORMATS.filter(([f]) => info.outputs.some((o) => o.format === f));
       const boxes = made.map(([f]) => h('input', { type: 'checkbox', name: 'format', value: f, checked: f === 'mp3' || !made.some(([m]) => m === 'mp3') }));
       // With an intro or outro, the share gives one of the two versions.
@@ -239,7 +247,7 @@ export function sermonDetail(entry, ctx = {}) {
         h('option', { value: '' }, t('With intro and outro')), h('option', { value: 'sermon' }, t('Sermon only'))) : null;
       const label = h('input', { type: 'text', name: 'label', id: 'download-label', maxlength: 80, value: entry.name });
       const max = h('input', { type: 'number', name: 'maxDownloads', min: 0, step: 1, placeholder: t('no limit') });
-      const expires = h('input', { type: 'text', name: 'expires', class: 'date', maxlength: 16, autocomplete: 'off', placeholder: t('yyyy-mm-dd [hh:mm]') });
+      const expires = expiryInput();
       for (;;) {
         const ok = await confirmDialog({ title: t('Share for download'), confirm: t('Make share'), body: [
           h('p', { class: 'muted' }, t('Makes a code and a link that let someone without a login download this sermon on the share page.')),
@@ -248,7 +256,7 @@ export function sermonDetail(entry, ctx = {}) {
             h('span', {}, t('Formats')), h('span', {}, boxes.map((b, i) => h('label', { class: 'check' }, b, ' ' + made[i][1] + ' '))),
             version ? [h('label', { for: 'download-version' }, t('Version')), version] : '',
             h('label', {}, t('Max downloads')), max,
-            h('label', {}, t('Expires')), expires),
+            h('span', {}, t('Expires')), expires.el),
         ] });
         if (!ok) return;
         try {
@@ -257,7 +265,7 @@ export function sermonDetail(entry, ctx = {}) {
             formats: boxes.filter((b) => b.checked).map((b) => b.value),
             sermonOnly: Boolean(version && version.value === 'sermon'),
             maxDownloads: Number(max.value) || 0,
-            expires: parseExpiry(expires.value),
+            expires: expires.value(),
           });
           await showCode(done.url, done.code, t('Download a sermon'));
           await recordingShares(entry.path, sharesBox);
@@ -266,7 +274,7 @@ export function sermonDetail(entry, ctx = {}) {
           await alertDialog({ body: err.message }); // then the form again, as it was filled in
         }
       }
-    } }, t('Share for download…'));
+    } });
   }
 
   // sharesBox lists the recording's own download shares (only when it has any).
@@ -275,7 +283,7 @@ export function sermonDetail(entry, ctx = {}) {
   function unprocessed(info) {
     return [
       labelEditor(),
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Open in the editor')), shareLink()),
+      h('p', { class: 'actions' }, iconButton('a', EDIT_ICON, t('Open in the editor'), { class: 'button', href: editURL }), copyLink()),
     ];
   }
 
@@ -310,8 +318,8 @@ export function sermonDetail(entry, ctx = {}) {
       h('div', { class: 'player-row' },
         h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
         h('span', { class: 'muted player-what' }, t('Plays: {what}', { what: playing }))),
-      h('div', { class: 'actions' }, downloadMenu(info, saved, status), h('a', { class: 'button', href: editURL }, t('Edit sermon')),
-        shareLink(), ctx.shares && info.outputs.length ? shareButton(info) : ''),
+      h('div', { class: 'actions' }, downloadMenu(info, saved, status), iconButton('a', EDIT_ICON, t('Edit sermon'), { class: 'button', href: editURL }),
+        copyLink(), ctx.shares && info.outputs.length ? shareButton(info) : ''),
       ctx.shares ? sharesBox : '',
     ];
   }

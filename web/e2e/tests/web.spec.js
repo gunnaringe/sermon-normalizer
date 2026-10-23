@@ -932,15 +932,21 @@ test('shares: make a code in the studio, send a recording with the link', async 
   await expect(page.getByRole('heading', { name: 'Shares' })).toBeInViewport();
   await page.locator('input[name=label]').fill('Sound desk');
   await page.locator('input[name=maxUploads]').fill('3');
-  await page.locator('input[name=expires]').fill('2099-02-30');
+  await page.locator('input[name=expiresTime]').fill('12:00');
   await page.getByRole('button', { name: 'Make share' }).click();
-  await expect(page.getByText('Write the expiry as yyyy-mm-dd')).toBeVisible();
+  await expect(page.getByText('Pick a day for the expiry, or no time.')).toBeVisible();
+  await page.getByRole('button', { name: 'In a week' }).click(); // a quick pick: a day, and no time
+  const week = new Date();
+  week.setDate(week.getDate() + 7);
+  await expect(page.locator('input[name=expires]')).toHaveValue(week.toLocaleDateString('sv-SE'));
+  await expect(page.locator('input[name=expiresTime]')).toHaveValue('');
   await page.locator('input[name=expires]').fill('2099-12-31');
   await page.getByRole('button', { name: 'Make share' }).click();
   const dialog = page.getByRole('dialog');
   const link = await dialog.locator('.share-link').textContent();
   expect(link).toMatch(/^http:\/\/localhost:8081\/#code=[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/);
-  await page.screenshot({ path: path.join(shots, 'share-made.png') });
+  await expect(dialog.locator('.dialog-buttons').getByRole('button', { name: 'Share', exact: true })).toBeVisible(); // next to OK
+  await page.getByRole('dialog', { name: 'Share made' }).screenshot({ path: path.join(shots, 'share-made.png'), animations: 'disabled' });
   // Holding the code copies it; Share (no share menu in this browser) copies the link.
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const code = dialog.locator('.share-code');
@@ -1041,10 +1047,11 @@ test('download shares: share a finished sermon from its row, download it on the 
   await expect(dialog.getByLabel('Opus')).toHaveCount(0); // not made
   await dialog.locator('input[name=label]').fill('For Anna');
   await dialog.locator('input[name=maxDownloads]').fill('1');
-  await dialog.locator('input[name=expires]').fill('2099-02-30');
+  await dialog.locator('input[name=expiresTime]').fill('12:00'); // a time, but no day
   await dialog.getByRole('button', { name: 'Make share' }).click();
   await page.getByRole('dialog', { name: 'Something went wrong' }).getByRole('button', { name: 'OK' }).click();
   await expect(dialog.locator('input[name=label]')).toHaveValue('For Anna'); // the form again, as it was
+  await dialog.locator('input[name=expiresTime]').fill('');
   await dialog.locator('input[name=expires]').fill('2099-12-31');
   await page.screenshot({ path: path.join(shots, 'share-download-dialog.png') });
   await dialog.getByRole('button', { name: 'Make share' }).click();
