@@ -82,3 +82,63 @@ test('settings: intro and outro clips, the defaults, archive and delete', async 
   expect(fs.readdirSync(path.join(DATA, 'churches', 'first-church', 'clips'))).toEqual([]);
   fs.rmSync(dir, { recursive: true });
 });
+
+test('editor: the intro and outro of a sermon, its own clip, and a deleted one', async ({ page, request }) => {
+  // A church clip as the default intro.
+  expect((await request.post('api/clips?name=Jingle.wav', { data: wav(3) })).ok()).toBe(true);
+  await expect.poll(async () => (await (await request.get('api/clips')).json()).clips.length).toBe(1);
+  const jingle = (await (await request.get('api/clips')).json()).clips[0].id;
+  expect((await request.put('api/clips/defaults', { data: { intro: jingle, outro: '', pause: 0.5 } })).ok()).toBe(true);
+
+  const folder = '2027/2027-06-06';
+  const dir = path.join(DATA, 'root', folder);
+  const draft = () => (fs.existsSync(path.join(dir, 'draft.json')) ? JSON.parse(fs.readFileSync(path.join(dir, 'draft.json'), 'utf8')).sermon : {});
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(path.join(DATA, 'upload.flac'), path.join(dir, '2027-06-06_raw.flac'));
+  await page.goto('#/folder/' + folder);
+  await page.waitForFunction(() => window.__editor && window.__editor.ws.getDuration() > 0, null, { timeout: 60_000 });
+  await page.evaluate(() => { if (!window.__editor.sections.length) window.__editor.addSection(3, 25); });
+
+  const step = page.locator('section[aria-labelledby=step-clips]');
+  await expect(step.getByRole('heading', { name: 'Intro and outro' })).toBeVisible();
+  const intro = step.locator('select[name=intro]'), outro = step.locator('select[name=outro]');
+  await expect(intro).toHaveValue('default');
+  await expect(intro.locator('option:checked')).toHaveText('Church default: Jingle');
+  await expect(outro.locator('option:checked')).toHaveText('Church default: none');
+  await expect(step).toContainText('With the intro and outro:');
+
+  // The sermon's own outro.
+  const chooser = page.waitForEvent('filechooser');
+  await outro.selectOption({ label: 'Upload for this sermon only…' });
+  await (await chooser).setFiles({ name: 'Takk.wav', mimeType: 'audio/wav', buffer: wav(2) });
+  await expect(outro).toHaveValue('own');
+  await expect(outro.locator('option:checked')).toHaveText("This sermon's own: Takk");
+  await expect.poll(() => draft().outro).toBe('own');
+  await step.screenshot({ path: path.join(shots, 'editor-intro-outro.png') });
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Done' })).toBeVisible({ timeout: 90_000 });
+  for (const f of ['2027-06-06.mp3', '2027-06-06_sermon.mp3', '2027-06-06.flac', '2027-06-06_sermon.flac']) expect(fs.existsSync(path.join(dir, f)), f).toBe(true);
+  expect(fs.existsSync(path.join(dir, 'clips', 'outro.flac'))).toBe(true);
+
+  await step.getByRole('button', { name: "Add to the church's clips" }).click();
+  await expect(step).toContainText("Takk is among the church's clips now.");
+  await expect(step.getByRole('button', { name: "Add to the church's clips" })).toHaveCount(0); // once
+
+  // The intro chosen by name, then deleted: the editor says so, and the run is refused until another is chosen.
+  await intro.selectOption({ label: 'Jingle' });
+  await expect.poll(() => draft().intro).toBe(jingle);
+  expect((await request.put('api/clips/defaults', { data: { intro: '', outro: '' } })).ok()).toBe(true);
+  expect((await request.post('api/clips/' + jingle + '/delete')).ok()).toBe(true);
+  await page.reload();
+  await expect(intro.locator('option:checked')).toHaveText('A deleted clip');
+  await expect(step).toContainText('The intro this sermon used has been deleted. Choose another intro, or none.');
+  await expect(page.locator('.save-bar')).toContainText('the intro this sermon used has been deleted');
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await step.screenshot({ path: path.join(shots, 'editor-intro-deleted.png') });
+  await intro.selectOption({ label: 'None' });
+  await expect(page.locator('.save-bar')).not.toContainText('has been deleted');
+
+  for (const c of (await (await request.get('api/clips')).json()).clips) await request.post('api/clips/' + c.id + '/delete');
+  fs.rmSync(dir, { recursive: true });
+});

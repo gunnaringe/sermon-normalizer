@@ -59,6 +59,8 @@ type clipInfo struct {
 	Version  string    `json:"version"` // changes when the audio is replaced
 	Added    time.Time `json:"added"`
 	Archived bool      `json:"archived,omitempty"` // not offered for new choices; kept for the sermons that use it
+	// CopiedAs is, for a sermon's own clip, the church clip it was copied to (Add to the church's clips).
+	CopiedAs string `json:"copiedAs,omitempty"`
 }
 
 func (l clipLibrary) pause() float64 {
@@ -88,6 +90,9 @@ type pendingClip struct {
 	Name     string `json:"name"`
 	Replaces bool   `json:"replaces"`
 	Error    string `json:"error,omitempty"`
+	// A sermon's own clip: the folder (relative) and intro or outro; "" for a church clip.
+	Folder string `json:"folder,omitempty"`
+	Which  string `json:"which,omitempty"`
 }
 
 var (
@@ -169,7 +174,9 @@ func (s *Server) clipList(use map[string]int) map[string]any {
 	}
 	pending := []pendingClip{}
 	for _, p := range s.clips.pending {
-		pending = append(pending, *p)
+		if p.Folder == "" {
+			pending = append(pending, *p)
+		}
 	}
 	slices.SortFunc(pending, func(a, b pendingClip) int { return strings.Compare(a.Name, b.Name) })
 	return map[string]any{
@@ -199,72 +206,109 @@ func newClipID() string {
 	return hex.EncodeToString(b)
 }
 
+// clipUpload is where an upload goes and what becomes of it once prepared.
+type clipUpload struct {
+	key  string               // in clipStore.pending: a church clip's id, or ownKey for a sermon's own
+	dst  string               // the clip's file; the upload waits next to it, hidden
+	done func(clipInfo) error // records the clip, which is in place at dst (with Seconds and Version)
+}
+
 // POST api/clips?name=<file name>, the file as the body: a new clip, named after the file. It is
 // converted and checked in the background; until then it is among the pending ones.
 func (s *Server) handleClipAdd(w http.ResponseWriter, r *http.Request) {
-	s.receiveClip(w, r, newClipID(), false)
+	if s.clips.dir == "" {
+		writeError(w, http.StatusBadRequest, errNoClipFolder)
+		return
+	}
+	id := newClipID()
+	name := clipNameOf(r)
+	up := clipUpload{key: id, dst: s.clips.clipFile(id), done: func(info clipInfo) error {
+		s.clips.mu.Lock()
+		defer s.clips.mu.Unlock()
+		return s.clips.change(func(l *clipLibrary) error {
+			info.ID, info.Name, info.Added = id, name, time.Now().UTC().Truncate(time.Second)
+			l.Clips = append(l.Clips, info)
+			return nil
+		})
+	}}
+	if s.receiveClip(w, r, up, pendingClip{ID: id, Name: name}) {
+		s.writeClips(w, http.StatusAccepted)
+	}
 }
 
 // POST api/clips/{id}/replace?name=<file name>: new audio for a clip. The old stays in use until the new
 // is ready.
 func (s *Server) handleClipReplace(w http.ResponseWriter, r *http.Request) {
-	s.receiveClip(w, r, r.PathValue("id"), true)
-}
-
-func (s *Server) receiveClip(w http.ResponseWriter, r *http.Request, id string, replaces bool) {
-	if s.clips.dir == "" {
-		writeError(w, http.StatusBadRequest, errNoClipFolder)
-		return
-	}
-	file := filepath.Base(r.URL.Query().Get("name"))
-	ext := strings.ToLower(filepath.Ext(file))
-	if _, ok := normalizer.KindOf(file); !ok {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("a clip must be one of these types: %s", strings.Join(normalizer.InputTypes(), " ")))
-		return
-	}
-	name, err := cleanClipName(strings.TrimSuffix(file, filepath.Ext(file)))
-	if err != nil {
-		name = "Clip"
-	}
+	id := r.PathValue("id")
 	s.clips.mu.Lock()
-	_, known := s.clips.lib.find(id)
-	switch {
-	case replaces && !known:
-		err = errNoClip
-	case s.clips.pending[id] != nil && s.clips.pending[id].Error == "":
-		err = errors.New("this clip is being prepared; wait until that is done")
-	}
-	if err == nil {
-		if replaces {
-			i, _ := s.clips.lib.find(id)
-			name = s.clips.lib.Clips[i].Name
-		}
-		s.clips.pending[id] = &pendingClip{ID: id, Name: name, Replaces: replaces}
+	i, ok := s.clips.lib.find(id)
+	var name string
+	if ok {
+		name = s.clips.lib.Clips[i].Name
 	}
 	s.clips.mu.Unlock()
-	if errors.Is(err, errNoClip) {
-		writeError(w, http.StatusNotFound, err)
+	if !ok {
+		writeError(w, http.StatusNotFound, errNoClip)
 		return
 	}
-	if err != nil {
-		writeError(w, http.StatusConflict, err)
-		return
-	}
-	fail := func(status int, err error) {
+	up := clipUpload{key: id, dst: s.clips.clipFile(id), done: func(info clipInfo) error {
 		s.clips.mu.Lock()
-		delete(s.clips.pending, id)
+		defer s.clips.mu.Unlock()
+		return s.clips.change(func(l *clipLibrary) error {
+			if i, ok := l.find(id); ok {
+				l.Clips[i].Seconds, l.Clips[i].Version = info.Seconds, info.Version
+			}
+			return nil
+		})
+	}}
+	if s.receiveClip(w, r, up, pendingClip{ID: id, Name: name, Replaces: true}) {
+		s.writeClips(w, http.StatusAccepted)
+	}
+}
+
+// clipNameOf is the name a clip gets from the file it was uploaded as (?name=).
+func clipNameOf(r *http.Request) string {
+	file := filepath.Base(r.URL.Query().Get("name"))
+	name, err := cleanClipName(strings.TrimSuffix(file, filepath.Ext(file)))
+	if err != nil {
+		return "Clip"
+	}
+	return name
+}
+
+// receiveClip takes the uploaded file (the body, its name in ?name=) next to up.dst and prepares it in the
+// background, as p among the pending ones. It reports whether it did; if not, it has answered.
+func (s *Server) receiveClip(w http.ResponseWriter, r *http.Request, up clipUpload, p pendingClip) bool {
+	file := filepath.Base(r.URL.Query().Get("name"))
+	if _, ok := normalizer.KindOf(file); !ok {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("a clip must be one of these types: %s", strings.Join(normalizer.InputTypes(), " ")))
+		return false
+	}
+	s.clips.mu.Lock()
+	busy := s.clips.pending[up.key] != nil && s.clips.pending[up.key].Error == ""
+	if !busy {
+		s.clips.pending[up.key] = &p
+	}
+	s.clips.mu.Unlock()
+	if busy {
+		writeError(w, http.StatusConflict, errors.New("this clip is being prepared; wait until that is done"))
+		return false
+	}
+	fail := func(status int, err error) bool {
+		s.clips.mu.Lock()
+		delete(s.clips.pending, up.key)
 		s.clips.mu.Unlock()
 		writeError(w, status, err)
+		return false
 	}
-	if err := os.MkdirAll(s.clips.dir, 0o755); err != nil {
-		fail(http.StatusInternalServerError, err)
-		return
+	dir := filepath.Dir(up.dst)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fail(http.StatusInternalServerError, err)
 	}
-	tmp := filepath.Join(s.clips.dir, "."+id+".upload"+ext)
+	tmp := filepath.Join(dir, "."+strings.TrimSuffix(filepath.Base(up.dst), ".flac")+".upload"+strings.ToLower(filepath.Ext(file)))
 	f, err := os.Create(tmp)
 	if err != nil {
-		fail(http.StatusInternalServerError, err)
-		return
+		return fail(http.StatusInternalServerError, err)
 	}
 	_, err = io.Copy(f, http.MaxBytesReader(w, r.Body, maxClipUpload))
 	if cerr := f.Close(); err == nil {
@@ -272,21 +316,18 @@ func (s *Server) receiveClip(w http.ResponseWriter, r *http.Request, id string, 
 	}
 	if err != nil {
 		normalizer.Remove(tmp)
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			fail(http.StatusRequestEntityTooLarge, fmt.Errorf("a clip can be at most %d MB", maxClipUpload>>20))
-		} else {
-			fail(http.StatusBadRequest, err)
+		if tooBig := (*http.MaxBytesError)(nil); errors.As(err, &tooBig) {
+			return fail(http.StatusRequestEntityTooLarge, fmt.Errorf("a clip can be at most %d MB", maxClipUpload>>20))
 		}
-		return
+		return fail(http.StatusBadRequest, err)
 	}
-	s.background(func() { s.prepareClip(id, tmp, name, replaces) })
-	s.writeClips(w, http.StatusAccepted)
+	s.background(func() { s.prepareClip(up, tmp, p.Name) })
+	return true
 }
 
-// prepareClip makes the uploaded file at tmp into the clip id: FLAC, the first audio stream only and no
-// tags, at most maxClipMinutes long and not silent. One conversion at a time, shared with the recordings'.
-func (s *Server) prepareClip(id, tmp, name string, replaces bool) {
+// prepareClip makes the uploaded file at tmp into the clip at up.dst: FLAC, the first audio stream only and
+// no tags, at most maxClipMinutes long and not silent. One conversion at a time, shared with the recordings'.
+func (s *Server) prepareClip(up clipUpload, tmp, name string) {
 	defer normalizer.Remove(tmp)
 	select {
 	case s.limits.decode <- struct{}{}:
@@ -294,35 +335,24 @@ func (s *Server) prepareClip(id, tmp, name string, replaces bool) {
 	case <-s.ctx.Done():
 		return
 	}
-	out := filepath.Join(s.clips.dir, "."+id+".new.flac")
+	out := filepath.Join(filepath.Dir(up.dst), "."+strings.TrimSuffix(filepath.Base(up.dst), ".flac")+".new.flac")
 	defer normalizer.Remove(out)
 	info, err := s.convertClip(tmp, out)
 	if err == nil {
-		s.clips.mu.Lock()
-		err = s.clips.change(func(l *clipLibrary) error {
-			if err := normalizer.Rename(out, s.clips.clipFile(id)); err != nil {
-				return err
-			}
-			if i, ok := l.find(id); ok {
-				l.Clips[i].Seconds, l.Clips[i].Version = info.Seconds, info.Version
-			} else if !replaces {
-				info.ID, info.Name, info.Added = id, name, time.Now().UTC().Truncate(time.Second)
-				l.Clips = append(l.Clips, info)
-			}
-			return nil
-		})
-		if err == nil {
-			delete(s.clips.pending, id)
-		}
-		s.clips.mu.Unlock()
+		err = normalizer.Rename(out, up.dst)
 	}
-	if err != nil {
-		s.cfg.Logger.Printf("clip %s (%s): %v", id, name, err)
-		s.clips.mu.Lock()
-		if p := s.clips.pending[id]; p != nil {
-			p.Error = err.Error()
-		}
-		s.clips.mu.Unlock()
+	if err == nil {
+		err = up.done(info)
+	}
+	s.clips.mu.Lock()
+	defer s.clips.mu.Unlock()
+	if err == nil {
+		delete(s.clips.pending, up.key)
+		return
+	}
+	s.cfg.Logger.Printf("clip %s (%s): %v", up.key, name, err)
+	if p := s.clips.pending[up.key]; p != nil {
+		p.Error = err.Error()
 	}
 }
 

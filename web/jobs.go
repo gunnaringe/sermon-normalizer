@@ -218,6 +218,9 @@ func (js *jobs) run(ctx context.Context, j *job, pl plan) {
 	err := p.Run(ctx)
 	lw.flush()
 	js.s.recordOutputs(pl, began)
+	if err == nil && pl.Clips.key() == "" {
+		js.s.dropSermonOnly(pl)
+	}
 	if oldKey != "" {
 		if raw := pl.paths.Source(); raw != "" {
 			js.s.analyses.carry(oldKey, raw)

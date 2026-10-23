@@ -63,8 +63,12 @@ func (p processing) request(stereo bool) runRequest {
 	return q
 }
 
-// start is what a recording starts with.
-func (p processing) start() runRequest { return p.request(p.Stereo) }
+// start is what a recording starts with: also the church's default intro and outro.
+func (p processing) start() runRequest {
+	q := p.request(p.Stereo)
+	q.Intro, q.Outro = clipDefault, clipDefault
+	return q
+}
 
 func (p processing) validate() error {
 	if p.FadeIn > maxDefaultFade || p.FadeOut > maxDefaultFade {
