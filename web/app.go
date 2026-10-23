@@ -60,6 +60,8 @@ type churchConfig struct {
 	// EndedSharesDays is how many days a share that has ended is kept before it is removed by itself;
 	// nil = defaultEndedSharesDays, 0 = never.
 	EndedSharesDays *int `json:"endedSharesDays,omitempty"`
+	// Clips are the intro and outro clips (clips.go): the list, the defaults, the pause.
+	Clips *clipLibrary `json:"clips,omitempty"`
 }
 
 // TenantInfo is a church as listed in the UI.
@@ -243,6 +245,8 @@ func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
 		cfg.SaveMeta = func(m Meta) error { return a.update(t, func(c *churchConfig) { c.Meta = &m }) }
 		cfg.Processing = cc.Processing
 		cfg.SaveProcessing = func(p *processing) error { return a.update(t, func(c *churchConfig) { c.Processing = p }) }
+		cfg.ClipsDir, cfg.Clips = filepath.Join(dir, clipsDir), cc.Clips
+		cfg.SaveClips = func(l clipLibrary) error { return a.update(t, func(c *churchConfig) { c.Clips = &l }) }
 	}
 	if dir != "" {
 		var err error

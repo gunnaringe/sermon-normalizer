@@ -50,6 +50,11 @@ type Config struct {
 	// stores a change (nil = back to the built-in); nil = kept in memory only.
 	Processing     *processing
 	SaveProcessing func(*processing) error
+	// ClipsDir holds the church's intro and outro clips (clips.go); "" = none can be added. Clips is their
+	// list, SaveClips stores a change (nil = kept in memory only).
+	ClipsDir  string
+	Clips     *clipLibrary
+	SaveClips func(clipLibrary) error
 }
 
 // limits keeps the heavy work to one at a time, across all churches.
@@ -80,6 +85,7 @@ type Server struct {
 	inbox    *inboxWatcher
 	meta     metaStore
 	proc     procStore
+	clips    clipStore
 	ingestMu sync.Mutex // one inbox file moves at a time
 	stateMu  sync.Mutex // recording.json is read, changed and written as one step
 
@@ -117,6 +123,13 @@ func New(cfg Config) (*Server, error) {
 		s.meta.meta = *cfg.Meta
 	}
 	s.proc = procStore{proc: cfg.Processing, save: cfg.SaveProcessing}
+	s.clips = clipStore{dir: cfg.ClipsDir, save: cfg.SaveClips, pending: map[string]*pendingClip{}}
+	if cfg.Clips != nil {
+		s.clips.lib = *cfg.Clips
+	}
+	if cfg.ClipsDir != "" {
+		s.clips.sweep()
+	}
 	s.jobs = newJobs(s)
 	s.analyses = newAnalyses(s)
 	if cfg.Inbox != "" {
@@ -188,6 +201,13 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/settings", s.handleSettings)
 	mux.HandleFunc("PUT /api/settings", s.handleSettingsPut)
 	mux.HandleFunc("PUT /api/processing", s.handleProcessingPut)
+	mux.HandleFunc("GET /api/clips", s.handleClips)
+	mux.HandleFunc("POST /api/clips", s.handleClipAdd)
+	mux.HandleFunc("PUT /api/clips/defaults", s.handleClipDefaults)
+	mux.HandleFunc("PUT /api/clips/{id}", s.handleClipPut)
+	mux.HandleFunc("POST /api/clips/{id}/replace", s.handleClipReplace)
+	mux.HandleFunc("POST /api/clips/{id}/delete", s.handleClipDelete)
+	mux.HandleFunc("GET /api/clips/{id}/audio", s.handleClipAudio)
 	mux.HandleFunc("POST /api/meta/preview", s.handleMetaPreview)
 	mux.HandleFunc("GET /api/folders", s.handleFolders)
 	mux.HandleFunc("GET /api/folder", s.handleFolder)

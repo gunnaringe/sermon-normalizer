@@ -8,6 +8,7 @@ import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
 import { trashView } from './trash.js';
+import { clipsView } from './clips.js';
 import { processingView } from './processing.js';
 import { recordingsView } from './recordings.js';
 import { t, tn, tr, lang, LANGS, setLang, getTheme, setTheme } from './i18n.js';
@@ -364,6 +365,9 @@ async function settingsView(box, part) {
   });
   showLogo(tenants.tenants.find((t) => t.id === currentTenant())?.logo || '');
 
+  const clips = h('section', { id: 'clips' });
+  await clipsView(clips);
+
   const trash = h('section', { id: 'trash' });
   await trashView(trash);
 
@@ -381,6 +385,7 @@ async function settingsView(box, part) {
       data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + tr(p.help) + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
     h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
     processing,
+    clips,
     trash,
     h('h2', {}, t('Waveform')),
     h('p', { class: 'muted' }, t('Saved in this browser only.')),

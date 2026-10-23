@@ -18,6 +18,11 @@ type sermonSettings struct {
 	FadeOut float64 `json:"fadeOut"`
 	// Sound is how the files are made from it; nil for one saved before the studio kept it (the defaults).
 	Sound *soundSettings `json:"sound,omitempty"`
+	// Intro and Outro are the clips around the sermon (clips.go): clipDefault, clipOwn, a church clip's id,
+	// or "" for none. Only the form is checked here: a clip deleted since is not an error (the sermon must
+	// not be lost), the run says so.
+	Intro string `json:"intro,omitempty"`
+	Outro string `json:"outro,omitempty"`
 }
 
 // soundSettings are the processing of a sermon: channels, noise, levels, loudness and bitrates.
@@ -67,6 +72,9 @@ func validSermon(c *sermonSettings) *sermonSettings {
 func (c sermonSettings) Validate() error {
 	if len(c.Sections) == 0 {
 		return errors.New("select the sermon: drag on the waveform")
+	}
+	if !validClipChoice(c.Intro) || !validClipChoice(c.Outro) {
+		return errors.New("the intro or outro is not one that can be chosen")
 	}
 	q := requestFrom(normalizer.DefaultOptions())
 	c.Sound.applyTo(&q)

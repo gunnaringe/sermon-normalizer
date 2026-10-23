@@ -68,6 +68,13 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/logo.go`: a church's own logo, `<church>/logo.png|jpg|webp|svg` (`PUT/GET/DELETE api/logo`, ≤1 MB, type sniffed; served
   with a sandbox CSP); its version is `logo` in the church list, and the header shows it instead of the app's, always in a square
   (another shape shrunk to fit; Settings warns), so the header is the same for every church.
+- `web/clips.go`: a church's intro and outro clips (#63): `<church>/clips/<id>.flac`, the list, the default intro/outro and the
+  pause in `church.json` (`clips`). An upload (`POST api/clips?name=`, `.../{id}/replace`) is converted, measured and given a
+  `version` in the background (`prepareClip`, the decode limit); until then it is `pending` (with its error if it failed).
+  Archive/restore/rename (`PUT api/clips/{id}`), delete (`POST .../delete`), defaults (`PUT api/clips/defaults`); the default
+  intro or outro cannot be archived or deleted. A sermon's choice is `intro`/`outro` in `sermonSettings` (`default`, `own`, a
+  clip id, "" = none): only its form is validated, never that the clip exists (a saved sermon must not be dropped).
+  `clipUse` counts the sermons (saved or draft) that chose each clip. Settings → Intro and outro is `clips.js`.
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/trash.go`: deleting a recording moves its date folder to `<root>/.trash/<id>/` (+ `trash.json`: where from, when); `GET api/trash`,
