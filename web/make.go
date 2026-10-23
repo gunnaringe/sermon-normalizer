@@ -64,9 +64,12 @@ func (s *Server) handleRemoveOutputs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	byFormat := map[string]string{}
+	byFormat, sermonOnly := map[string]string{}, map[string]string{}
 	for _, o := range outputsOf(paths) {
 		byFormat[o.format] = o.path
+	}
+	for _, o := range sermonOnlyOutputs(paths) {
+		sermonOnly[baseFormat(o.format)] = o.path
 	}
 	for _, f := range formats {
 		if byFormat[f] == "" {
@@ -79,15 +82,19 @@ func (s *Server) handleRemoveOutputs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, f := range formats {
-		if err := normalizer.Remove(byFormat[f]); err != nil && !errors.Is(err, os.ErrNotExist) {
-			writeError(w, http.StatusInternalServerError, errors.New("could not delete "+filepath.Base(byFormat[f])))
-			return
+		for _, p := range []string{byFormat[f], sermonOnly[f]} { // with the intro and outro, and the sermon only
+			if err := normalizer.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+				writeError(w, http.StatusInternalServerError, errors.New("could not delete "+filepath.Base(p)))
+				return
+			} else if err == nil {
+				s.cfg.Logger.Printf("deleted %s", s.display(p))
+			}
 		}
-		s.cfg.Logger.Printf("deleted %s", s.display(byFormat[f]))
 	}
 	if _, err := s.updateState(abs, func(st *folderState) error {
 		for _, f := range formats {
 			delete(st.Outputs, f)
+			delete(st.Outputs, f+normalizer.SermonOnly)
 		}
 		return nil
 	}); err != nil {

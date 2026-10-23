@@ -216,6 +216,9 @@ type folderInfo struct {
 	// it has been looked at; nil while that is still to come.
 	Recording     *recordingFacts `json:"recording"`
 	ConvertedFrom *sourceFile     `json:"convertedFrom"`
+	// MadeWith is the intro and outro the files were made with, if any, and whether making them again with
+	// the saved sermon would give other ones.
+	MadeWith *madeWith `json:"madeWith,omitempty"`
 }
 
 type outputFileInfo struct {
@@ -237,11 +240,12 @@ func (s *Server) folderInfo(abs string) (folderInfo, error) {
 			info.Recording = st.Recording
 		}
 	}
-	for _, o := range outputsOf(paths) {
+	for _, o := range append(outputsOf(paths), sermonOnlyOutputs(paths)...) {
 		if fi := s.fileInfo(o.path); fi != nil {
 			info.Outputs = append(info.Outputs, outputFileInfo{*fi, o.format})
 		}
 	}
+	info.MadeWith = s.madeWithOf(paths, st)
 	if j := s.jobs.latest(info.Path); j != nil {
 		snap := j.snapshot()
 		info.Job = &snap

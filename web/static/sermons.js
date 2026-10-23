@@ -7,6 +7,9 @@ import { showCode, parseExpiry, recordingShares } from './shares.js';
 import { t, tn, tr } from './i18n.js';
 
 const FORMATS = [['flac', 'FLAC'], ['mp3', 'MP3'], ['opus', 'Opus']];
+// SERMON_ONLY ends the format of the files without the intro and outro (flac_sermon ...).
+const SERMON_ONLY = '_sermon';
+const sermonOnly = (info) => info.outputs.filter((o) => o.format.endsWith(SERMON_ONLY));
 const fileURL = (f, download) => forTenant('api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -139,6 +142,9 @@ export function sermonDetail(entry, ctx = {}) {
     return h('button', { type: 'button', name: 'share-download', onclick: async () => {
       const made = FORMATS.filter(([f]) => info.outputs.some((o) => o.format === f));
       const boxes = made.map(([f]) => h('input', { type: 'checkbox', name: 'format', value: f, checked: f === 'mp3' || !made.some(([m]) => m === 'mp3') }));
+      // With an intro or outro, the share gives one of the two versions.
+      const version = sermonOnly(info).length ? h('select', { name: 'version', id: 'download-version' },
+        h('option', { value: '' }, t('With intro and outro')), h('option', { value: 'sermon' }, t('Sermon only'))) : null;
       const label = h('input', { type: 'text', name: 'label', id: 'download-label', maxlength: 80, value: entry.name });
       const max = h('input', { type: 'number', name: 'maxDownloads', min: 0, step: 1, placeholder: t('no limit') });
       const expires = h('input', { type: 'text', name: 'expires', class: 'date', maxlength: 16, autocomplete: 'off', placeholder: t('yyyy-mm-dd [hh:mm]') });
@@ -148,6 +154,7 @@ export function sermonDetail(entry, ctx = {}) {
           h('div', { class: 'share-form' },
             h('label', { for: 'download-label' }, t('Name')), label,
             h('span', {}, t('Formats')), h('span', {}, boxes.map((b, i) => h('label', { class: 'check' }, b, ' ' + made[i][1] + ' '))),
+            version ? [h('label', { for: 'download-version' }, t('Version')), version] : '',
             h('label', {}, t('Max downloads')), max,
             h('label', {}, t('Expires')), expires),
         ] });
@@ -156,6 +163,7 @@ export function sermonDetail(entry, ctx = {}) {
           const done = await api('POST', 'api/shares', {
             kind: 'download', recording: entry.path, label: label.value,
             formats: boxes.filter((b) => b.checked).map((b) => b.value),
+            sermonOnly: Boolean(version && version.value === 'sermon'),
             maxDownloads: Number(max.value) || 0,
             expires: parseExpiry(expires.value),
           });
@@ -207,6 +215,14 @@ export function sermonDetail(entry, ctx = {}) {
       tags.artist && t('Artist: {value}', { value: tags.artist }),
       tags.album && t('Album: {value}', { value: tags.album }),
     ].filter(Boolean);
+    // The intro and outro the files were made with, and whether making them again would give others.
+    const mw = info.madeWith;
+    const clipFacts = mw && [
+      mw.intro || mw.outro
+        ? t('Made with: {clips}', { clips: [mw.intro && t('intro {name}', { name: mw.intro.name }), mw.outro && t('outro {name}', { name: mw.outro.name })].filter(Boolean).join(', ') })
+        : t('Made without intro or outro'),
+      mw.changed ? t('The intro or outro has changed since: press Save in the editor to make the files again.') : '',
+    ].filter(Boolean).join(' · ');
     const status = h('p', { class: 'muted making', 'aria-live': 'polite' });
     const buttons = [];
     const downloads = FORMATS.map(([format, label]) => {
@@ -221,12 +237,24 @@ export function sermonDetail(entry, ctx = {}) {
       buttons.push(b);
       return b;
     });
+    // The sermon only, without the intro and outro, when the files have them: what is made, or a button to make it.
+    const only = sermonOnly(info);
+    const onlyRow = only.length ? h('p', { class: 'actions sermon-only' }, h('span', { class: 'muted' }, t('Sermon only, without intro and outro:')), ' ',
+      FORMATS.filter(([f]) => info.outputs.some((o) => o.format === f)).map(([format, label]) => {
+        const o = only.find((x) => x.format === format + SERMON_ONLY);
+        if (o) return h('a', { class: 'button dl on', href: fileURL(o, true), title: formatSize(o.size), 'aria-label': t('Download {format}, sermon only', { format: label }) }, label);
+        const b = h('button', { class: 'dl', title: t('Not made yet: make {format}', { format: label }), onclick: () => make(format, label, b, status, buttons) }, label);
+        buttons.push(b);
+        return b;
+      })) : '';
     const best = PLAY_ORDER.map((f) => info.outputs.find((x) => x.format === f)).find(Boolean);
     return [
       h('p', { class: 'facts' }, facts.join(' · ')),
+      clipFacts ? h('p', { class: 'facts' + (mw.changed ? ' warn' : '') }, clipFacts) : '',
       labelEditor(),
       h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
       h('p', { class: 'actions' }, downloads),
+      onlyRow,
       status,
       h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Edit sermon')), copyLink(),
         ctx.shares && info.outputs.length ? shareButton(info) : '', deleteButton()),

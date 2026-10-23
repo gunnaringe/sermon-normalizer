@@ -326,3 +326,38 @@ func (s *Server) dropSermonOnly(pl plan) {
 		return nil
 	})
 }
+
+// madeWith is the intro and outro the main files were made with.
+type madeWith struct {
+	Intro *clipRef `json:"intro"`
+	Outro *clipRef `json:"outro"`
+	// Changed: the saved sermon would get another intro or outro now (another clip, a new version of it, or
+	// one that has been deleted).
+	Changed bool `json:"changed"`
+}
+
+// madeWithOf is what the main files were made with; nil when there are none, or neither they nor the saved
+// sermon have clips.
+func (s *Server) madeWithOf(paths normalizer.Paths, st *folderState) *madeWith {
+	var m *madeWith
+	for _, x := range outputsOf(paths) {
+		if rec, ok := st.Outputs[x.format]; ok && fileExists(x.path) {
+			m = &madeWith{Intro: rec.Intro, Outro: rec.Outro}
+			break
+		}
+	}
+	if m == nil || st.Saved == nil {
+		return nil
+	}
+	same := func(a, b *clipRef) bool {
+		return (a == nil) == (b == nil) && (a == nil || a.ID == b.ID && a.Version == b.Version)
+	}
+	for i, choice := range []string{st.Saved.Intro, st.Saved.Outro} {
+		now, _, err := s.resolveClip(paths.Folder, clipWhich[i], choice)
+		m.Changed = m.Changed || err != nil || !same(now, []*clipRef{m.Intro, m.Outro}[i])
+	}
+	if m.Intro == nil && m.Outro == nil && !m.Changed {
+		return nil
+	}
+	return m
+}

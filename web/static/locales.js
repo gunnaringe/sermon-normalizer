@@ -695,6 +695,17 @@ export const nb = {
   "this sermon's own intro is missing: upload it again, or choose another": "prekenens egen intro mangler: last den opp på nytt, eller velg en annen",
   "this sermon's own outro is missing: upload it again, or choose another": "prekenens egen outro mangler: last den opp på nytt, eller velg en annen",
   "which must be intro or outro": "which må være intro eller outro",
+  "With intro and outro": "Med intro og outro",
+  "Sermon only": "Bare prekenen",
+  "Version": "Versjon",
+  "Made with: {clips}": "Laget med: {clips}",
+  "intro {name}": "intro {name}",
+  "outro {name}": "outro {name}",
+  "Made without intro or outro": "Laget uten intro og outro",
+  "The intro or outro has changed since: press Save in the editor to make the files again.": "Introen eller outroen er endret siden: trykk Lagre i redigeringen for å lage filene på nytt.",
+  "Sermon only, without intro and outro:": "Bare prekenen, uten intro og outro:",
+  "Download {format}, sermon only": "Last ned {format}, bare prekenen",
+  "sermon only": "bare prekenen",
 };
 
 export const nn = {
@@ -1390,4 +1401,15 @@ export const nn = {
   "this sermon's own intro is missing: upload it again, or choose another": "preika si eiga intro manglar: last ho opp på nytt, eller vel ein annan",
   "this sermon's own outro is missing: upload it again, or choose another": "preika si eiga outro manglar: last ho opp på nytt, eller vel ein annan",
   "which must be intro or outro": "which må vere intro eller outro",
+  "With intro and outro": "Med intro og outro",
+  "Sermon only": "Berre preika",
+  "Version": "Versjon",
+  "Made with: {clips}": "Laga med: {clips}",
+  "intro {name}": "intro {name}",
+  "outro {name}": "outro {name}",
+  "Made without intro or outro": "Laga utan intro og outro",
+  "The intro or outro has changed since: press Save in the editor to make the files again.": "Introen eller outroen er endra sidan: trykk Lagre i redigeringa for å lage filene på nytt.",
+  "Sermon only, without intro and outro:": "Berre preika, utan intro og outro:",
+  "Download {format}, sermon only": "Last ned {format}, berre preika",
+  "sermon only": "berre preika",
 };

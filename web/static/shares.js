@@ -24,7 +24,7 @@ function stateText(s) {
 
 function limits(s) {
   if (s.kind === 'download') {
-    return [s.formats.map((f) => FORMAT_NAMES[f] || f).join(' '),
+    return [s.formats.map((f) => FORMAT_NAMES[f] || f).join(' ') + (s.sermonOnly ? ' (' + t('sermon only') + ')' : ''),
       s.maxDownloads ? tn(s.maxDownloads, 'up to {n} download', 'up to {n} downloads') : t('no download limit'),
       s.expires ? t('until {time}', { time: formatDateTime(s.expires) }) : t('no expiry')].join(' · ');
   }
