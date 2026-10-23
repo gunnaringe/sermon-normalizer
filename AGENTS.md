@@ -52,7 +52,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/app.go`: `App` = the churches (tenants). A church is a folder in
   `--data-dir`: `<id>/church.json` (name, tags; optional), `<id>/Taler`,
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default
-  = first), shared one-encode/one-decode limits. A `Server` is one church.
+  = first), shared limits: `--parallel-runs` encodes (runs, samples; 1 by default), one decode. A `Server` is one church.
   `--root`/`--inbox` = one church without a folder (settings not saved).
 - `web/access.go`: `--groups-header` access control: group `sermon_studio_<church id, - → _>` = that church,
   `sermon_studio_admin` = all + add churches; `admin`/`default` are reserved ids. Every church request
@@ -105,7 +105,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   recording's labels, `cleanLabels`), folder info, run options, `check` (validates a run).
 - `web/make.go`: `POST api/make?path&format`: one missing format from the saved version (a normal run, no Force).
   `POST api/outputs/remove?path&format=…`: deletes outputs (only those) and their records; not during a run.
-- `web/jobs.go`: runs on the server context, one encode at a time, SSE events.
+- `web/jobs.go`: runs on the server context, `--parallel-runs` at a time (never two of one recording), SSE events.
 - `web/analysis.go`: conversion on arrival (`normalizer.ConvertsTo`: WAV/AIFF→FLAC, video→`.mka`), then waveform peaks + normalized MP3
   preview, cached by path+size+mtime; `carry` moves the cache on import.
 - `web/upload.go`: chunked upload straight to a date folder (the form is on top of the recordings page, `uploadBox` in `app.js`).

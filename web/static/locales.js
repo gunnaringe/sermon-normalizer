@@ -713,6 +713,7 @@ export const nb = {
   "Could not make the join: {error}": "Klarte ikke å lage overgangen: {error}",
   "this sermon has no intro": "denne prekenen har ingen intro",
   "this sermon has no outro": "denne prekenen har ingen outro",
+  "the files of this recording are being made; try again when that is done": "filene til dette opptaket lages nå; prøv igjen når det er ferdig",
 };
 
 export const nn = {
@@ -1426,4 +1427,5 @@ export const nn = {
   "Could not make the join: {error}": "Klarte ikkje å lage overgangen: {error}",
   "this sermon has no intro": "denne preika har ingen intro",
   "this sermon has no outro": "denne preika har ingen outro",
+  "the files of this recording are being made; try again when that is done": "filene til dette opptaket blir laga no; prøv igjen når det er ferdig",
 };

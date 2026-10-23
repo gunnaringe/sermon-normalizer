@@ -60,6 +60,7 @@ func run() error {
 	} {
 		flag.IntVar(l.v, l.name, l.d, l.help)
 	}
+	parallelRuns := flag.Int("parallel-runs", 1, "how many runs (making the files) can work at once, across all churches; each uses about one core")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -68,6 +69,9 @@ func run() error {
 	}
 	if *root == "" && *dataDir == "" {
 		return errors.New("--root or --data-dir is required")
+	}
+	if *parallelRuns < 1 {
+		return errors.New("--parallel-runs must be at least 1")
 	}
 	bin, err := exec.LookPath(*ffBin)
 	if err != nil {
@@ -83,7 +87,7 @@ func run() error {
 		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir,
 			Layout: *layout, TrashDays: *trashDays, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
 		DataDir: *dataDir, GroupsHeader: *groupsHeader, LogoutURL: *logoutURL,
-		Share: share,
+		Share: share, ParallelRuns: *parallelRuns,
 	})
 	if err != nil {
 		return err

@@ -59,6 +59,10 @@ func (s *Server) handleSample(w http.ResponseWriter, r *http.Request) {
 	if math.IsNaN(at) || at < 0 {
 		at = 0
 	}
+	if s.jobs.active(s.relPath(abs)) != nil { // it may be moving the recording
+		writeError(w, http.StatusConflict, errors.New("the files of this recording are being made; try again when that is done"))
+		return
+	}
 	select {
 	case s.limits.encode <- struct{}{}:
 		defer func() { <-s.limits.encode }()
@@ -114,6 +118,10 @@ func (s *Server) handleJoinSample(w http.ResponseWriter, r *http.Request) {
 	raw := pl.paths.Source()
 	if s.analyses.stage(raw) != "" {
 		writeError(w, http.StatusConflict, errors.New("the recording is still being converted or prepared; try again in a moment"))
+		return
+	}
+	if s.jobs.active(s.relPath(abs)) != nil { // it may be moving the recording
+		writeError(w, http.StatusConflict, errors.New("the files of this recording are being made; try again when that is done"))
 		return
 	}
 	select {

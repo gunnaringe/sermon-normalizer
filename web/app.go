@@ -48,6 +48,9 @@ type AppConfig struct {
 	LogoutURL string
 	// Share turns on shares (codes for the public upload page); nil = off.
 	Share *ShareOptions
+	// ParallelRuns is how many runs (and samples) can work at once, across all churches; 0 = 1. A run uses
+	// about one core; more of them wait their turn. One recording is never run twice at once.
+	ParallelRuns int
 }
 
 // churchConfig is church.json. Everything is optional: a church is a folder
@@ -135,7 +138,7 @@ func NewApp(cfg AppConfig) (*App, error) {
 	if cfg.Base.Logger == nil {
 		cfg.Base.Logger = log.New(os.Stderr, "", log.LstdFlags)
 	}
-	a := &App{cfg: cfg, limits: newLimits()}
+	a := &App{cfg: cfg, limits: newLimits(cfg.ParallelRuns)}
 	if cfg.Share != nil {
 		a.share = &shareState{limits: newLimiter(cfg.Share.Limits), busy: map[string]bool{}, sending: map[string]int{}, done: make(chan struct{})}
 	}
