@@ -1,27 +1,27 @@
 :root {
   color-scheme: light dark;
-  --bg: #f4f5fb;
-  --fg: #1b1c2b;
-  --muted: #62647a;
-  --line: #dfe1ee;
+  --bg: #f3f7f5;
+  --fg: #17221c;
+  --muted: #5c6b63;
+  --line: #d9e4de;
   --panel: #ffffff;
-  --panel-2: #f0f1fa;
-  --accent: #4f46e5;
+  --panel-2: #edf4f0;
+  --accent: #047857;
   --accent-fg: #ffffff;
   --ok: #15803d;
   --warn: #b45309;
   --error: #dc2626;
-  --wave: #a9b4dc;
-  --wave-progress: #4f46e5;
-  --selection: rgba(22, 163, 74, 0.22);
+  --wave: #a3c7b5;
+  --wave-progress: #047857;
+  --selection: rgba(14, 165, 233, 0.18);
   --silence: rgba(120, 120, 150, 0.16);
   --cut: rgba(220, 38, 38, 0.28);
-  --shadow: 0 0 0 0.5px rgba(30, 30, 80, 0.04), 0 1px 3px rgba(30, 30, 80, 0.06), 0 10px 30px -12px rgba(60, 60, 140, 0.2);
-  --shadow-lg: 0 2px 6px rgba(30, 30, 80, 0.08), 0 24px 56px -12px rgba(60, 60, 140, 0.35);
+  --shadow: 0 0 0 0.5px rgba(20, 50, 35, 0.04), 0 1px 3px rgba(20, 50, 35, 0.06), 0 10px 30px -12px rgba(25, 80, 55, 0.2);
+  --shadow-lg: 0 2px 6px rgba(20, 50, 35, 0.08), 0 24px 56px -12px rgba(25, 80, 55, 0.35);
   --glass: rgba(255, 255, 255, 0.72);
   /* the brand gradient: buttons, the active bits, the progress */
-  --grad: linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #2563eb 100%);
-  --grad-hover: linear-gradient(135deg, #5b52f0 0%, #8b4af0 55%, #3b73f0 100%);
+  --grad: linear-gradient(135deg, #047857 0%, #059669 55%, #0f766e 100%);
+  --grad-hover: linear-gradient(135deg, #065f46 0%, #047857 55%, #115e59 100%);
   --radius: 16px;
   --radius-inner: 12px;
 }
@@ -31,47 +31,47 @@
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d0e16;
-  --fg: #e9eaf4;
-  --muted: #9a9cb4;
-  --line: #2b2d42;
-  --panel: #171826;
-  --panel-2: #1e2033;
-  --accent: #8b8bff;
+  --bg: #0b120f;
+  --fg: #e5efea;
+  --muted: #93a69c;
+  --line: #24352d;
+  --panel: #121c17;
+  --panel-2: #18261f;
+  --accent: #34d399;
   --accent-fg: #ffffff;
   --ok: #4ade80;
   --warn: #fbbf24;
   --error: #ff7b7b;
-  --wave: #454f7c;
-  --wave-progress: #8b8bff;
-  --selection: rgba(74, 222, 128, 0.2);
+  --wave: #3a5c4c;
+  --wave-progress: #34d399;
+  --selection: rgba(56, 189, 248, 0.18);
   --silence: rgba(160, 160, 190, 0.13);
   --cut: rgba(255, 123, 123, 0.3);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -10px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 24px 56px -12px rgba(0, 0, 0, 0.8);
-  --glass: rgba(23, 24, 38, 0.72);
+  --glass: rgba(18, 28, 23, 0.72);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --bg: #0d0e16;
-    --fg: #e9eaf4;
-    --muted: #9a9cb4;
-    --line: #2b2d42;
-    --panel: #171826;
-    --panel-2: #1e2033;
-    --accent: #8b8bff;
+    --bg: #0b120f;
+    --fg: #e5efea;
+    --muted: #93a69c;
+    --line: #24352d;
+    --panel: #121c17;
+    --panel-2: #18261f;
+    --accent: #34d399;
     --accent-fg: #ffffff;
     --ok: #4ade80;
     --warn: #fbbf24;
     --error: #ff7b7b;
-    --wave: #454f7c;
-    --wave-progress: #8b8bff;
-    --selection: rgba(74, 222, 128, 0.2);
+    --wave: #3a5c4c;
+    --wave-progress: #34d399;
+    --selection: rgba(56, 189, 248, 0.18);
     --silence: rgba(160, 160, 190, 0.13);
     --cut: rgba(255, 123, 123, 0.3);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -10px rgba(0, 0, 0, 0.6);
     --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 24px 56px -12px rgba(0, 0, 0, 0.8);
-    --glass: rgba(23, 24, 38, 0.72);
+    --glass: rgba(18, 28, 23, 0.72);
   }
 }
 
@@ -88,8 +88,8 @@ body {
   /* a soft glow of the brand colours in two corners, fixed behind everything */
   background-color: var(--bg);
   background-image:
-    radial-gradient(52rem 34rem at 8% -8%, color-mix(in srgb, #4f46e5 16%, transparent), transparent 70%),
-    radial-gradient(46rem 30rem at 100% 0%, color-mix(in srgb, #2563eb 13%, transparent), transparent 70%);
+    radial-gradient(52rem 34rem at 8% -8%, color-mix(in srgb, #059669 14%, transparent), transparent 70%),
+    radial-gradient(46rem 30rem at 100% 0%, color-mix(in srgb, #0d9488 11%, transparent), transparent 70%);
   background-attachment: fixed;
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -106,7 +106,7 @@ header {
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   backdrop-filter: blur(14px) saturate(1.4);
   border-bottom: 1px solid var(--line);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent), 0 6px 20px -14px rgba(60, 60, 140, 0.4);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent), 0 6px 20px -14px rgba(25, 80, 55, 0.4);
 }
 header .brand { display: inline-flex; align-items: center; gap: 0.55rem; font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; color: var(--fg); text-decoration: none; }
 header .brand-name { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -173,7 +173,7 @@ button, .button {
   text-decoration: none;
   display: inline-block;
   font-weight: 500;
-  box-shadow: 0 1px 2px rgba(30, 30, 80, 0.05);
+  box-shadow: 0 1px 2px rgba(20, 50, 35, 0.05);
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 button:hover:not(:disabled), .button:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
@@ -181,8 +181,8 @@ button:active:not(:disabled), .button:active { transform: translateY(1px); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.danger { background: linear-gradient(135deg, #dc2626, #be185d); border-color: transparent; color: #fff; font-weight: 600; }
 button.danger:hover:not(:disabled) { background: linear-gradient(135deg, #ef4444, #db2777); box-shadow: 0 6px 16px -6px rgba(220, 38, 38, 0.6); }
-button.primary { background: var(--grad); border-color: transparent; color: var(--accent-fg); font-weight: 600; box-shadow: 0 4px 14px -4px rgba(79, 70, 229, 0.55); }
-button.primary:hover:not(:disabled) { background: var(--grad-hover); box-shadow: 0 8px 20px -6px rgba(79, 70, 229, 0.7); transform: translateY(-1px); }
+button.primary { background: var(--grad); border-color: transparent; color: var(--accent-fg); font-weight: 600; box-shadow: 0 4px 14px -4px rgba(4, 120, 87, 0.5); }
+button.primary:hover:not(:disabled) { background: var(--grad-hover); box-shadow: 0 8px 20px -6px rgba(4, 120, 87, 0.65); transform: translateY(-1px); }
 input[type=text], input[type=number] {
   font: inherit;
   padding: 0.35rem 0.6rem;
@@ -286,7 +286,7 @@ pre.log { max-height: 14rem; overflow: auto; background: var(--bg); border: 1px 
 .outputs audio { height: 2rem; }
 
 .drop { border: 2px dashed color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: var(--radius); padding: 1.5rem; text-align: center; color: var(--muted);
-  background: linear-gradient(135deg, color-mix(in srgb, #4f46e5 7%, transparent), color-mix(in srgb, #2563eb 5%, transparent)); transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; }
+  background: linear-gradient(135deg, color-mix(in srgb, #059669 7%, transparent), color-mix(in srgb, #0d9488 5%, transparent)); transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; }
 .drop.over { border-color: var(--accent); color: var(--fg); background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
 /* Newly imported recordings, above the years. */
 .recent { margin: 0 0 0.8rem; }
@@ -294,7 +294,7 @@ pre.log { max-height: 14rem; overflow: auto; background: var(--bg); border: 1px 
 /* The recordings page: search, years, labels. */
 .searchbar { margin: 0 0 1rem; }
 .search { width: 100%; box-sizing: border-box; font: inherit; padding: 0.7rem 1rem 0.7rem 2.6rem; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); box-shadow: var(--shadow);
-  background: var(--panel) no-repeat 1rem center / 1.1rem url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8ca8' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E"); }
+  background: var(--panel) no-repeat 1rem center / 1.1rem url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23869a90' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E"); }
 .results { margin: 0 0 0.4rem; }
 .year { margin: 0 0 0.8rem; }
 button.year-head { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.7rem 0.2rem 0.5rem; border: 0; border-radius: 0; box-shadow: none;
@@ -340,7 +340,7 @@ button.link { border: 0; background: none; box-shadow: none; color: var(--accent
 
 .dialog { border: 1px solid var(--line); border-radius: 20px; background: var(--panel); color: var(--fg); padding: 0; width: min(32rem, calc(100vw - 2rem)); box-shadow: var(--shadow-lg); }
 .dialog[open] { animation: pop 0.18s ease-out; }
-.dialog::backdrop { background: rgba(13, 14, 30, 0.5); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
+.dialog::backdrop { background: rgba(8, 20, 14, 0.5); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
 .dialog-body { padding: 1.2rem 1.4rem; }
 .dialog-body h2 { margin: 0 0 0.6rem; font-size: 1.15rem; }
@@ -448,7 +448,7 @@ table.list tr.detail-row td { background: var(--panel-2); border-bottom: 1px sol
 details.menu { position: relative; }
 details.menu > summary { list-style: none; display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; }
 details.menu > summary::-webkit-details-marker { display: none; }
-details.menu > summary.primary { background: var(--grad); border-color: transparent; color: var(--accent-fg); font-weight: 600; box-shadow: 0 4px 14px -4px rgba(79, 70, 229, 0.55); }
+details.menu > summary.primary { background: var(--grad); border-color: transparent; color: var(--accent-fg); font-weight: 600; box-shadow: 0 4px 14px -4px rgba(4, 120, 87, 0.5); }
 details.menu > summary.primary:hover { background: var(--grad-hover); }
 details.menu .caret { font-size: 0.8em; transition: transform 0.15s; }
 details.menu[open] .caret { transform: rotate(180deg); }
@@ -586,3 +586,6 @@ input.pause { width: 4.5em; }
   .save-actions button { padding: 0.4rem 0.75rem; }
   .save-actions .wide-only { display: none; } /* undo and redo: the arrows only */
 }
+
+/* sliders and boxes to tick in the app's colour */
+input[type=range], input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
