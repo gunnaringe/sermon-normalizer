@@ -302,11 +302,14 @@ export function sermonDetail(entry, ctx = {}) {
     ].filter(Boolean).join(' · ');
     const status = h('p', { class: 'muted making', 'aria-live': 'polite' });
     const best = PLAY_ORDER.map((f) => info.outputs.find((x) => x.format === f)).find(Boolean);
+    // What the player plays: the format, and with the intro and outro if the files have them.
+    const playing = FORMATS.find(([f]) => f === best.format)[1] + (mw && (mw.intro || mw.outro) ? ' · ' + t('with intro and outro') : '');
     return [
-      h('p', { class: 'facts' }, facts.join(' · ')),
+      h('div', { class: 'facts-line' }, h('p', { class: 'facts' }, facts.join(' · ')), labelEditor()),
       clipFacts ? h('p', { class: 'facts' + (mw.changed ? ' warn' : '') }, clipFacts) : '',
-      labelEditor(),
-      h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
+      h('div', { class: 'player-row' },
+        h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
+        h('span', { class: 'muted player-what' }, t('Plays: {what}', { what: playing }))),
       h('div', { class: 'actions' }, downloadMenu(info, saved, status), h('a', { class: 'button', href: editURL }, t('Edit sermon')),
         shareLink(), ctx.shares && info.outputs.length ? shareButton(info) : ''),
       ctx.shares ? sharesBox : '',

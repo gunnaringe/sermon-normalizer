@@ -59,7 +59,7 @@ Each can have a label, which shows on the waveform.
   recording's details in place. **Labels** are your own tags on a recording ("Easter", "guest speaker": up to 10, 30 characters; added with the + button, Enter or a comma, or picked from the labels already in use;
   removed with the × on the pill, kept as `labels` in `recording.json`, not written into the files). The search matches name, date and labels
   in every year at once (all words must match); a label on a row searches for it. A sermon's details have its player and
-  **Download**, which opens its files: each format with its size, or *Make* for one not made yet (from the saved version).
+  what it plays (*Plays: MP3 · with intro and outro*), and **Download**, which opens its files: each format with its size, or *Make* for one not made yet (from the saved version).
   **Share link** shares the address of one recording (the device's share sheet, or the clipboard),
   `#/<church>/recording/<path>`, which opens the page with its year and row open and scrolled to, for those who can log in.
 - **Editor:** the whole service as a waveform with a minimap overview, like Audacity or
@@ -150,7 +150,8 @@ Each can have a label, which shows on the waveform.
   keeps going if the browser is closed. Cancelling leaves nothing half-written.
 - **Status** on the recordings page, worked out from what is there: *to do* (not cut yet), *done*
   (a saved version, or files made), and next to it *no files* or *files out of date* (made from
-  another cut than the saved one) when Save has more to do; *converting*, *preparing* and
+  another cut than the saved one) when Save has more to do, and *not saved* when the editor has changes that were
+  neither saved nor reverted; *converting*, *preparing* and
   *processing* while the server works on it.
 - **Newly imported:** a recording that arrived (upload, inbox, share) in the last 7 days is also listed
   on top of the first page, with when it came. It folds open and shut like a year and is shut at first; the import time is kept in its `recording.json`.
