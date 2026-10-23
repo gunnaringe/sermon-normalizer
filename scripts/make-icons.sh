@@ -11,6 +11,6 @@ png 192 icon-192.png
 png 512 icon-512.png
 # iOS rounds the corners itself and turns transparent ones black: fill them.
 png 180 apple-touch-icon.png
-magick apple-touch-icon.png -background '#11055a' -flatten apple-touch-icon.png
+magick apple-touch-icon.png -background '#063326' -flatten apple-touch-icon.png
 if command -v oxipng >/dev/null; then oxipng -q -o 4 --strip safe ./*.png; fi
 ls -l ./*.png
