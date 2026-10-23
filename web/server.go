@@ -57,11 +57,12 @@ type Config struct {
 	SaveClips func(clipLibrary) error
 }
 
-// limits keeps the heavy work to one at a time, across all churches.
+// limits keeps the heavy work in check, across all churches: runs and samples (encode) up to runs at a time,
+// and one conversion or preparation of a new recording or clip (decode).
 type limits struct{ encode, decode chan struct{} }
 
-func newLimits() *limits {
-	return &limits{encode: make(chan struct{}, 1), decode: make(chan struct{}, 1)}
+func newLimits(runs int) *limits {
+	return &limits{encode: make(chan struct{}, max(runs, 1)), decode: make(chan struct{}, 1)}
 }
 
 // DefaultLayout puts imported recordings in <year>/<date>/.
@@ -79,7 +80,7 @@ type Server struct {
 	working   atomic.Int32
 	lastChunk atomic.Int64
 
-	limits   *limits // shared by all churches: one encode, one decode at a time
+	limits   *limits // shared by all churches: AppConfig.ParallelRuns encodes, one decode at a time
 	jobs     *jobs
 	analyses *analyses
 	inbox    *inboxWatcher
@@ -115,7 +116,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	if cfg.limits == nil {
-		cfg.limits = newLimits()
+		cfg.limits = newLimits(1)
 	}
 	s := &Server{cfg: cfg, root: root, ctx: ctx, cancel: cancel, limits: cfg.limits, tagDates: map[string]string{}}
 	s.meta = metaStore{meta: DefaultMeta, save: cfg.SaveMeta}

@@ -662,3 +662,29 @@ func TestRecordingSavedAndOutdated(t *testing.T) {
 		t.Errorf("made from another cut: %+v", e)
 	}
 }
+
+// With two parallel runs, a run starts while another works; a sample of a recording whose files are being
+// made is refused (the run may be moving the recording).
+func TestParallelRuns(t *testing.T) {
+	ts := newTestServerWith(t, normalizer.FFmpeg{}, func(c *Config) { c.limits = newLimits(2) })
+	ts.file(t, "2026-10-04/2026-10-04_raw.wav", "x")
+	ts.jobs.sem <- struct{}{} // another run is working
+	q := defaultRequest()
+	q.Sections = []span{{Start: 30, End: 3600}}
+	id := decode[jobSnapshot](t, ts.do(t, "POST", "/api/run?path=2026-10-04", q)).ID
+	for deadline := time.Now().Add(5 * time.Second); ts.jobs.get(id).snapshot().State == "queued"; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the second run waited for the first")
+		}
+	}
+
+	ts.jobs.sem <- struct{}{} // both are taken now: the next run waits, and its recording takes no sample
+	defer func() { <-ts.jobs.sem; <-ts.jobs.sem }()
+	ts.file(t, "2026-10-11/2026-10-11_raw.wav", "x")
+	if snap := decode[jobSnapshot](t, ts.do(t, "POST", "/api/run?path=2026-10-11", q)); snap.State != "queued" {
+		t.Errorf("a third run: %+v", snap)
+	}
+	if rec := ts.do(t, "POST", "/api/sample?path=2026-10-11&at=0", defaultRequest()); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "being made") {
+		t.Errorf("sample during its run: %d %s", rec.Code, rec.Body)
+	}
+}
