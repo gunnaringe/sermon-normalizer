@@ -219,6 +219,8 @@ type folderInfo struct {
 	// MadeWith is the intro and outro the files were made with, if any, and whether making them again with
 	// the saved sermon would give other ones.
 	MadeWith *madeWith `json:"madeWith,omitempty"`
+	// OriginalDeleted is when the original was deleted, keeping the files (handleDeleteOriginal).
+	OriginalDeleted *time.Time `json:"originalDeleted,omitempty"`
 }
 
 type outputFileInfo struct {
@@ -234,6 +236,7 @@ func (s *Server) folderInfo(abs string) (folderInfo, error) {
 	info := folderInfo{Path: s.relPath(abs), Date: paths.Date, Outputs: []outputFileInfo{}, Sermon: readSermon(abs)}
 	st := readState(abs)
 	info.ConvertedFrom = st.ConvertedFrom
+	info.OriginalDeleted = st.OriginalDeleted
 	if raw := paths.Source(); raw != "" {
 		info.Raw = s.fileInfo(raw)
 		if factsFresh(st, raw) {
@@ -478,6 +481,8 @@ func (s *Server) check(abs string, q runRequest) plan {
 	}
 	raw := paths.Source()
 	switch {
+	case raw == "" && readState(abs).OriginalDeleted != nil:
+		return fail(errors.New("the original recording was deleted, so the files cannot be made again"))
 	case raw == "":
 		return fail(errors.New("there is no raw recording to cut"))
 	case pl.opt.Start == 0 && pl.opt.End == 0:

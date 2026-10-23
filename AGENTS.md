@@ -88,6 +88,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/trash.go`: deleting a recording moves its date folder to `<root>/.trash/<id>/` (+ `trash.json`: where from, when); `GET api/trash`,
   restore, remove for good, and the purge after `--trash-days` (hourly, with the leftovers sweep). Hidden, so no path of the API reaches it.
+  `POST api/recordings/delete-original` deletes only the original (for good, with its analysis cache), keeping the files: only once
+  files are made, never during a run; `originalDeleted` in `recording.json`, and `check` then says the files cannot be made again.
+  Both are on the edit page (Delete), not the recordings page.
 - `web/recording.go`: `<folder>/recording.json`, the recording's state: `recording` (format, metadata,
   channel verdict; redone when the file's size/mtime change), `convertedFrom` (the WAV, AIFF or video it was made from), `imported` (when it arrived: `markImported`; `recentImports` lists the last `newFor` on top of the first page), the sermon, and `outputs`
   (how each file was made: `madeFrom` fingerprint → stale/up to date). Change it only through `updateState` (one lock;

@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,5 +107,52 @@ func TestTrashPurge(t *testing.T) {
 	}
 	if des, _ := os.ReadDir(ts.trashRoot()); len(des) != 0 {
 		t.Errorf("left: %v", des)
+	}
+}
+
+// Deleting the original keeps the files made from it, and says so; without files it is refused.
+func TestDeleteOriginal(t *testing.T) {
+	ts := newTestServer(t, normalizer.FFmpeg{})
+	ts.file(t, "2026/2026-10-04/original/2026-10-04_raw.flac", "audio")
+	ts.file(t, "2026/2026-10-04/2026-10-04.mp3", "mp3")
+	ts.file(t, "2026/2026-10-11/2026-10-11_raw.flac", "other")
+	del := func(q string) *httptest.ResponseRecorder {
+		return ts.do(t, "POST", "/api/recordings/delete-original?path="+q, nil)
+	}
+
+	for _, q := range []string{"2026", "nothing", "../x"} {
+		if w := del(q); w.Code < 400 {
+			t.Errorf("delete original of %q: %d", q, w.Code)
+		}
+	}
+	if w := del("2026/2026-10-11"); w.Code != http.StatusBadRequest {
+		t.Errorf("no files made, but deleted: %d", w.Code)
+	}
+	if !fileExists(filepath.Join(ts.root, "2026", "2026-10-11", "2026-10-11_raw.flac")) {
+		t.Error("the original without files is gone")
+	}
+
+	w := del("2026/2026-10-04")
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete original: %d %s", w.Code, w.Body)
+	}
+	info := decode[folderInfo](t, w)
+	if info.Raw != nil || info.OriginalDeleted == nil || len(info.Outputs) != 1 {
+		t.Errorf("after: raw %v, deleted %v, outputs %+v", info.Raw, info.OriginalDeleted, info.Outputs)
+	}
+	if fileExists(filepath.Join(ts.root, "2026", "2026-10-04", "original")) {
+		t.Error("original/ is still there")
+	}
+	if got := ts.entry(filepath.Join(ts.root, "2026", "2026-10-04")); !got.Date || got.Raw {
+		t.Errorf("the recording in the list: %+v", got)
+	}
+	// It cannot be made again, and says why.
+	q := ts.processing().start()
+	q.Mp3, q.Sections = true, []span{{Start: 1, End: 2}}
+	if c := ts.check(filepath.Join(ts.root, "2026", "2026-10-04"), q); c.Error != "the original recording was deleted, so the files cannot be made again" {
+		t.Errorf("check: %q", c.Error)
+	}
+	if w := del("2026/2026-10-04"); w.Code != http.StatusBadRequest {
+		t.Errorf("deleted twice: %d", w.Code)
 	}
 }

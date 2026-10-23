@@ -163,11 +163,16 @@ Each can have a label, which shows on the waveform.
   a date can hold one sermon. **Rename…** on a sermon's page changes its date or name (the folder and
   the files named after it, also in `original/`; files already made keep their tags). A recording
   from the inbox that finds its date taken lands in `<date> 2`; rename it.
-- **Delete and the trash:** *Delete…* on a recording (after a confirmation) moves its whole folder, with its files and the
-  original, into the church's trash; nothing is removed yet. **Settings → Trash** lists what is there, how long it has
+- **Delete and the trash:** **Delete** at the end of a recording's edit page. *Delete recording…* (after a confirmation) moves
+  its whole folder, with its files and the original, into the church's trash; nothing is removed yet. **Settings → Trash** lists what is there, how long it has
   left (30 days, `--trash-days`), and has *Restore* (back where it was, unless that date has a recording again) and
   *Delete now* (for good, after a confirmation). After the time, the server removes it by itself. A recording that is
   being processed cannot be deleted.
+- **Delete original:** once files have been made, *Delete original…* (under Delete, and next to *Download original* in
+  Input file) deletes the original recording for good, not into the trash, to free its space; the waveform and preview
+  made from it go too. The files made are kept and can still be downloaded and shared, but the sermon can no longer be
+  edited or regenerated: the edit page says when the original was deleted, the recordings page says *Original deleted*,
+  and formats not made yet cannot be made.
 - **The church's logo** (**Settings → Church**) is shown in the header instead of Sermon Studio's, in a square: use a
   square one, like an app icon. Another shape is shrunk to fit, and Settings says so.
 - **Inbox** (with `--inbox`): recordings that arrive by other means go into their date folder

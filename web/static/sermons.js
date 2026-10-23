@@ -12,6 +12,9 @@ const SERMON_ONLY = '_sermon';
 const sermonOnly = (info) => info.outputs.filter((o) => o.format.endsWith(SERMON_ONLY));
 const fileURL = (f, download) => forTenant('api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// DOWNLOAD_ICON is Feather's download icon (MIT), on a file in the Download menu.
+const DOWNLOAD_ICON = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
+  + '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 // SHARE_ICON is the header's share icon (Feather, MIT), for the buttons that share.
 const SHARE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/>'
   + '<circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
@@ -30,8 +33,8 @@ const MAX_LABELS = 10;
 
 // sermonDetail returns the panel for a folder; it fills in when the folder
 // has been read, and again after a format was made. ctx.suggestions() lists
-// the labels already used; ctx.changed() is told when this one's labels change; ctx.deleted() when it
-// was moved to the trash (ctx.trashDays is how long it stays there). ctx.shares: the public share page is on.
+// the labels already used; ctx.changed() is told when this one's labels change. ctx.shares: the public share
+// page is on. Deleting is on the edit page.
 export function sermonDetail(entry, ctx = {}) {
   const panel = h('div', { class: 'detail' }, h('p', { class: 'muted' }, 'Loading…'));
   const editURL = href('folder', entry.path);
@@ -194,11 +197,14 @@ export function sermonDetail(entry, ctx = {}) {
         const o = made(format + menuVersion);
         const name = menuVersion ? t('Download {format}, sermon only', { format: label }) : t('Download {format}', { format: label });
         if (o) {
+          const go = h('span', { class: 'go icon', 'aria-hidden': 'true' });
+          go.innerHTML = DOWNLOAD_ICON;
           return h('a', { class: 'menu-item', href: fileURL(o, true), 'aria-label': name },
-            h('strong', {}, label), h('span', { class: 'muted' }, formatSize(o.size)), h('span', { class: 'go', 'aria-hidden': 'true' }, '↓'));
+            h('strong', {}, label), h('span', { class: 'muted' }, formatSize(o.size)), go);
         }
-        const b = h('button', { type: 'button', class: 'menu-item', name: 'make-' + format, disabled: !saved,
-          title: saved ? t('Not made yet: make {format}', { format: label }) : t('Save the sermon in the editor first'),
+        const gone = !info.raw && info.originalDeleted; // nothing to make it from
+        const b = h('button', { type: 'button', class: 'menu-item', name: 'make-' + format, disabled: !saved || gone,
+          title: gone ? t('The original was deleted, so it cannot be made') : saved ? t('Not made yet: make {format}', { format: label }) : t('Save the sermon in the editor first'),
           onclick: () => make(format, label, b, status, buttons) },
         h('strong', {}, label), h('span', { class: 'muted' }, t('not made')), h('span', { class: 'go' }, t('Make')));
         buttons.push(b);
@@ -266,26 +272,10 @@ export function sermonDetail(entry, ctx = {}) {
   // sharesBox lists the recording's own download shares (only when it has any).
   const sharesBox = h('div', { class: 'recording-shares' });
 
-  // deleteButton moves the recording to the trash, after asking.
-  function deleteButton() {
-    return h('button', { type: 'button', class: 'delete', name: 'delete-recording', onclick: async () => {
-      const ok = await confirmDialog({
-        title: t('Delete {name}?', { name: entry.name }),
-        body: h('p', {}, t('It is moved to the trash, with its files and the original recording, and is removed for good after {days} days. Until then you can restore it under Settings → Trash.', { days: ctx.trashDays })),
-        confirm: t('Delete'), danger: true,
-      });
-      if (!ok) return;
-      try {
-        await api('POST', 'api/recordings/delete?path=' + q(entry.path));
-        if (ctx.deleted) ctx.deleted();
-      } catch (err) { alertDialog({ body: err.message }); }
-    } }, t('Delete…'));
-  }
-
   function unprocessed(info) {
     return [
       labelEditor(),
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Open in the editor')), shareLink(), deleteButton()),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Open in the editor')), shareLink()),
     ];
   }
 
@@ -300,6 +290,7 @@ export function sermonDetail(entry, ctx = {}) {
       tags.title && t('Title: {value}', { value: tags.title }),
       tags.artist && t('Artist: {value}', { value: tags.artist }),
       tags.album && t('Album: {value}', { value: tags.album }),
+      !info.raw && info.originalDeleted && t('Original deleted'),
     ].filter(Boolean);
     // The intro and outro the files were made with, and whether making them again would give others.
     const mw = info.madeWith;
@@ -317,7 +308,7 @@ export function sermonDetail(entry, ctx = {}) {
       labelEditor(),
       h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
       h('div', { class: 'actions' }, downloadMenu(info, saved, status), h('a', { class: 'button', href: editURL }, t('Edit sermon')),
-        shareLink(), ctx.shares && info.outputs.length ? shareButton(info) : '', deleteButton()),
+        shareLink(), ctx.shares && info.outputs.length ? shareButton(info) : ''),
       ctx.shares ? sharesBox : '',
     ];
   }

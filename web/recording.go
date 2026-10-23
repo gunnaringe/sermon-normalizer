@@ -45,6 +45,9 @@ type folderState struct {
 	Outputs map[string]outputMade `json:"outputs"`
 	// OwnClips are the sermon's own intro and outro (sermonclips.go), kept in <folder>/clips/<which>.flac.
 	OwnClips map[string]clipInfo `json:"ownClips,omitempty"`
+	// OriginalDeleted is when the original recording was deleted to free the space (handleDeleteOriginal):
+	// the files made are kept, but the sermon cannot be edited or made again.
+	OriginalDeleted *time.Time `json:"originalDeleted,omitempty"`
 }
 
 // recStamp tells whether a file is still the one that was looked at.

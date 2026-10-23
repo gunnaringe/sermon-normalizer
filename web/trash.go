@@ -110,6 +110,64 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "days": s.trashDays()})
 }
 
+// handleDeleteOriginal removes a recording's original, keeping the files made from it, to free the space:
+// POST api/recordings/delete-original?path=<date folder>. Without it the sermon cannot be edited or made again,
+// so it needs files made, and is not done during a run or while the recording is being converted or prepared.
+// The waveform and preview made from it go too. Not to the trash: that is the point.
+func (s *Server) handleDeleteOriginal(w http.ResponseWriter, r *http.Request) {
+	abs, ok := s.pathParam(w, r)
+	if !ok {
+		return
+	}
+	e := s.entry(abs)
+	if !e.Date || abs == s.root {
+		writeError(w, http.StatusNotFound, errors.New("no recording there"))
+		return
+	}
+	paths, err := normalizer.NewPaths(abs)
+	raw := ""
+	if err == nil {
+		raw = paths.Source()
+	}
+	switch {
+	case raw == "":
+		writeError(w, http.StatusBadRequest, errors.New("there is no original to delete"))
+		return
+	case len(e.Outputs) == 0:
+		writeError(w, http.StatusBadRequest, errors.New("no files have been made from it: make them first, or delete the recording"))
+		return
+	case s.jobs.active(e.Path) != nil:
+		writeError(w, http.StatusConflict, errors.New("this recording is being processed; try again when it is done"))
+		return
+	case s.analyses.stage(raw) != "":
+		writeError(w, http.StatusConflict, errors.New("the recording is still being converted or prepared; try again in a moment"))
+		return
+	}
+	key, _ := cacheKey(raw)
+	if err := normalizer.Remove(raw); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("could not delete the original: %w", err))
+		return
+	}
+	if key != "" {
+		normalizer.RemoveAll(s.analyses.dir(key))
+	}
+	normalizer.Remove(paths.Original) // the folder, if it is empty now
+	now := time.Now().UTC().Truncate(time.Second)
+	if _, err := s.updateState(abs, func(st *folderState) error {
+		st.OriginalDeleted = &now
+		return nil
+	}); err != nil {
+		s.cfg.Logger.Printf("delete original: %s: not noted: %v", e.Path, err)
+	}
+	s.cfg.Logger.Printf("delete original: %s: %s deleted", e.Path, filepath.Base(raw))
+	info, err := s.folderInfo(abs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
 type trashItem struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
