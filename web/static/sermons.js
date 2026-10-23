@@ -12,6 +12,9 @@ const SERMON_ONLY = '_sermon';
 const sermonOnly = (info) => info.outputs.filter((o) => o.format.endsWith(SERMON_ONLY));
 const fileURL = (f, download) => forTenant('api/file?' + (download ? 'download=1&' : '') + 'path=' + q(f.path));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// SHARE_ICON is the header's share icon (Feather, MIT), for the buttons that share.
+const SHARE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/>'
+  + '<circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
 
 // keptSeconds is what the saved version lasts: its sections without the cuts.
 function keptSeconds(s) {
@@ -36,6 +39,7 @@ export function sermonDetail(entry, ctx = {}) {
   async function show() {
     const info = await api('GET', 'api/folder?path=' + q(entry.path));
     panel.replaceChildren(...(info.outputs.length ? processed(info) : unprocessed(info)));
+    placeMenu(); // drawn again open, after a format was made
   }
 
   // The recording's own labels: pills with a cross, and a field to add one. The
@@ -120,20 +124,102 @@ export function sermonDetail(entry, ctx = {}) {
     return box;
   }
 
-  // copyLink puts the address of this recording on the clipboard: it opens the
-  // recordings page at it, in this church.
-  function copyLink() {
+  // shareLink shares the address of this recording, as the other shares do: the device's share sheet where
+  // there is one, else the clipboard. It opens the recordings page at it, in this church, for those with a login.
+  function shareLink() {
     const url = location.origin + location.pathname + href('recording', entry.path);
-    const b = h('button', { type: 'button', name: 'copy-link', onclick: async () => {
-      try {
-        await navigator.clipboard.writeText(url);
-        b.textContent = t('Link copied');
-        setTimeout(() => { b.textContent = t('Copy link'); }, 2000);
-      } catch (err) {
-        alertDialog({ title: t('Link to this recording'), body: url });
-      }
-    } }, t('Copy link'));
-    return b;
+    const note = h('span', { class: 'muted', role: 'status' });
+    const b = h('button', { type: 'button', name: 'share-link', class: 'with-icon', title: t('A link to this recording in the studio, for those who can log in'),
+      onclick: async () => {
+        if (navigator.share) {
+          try { await navigator.share({ title: entry.name, url }); } catch { /* closed */ }
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(url);
+          note.textContent = t('Link copied.');
+          setTimeout(() => { note.textContent = ''; }, 2500);
+        } catch (err) {
+          alertDialog({ title: t('Link to this recording'), body: url });
+        }
+      } });
+    b.innerHTML = SHARE_ICON;
+    b.append(t('Share link'));
+    return [b, note];
+  }
+
+  // The download menu closes on a click outside it, and on Escape. It is placed by the window (the list would cut
+  // it off), under its button, again when the page scrolls. One set of listeners for the panel, whichever menu it shows.
+  const menuEvents = [['pointerdown', closeMenu], ['keydown', closeMenu], ['scroll', placeMenu, true], ['resize', placeMenu]];
+  for (const [name, fn, capture] of menuEvents) (name === 'resize' ? window : document).addEventListener(name, fn, capture);
+  function gone() {
+    if (panel.isConnected) return false;
+    for (const [name, fn, capture] of menuEvents) (name === 'resize' ? window : document).removeEventListener(name, fn, capture);
+    return true;
+  }
+  function placeMenu() {
+    if (gone()) return;
+    const menu = panel.querySelector('details.download-menu');
+    if (!menu || !menu.open) return;
+    const at = menu.querySelector('summary').getBoundingClientRect();
+    const box = menu.querySelector('.menu-panel');
+    box.style.top = Math.round(at.bottom + 6) + 'px';
+    box.style.left = Math.round(Math.max(8, Math.min(at.left, innerWidth - box.offsetWidth - 8))) + 'px';
+  }
+  function closeMenu(e) {
+    if (gone()) return;
+    const menu = panel.querySelector('details.download-menu');
+    if (!menu || !menu.open) return;
+    if (e.type === 'keydown' ? e.key !== 'Escape' : menu.contains(e.target)) return;
+    menu.open = false;
+    if (e.type === 'keydown') menu.querySelector('summary').focus();
+  }
+
+  // The download menu stays open, and on the same version, when the panel is drawn again after a format was made.
+  let menuOpen = false;
+  let menuVersion = '';
+
+  // downloadMenu is one Download button that opens the files: each format with its size, or Make for one not made
+  // yet. With an intro or outro, the version is chosen first: with them, or the sermon only.
+  function downloadMenu(info, saved, status) {
+    const only = sermonOnly(info).length > 0;
+    if (!only) menuVersion = '';
+    const made = (format) => info.outputs.find((o) => o.format === format);
+    const list = h('div', { class: 'menu-items' });
+    const buttons = [];
+    const draw = () => {
+      buttons.length = 0;
+      list.replaceChildren(...FORMATS.map(([format, label]) => {
+        if (menuVersion && !made(format)) return ''; // the sermon only is made with its format
+        const o = made(format + menuVersion);
+        const name = menuVersion ? t('Download {format}, sermon only', { format: label }) : t('Download {format}', { format: label });
+        if (o) {
+          return h('a', { class: 'menu-item', href: fileURL(o, true), 'aria-label': name },
+            h('strong', {}, label), h('span', { class: 'muted' }, formatSize(o.size)), h('span', { class: 'go', 'aria-hidden': 'true' }, '↓'));
+        }
+        const b = h('button', { type: 'button', class: 'menu-item', name: 'make-' + format, disabled: !saved,
+          title: saved ? t('Not made yet: make {format}', { format: label }) : t('Save the sermon in the editor first'),
+          onclick: () => make(format, label, b, status, buttons) },
+        h('strong', {}, label), h('span', { class: 'muted' }, t('not made')), h('span', { class: 'go' }, t('Make')));
+        buttons.push(b);
+        return b;
+      }));
+    };
+    const versionButton = (value, label) => h('button', { type: 'button', class: 'seg', 'aria-pressed': String(menuVersion === value),
+      onclick: (e) => {
+        menuVersion = value;
+        for (const b of e.currentTarget.parentElement.children) b.setAttribute('aria-pressed', String(b === e.currentTarget));
+        draw();
+      } }, label);
+    draw();
+    const menu = h('details', { class: 'menu download-menu', open: menuOpen },
+      h('summary', { class: 'button primary' }, t('Download'), h('span', { class: 'caret', 'aria-hidden': 'true' }, '▾')),
+      h('div', { class: 'menu-panel' },
+        only ? h('span', { class: 'mode', role: 'group', 'aria-label': t('Version') },
+          versionButton('', t('With intro and outro')), versionButton(SERMON_ONLY, t('Sermon only'))) : '',
+        list, status));
+    menu.addEventListener('toggle', () => { menuOpen = menu.open; placeMenu(); });
+    return menu;
   }
 
   // shareButton makes a download share of the files that have been made: a code and a link that let
@@ -199,7 +285,7 @@ export function sermonDetail(entry, ctx = {}) {
   function unprocessed(info) {
     return [
       labelEditor(),
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Open in the editor')), copyLink(), deleteButton()),
+      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Open in the editor')), shareLink(), deleteButton()),
     ];
   }
 
@@ -224,40 +310,14 @@ export function sermonDetail(entry, ctx = {}) {
       mw.changed ? t('The intro or outro has changed since: press Save in the editor to make the files again.') : '',
     ].filter(Boolean).join(' · ');
     const status = h('p', { class: 'muted making', 'aria-live': 'polite' });
-    const buttons = [];
-    const downloads = FORMATS.map(([format, label]) => {
-      const o = info.outputs.find((x) => x.format === format);
-      if (o) return h('a', { class: 'button dl on', href: fileURL(o, true), title: formatSize(o.size) }, t('Download {format}', { format: label }));
-      const b = h('button', {
-        class: 'dl',
-        disabled: !saved,
-        title: saved ? t('Not made yet: make {format}', { format: label }) : t('Save the sermon in the editor first'),
-        onclick: () => make(format, label, b, status, buttons),
-      }, t('Download {format}', { format: label }));
-      buttons.push(b);
-      return b;
-    });
-    // The sermon only, without the intro and outro, when the files have them: what is made, or a button to make it.
-    const only = sermonOnly(info);
-    const onlyRow = only.length ? h('p', { class: 'actions sermon-only' }, h('span', { class: 'muted' }, t('Sermon only, without intro and outro:')), ' ',
-      FORMATS.filter(([f]) => info.outputs.some((o) => o.format === f)).map(([format, label]) => {
-        const o = only.find((x) => x.format === format + SERMON_ONLY);
-        if (o) return h('a', { class: 'button dl on', href: fileURL(o, true), title: formatSize(o.size), 'aria-label': t('Download {format}, sermon only', { format: label }) }, label);
-        const b = h('button', { class: 'dl', title: t('Not made yet: make {format}', { format: label }), onclick: () => make(format, label, b, status, buttons) }, label);
-        buttons.push(b);
-        return b;
-      })) : '';
     const best = PLAY_ORDER.map((f) => info.outputs.find((x) => x.format === f)).find(Boolean);
     return [
       h('p', { class: 'facts' }, facts.join(' · ')),
       clipFacts ? h('p', { class: 'facts' + (mw.changed ? ' warn' : '') }, clipFacts) : '',
       labelEditor(),
       h('audio', { class: 'player', controls: true, preload: 'none', src: fileURL(best), 'aria-label': t('The sermon') }),
-      h('p', { class: 'actions' }, downloads),
-      onlyRow,
-      status,
-      h('p', { class: 'actions' }, h('a', { class: 'button', href: editURL }, t('Edit sermon')), copyLink(),
-        ctx.shares && info.outputs.length ? shareButton(info) : '', deleteButton()),
+      h('div', { class: 'actions' }, downloadMenu(info, saved, status), h('a', { class: 'button', href: editURL }, t('Edit sermon')),
+        shareLink(), ctx.shares && info.outputs.length ? shareButton(info) : '', deleteButton()),
       ctx.shares ? sharesBox : '',
     ];
   }

@@ -40,17 +40,29 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await expect(detail.getByRole('link', { name: 'Edit sermon' })).toBeVisible();
   await expect(detail).not.toContainText('original'); // the whole service is not offered
   await expect(row).not.toContainText('raw');
-  await expect(detail.getByRole('link', { name: 'Download FLAC' })).toHaveAttribute('href', /download=1/);
-  await expect(detail.getByRole('link', { name: 'Download Opus' })).toHaveClass(/on/);
-  const mp3 = detail.getByRole('button', { name: 'Download MP3' });
-  await expect(mp3).not.toHaveClass(/on/);
+  // Download opens the files: those made, with their size, and Make for the one that is not.
   await page.screenshot({ path: path.join(shots, 'sermon-list-open.png') });
+  await detail.locator('summary', { hasText: 'Download' }).click();
+  await expect(detail.getByRole('link', { name: 'Download FLAC' })).toHaveAttribute('href', /download=1/);
+  await expect(detail.getByRole('link', { name: 'Download Opus' })).toBeVisible();
+  await expect(detail.getByRole('link', { name: 'Download MP3' })).toHaveCount(0);
+  const mp3 = detail.locator('button[name=make-mp3]');
+  await expect(mp3).toContainText('not made');
+  await page.screenshot({ path: path.join(shots, 'sermon-list-download.png') });
+  // Escape and a click outside close it.
+  await page.keyboard.press('Escape');
+  await expect(mp3).toBeHidden();
+  await detail.locator('summary', { hasText: 'Download' }).click();
+  await page.locator('h1, header').first().click();
+  await expect(mp3).toBeHidden();
+  await detail.locator('summary', { hasText: 'Download' }).click();
 
   await mp3.click();
   await expect(mp3).toHaveClass(/busy/);
   await expect(detail.getByText(/conversion is running/)).toBeVisible();
   await page.screenshot({ path: path.join(shots, 'sermon-list-making.png') });
-  await expect(detail.getByRole('link', { name: 'Download MP3' })).toHaveClass(/on/, { timeout: 60_000 });
+  // Made: the menu is still open, with the file in it.
+  await expect(detail.getByRole('link', { name: 'Download MP3' })).toBeVisible({ timeout: 60_000 });
   expect(fs.readdirSync(path.join(DATA, 'root', folder)).some((f) => f.endsWith('.mp3'))).toBe(true);
 
   await row.locator('button.sermon-name').click(); // the name button too: once, not twice

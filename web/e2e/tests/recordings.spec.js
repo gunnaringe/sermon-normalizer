@@ -103,7 +103,7 @@ test('a label is added with the + button, a comma, by leaving the field, or from
   for (const l of ['Easter']) await page.getByRole('button', { name: 'Remove label ' + l }).click();
 });
 
-test('a link opens the recordings page at one recording; Copy link makes it', async ({ page, context }) => {
+test('a link opens the recordings page at one recording; Share link makes it', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('#/first-church/recording/2025/2025-12-21');
   await expect(year(page, 2025)).toHaveAttribute('aria-expanded', 'true'); // its year opens
@@ -113,8 +113,9 @@ test('a link opens the recordings page at one recording; Copy link makes it', as
   await expect(page).toHaveURL(/#\/first-church\/recording\/2025\/2025-12-21$/);
   await page.screenshot({ path: path.join(shots, 'recordings-link.png') });
 
-  await page.getByRole('button', { name: 'Copy link' }).click();
-  await expect(page.getByRole('button', { name: 'Link copied' })).toBeVisible();
+  await page.evaluate(() => { delete Navigator.prototype.share; }); // the clipboard, as where there is no share sheet
+  await page.getByRole('button', { name: 'Share link' }).click();
+  await expect(page.getByText('Link copied.')).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(new URL('#/first-church/recording/2025/2025-12-21', page.url()).href);
 
   await page.goto('#/first-church/recording/2030/nothing');
