@@ -18,11 +18,11 @@ async function call(method, url, body) {
     opts.body = JSON.stringify(body);
   }
   const resp = await fetch(url, opts);
-  if (resp.status === 401) {
+  const data = await resp.json().catch(() => ({}));
+  if (resp.status === 401 && data.login) {
     toLogin();
     return new Promise(() => {}); // the page is leaving
   }
-  const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(tr(data.error || `${resp.status} ${resp.statusText}`));
   return data;
 }

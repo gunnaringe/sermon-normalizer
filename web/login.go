@@ -233,7 +233,8 @@ type loginState struct {
 
 // safeNext is where to go after the login: a path of this studio, else its start.
 func (au *auth) safeNext(next string) string {
-	if !strings.HasPrefix(next, au.base.Path) || strings.HasPrefix(next, "//") || strings.ContainsAny(next, "\\\r\n") {
+	bad := strings.ContainsFunc(next, func(r rune) bool { return r < 0x20 || r == 0x7f || r == '\\' })
+	if bad || !strings.HasPrefix(next, au.base.Path) || strings.HasPrefix(next, "//") {
 		return au.base.Path
 	}
 	return next
@@ -380,7 +381,8 @@ func (au *auth) require(next http.Handler) http.Handler {
 			return
 		}
 		if strings.HasPrefix(rel, "api/") {
-			writeError(w, http.StatusUnauthorized, errors.New("log in first"))
+			// login: the page should go to the login (util.js toLogin).
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "log in first", "login": true})
 			return
 		}
 		http.Redirect(w, r, au.url("auth/login")+"?next="+url.QueryEscape(au.base.Path+rel), http.StatusFound)

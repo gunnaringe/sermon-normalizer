@@ -170,8 +170,17 @@ func TestLoginFlow(t *testing.T) {
 	if w := l.do("GET", "/", ""); w.Code != http.StatusFound || !strings.HasPrefix(w.Header().Get("Location"), "https://studio.example/auth/login?next=") {
 		t.Errorf("page without session: %d %s", w.Code, w.Header().Get("Location"))
 	}
-	for _, u := range []string{"/api/tenants", "/api/folders?tenant=kirke-a", "/api/session", "/index.html"} {
-		if w := l.do("GET", u, ""); w.Code != http.StatusUnauthorized && w.Code != http.StatusFound {
+	for _, u := range []string{"/api/tenants", "/api/folders?tenant=kirke-a", "/api/session"} {
+		if w := l.do("GET", u, ""); w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), `"login":true`) {
+			t.Errorf("%s without session: %d %s", u, w.Code, w.Body.String())
+		}
+	}
+	if w := l.do("GET", "/index.html", ""); w.Code != http.StatusFound {
+		t.Errorf("index.html without session: %d", w.Code)
+	}
+	// Paths that clean to the API are no way around it.
+	for _, u := range []string{"//api/tenants", "/x/../api/tenants", "/./api/session"} {
+		if w := l.do("GET", u, ""); w.Code == http.StatusOK {
 			t.Errorf("%s without session: %d", u, w.Code)
 		}
 	}
@@ -288,6 +297,8 @@ func TestLoginNextStaysHere(t *testing.T) {
 		"https://evil.example/":  "/",
 		"//evil.example/":        "/",
 		"/\\evil.example":        "/",
+		"/\t/evil.example":       "/",
+		"/%09/evil.example":      "/%09/evil.example",
 		"":                       "/",
 	} {
 		if got := l.login(next, "good-code").Header().Get("Location"); got != want {

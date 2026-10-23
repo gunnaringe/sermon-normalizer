@@ -35,7 +35,7 @@ test('an invite that is not valid says so, in the chosen language', async ({ pag
 });
 
 test('without a session, the invite goes to the login and back', async ({ page }) => {
-  await page.route('**/api/invite**', (route) => route.fulfill({ status: 401, json: { error: 'log in first' } }));
+  await page.route('**/api/invite**', (route) => route.fulfill({ status: 401, json: { error: 'log in first', login: true } }));
   await page.route('**/auth/login**', (route) => route.fulfill({ body: 'login' }));
   await page.goto('invite.html#kirke.abc');
   await expect(page).toHaveURL(/auth\/login\?next=%2Finvite\.html%23kirke\.abc$/);
