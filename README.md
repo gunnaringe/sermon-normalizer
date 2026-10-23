@@ -30,7 +30,9 @@ undo any step. Nothing is ever cut from the original.
 
 **Even, standard loudness.** Speech and music are recorded at very different levels. The output is
 mixed to mono (or kept stereo), noise-reduced, and normalised to podcast loudness (-19 LUFS, measured
-with EBU R128, true peak limited), then encoded to **FLAC, MP3 and Opus**.
+with EBU R128, true peak limited), then encoded to **FLAC, MP3 and Opus**. A church's own intro and
+outro (a jingle, a closing word) go around the sermon at the same loudness, and the sermon alone is
+there to download too.
 
 **Recordings arrive however they arrive.** Upload from the browser (large files in chunks, resumable),
 let a recorder drop files in a church's inbox folder, or hand a sound technician a **share code** for a

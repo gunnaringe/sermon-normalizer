@@ -319,3 +319,25 @@ func TestSharesActive(t *testing.T) {
 		t.Errorf("a finished response is not counted down: %d", n)
 	}
 }
+
+// A download share of the sermon only gives the files without the intro and outro, and needs them made.
+func TestShareDownloadSermonOnly(t *testing.T) {
+	const body = `{"kind":"download","recording":"2026/2026-10-18 Advent","formats":["mp3"],"sermonOnly":true,"label":"x"}`
+	st, _ := downloadTest(t, `{"kind":"download","recording":"2026/2026-10-18 Advent","formats":["mp3"],"label":"x"}`)
+	if w := do(st.studio, "POST", "/api/shares", body); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "not been made") {
+		t.Fatalf("a share of a sermon only that has not been made: %d %s", w.Code, w.Body)
+	}
+	dir := filepath.Join(st.church, "Taler", "2026", "2026-10-18 Advent")
+	os.WriteFile(filepath.Join(dir, "2026-10-18 Advent_sermon.mp3"), []byte("ID3 the sermon only"), 0o644)
+	code, _ := st.makeShare(body)
+	if info := st.info(code); len(info.Files) != 1 || info.Files[0].Size != int64(len("ID3 the sermon only")) {
+		t.Fatalf("info: %+v", info)
+	}
+	_, addr := st.download(code, "1.1.1.1", "mp3")
+	resp := st.fetch(addr, "")
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(got) != "ID3 the sermon only" || !strings.Contains(resp.Header.Get("Content-Disposition"), "_sermon.mp3") {
+		t.Errorf("downloaded %q as %q", got, resp.Header.Get("Content-Disposition"))
+	}
+}

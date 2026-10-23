@@ -142,3 +142,61 @@ test('editor: the intro and outro of a sermon, its own clip, and a deleted one',
   for (const c of (await (await request.get('api/clips')).json()).clips) await request.post('api/clips/' + c.id + '/delete');
   fs.rmSync(dir, { recursive: true });
 });
+
+test('recordings: made with the intro, the sermon only for download, and a share of it', async ({ page, request }) => {
+  expect((await request.post('api/clips?name=Jingle.wav', { data: wav(3) })).ok()).toBe(true);
+  await expect.poll(async () => (await (await request.get('api/clips')).json()).clips.length).toBe(1);
+  const jingle = (await (await request.get('api/clips')).json()).clips[0].id;
+  expect((await request.put('api/clips/defaults', { data: { intro: jingle, outro: '' } })).ok()).toBe(true);
+
+  const folder = '2027/2027-07-07';
+  const dir = path.join(DATA, 'root', folder);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(path.join(DATA, 'upload.flac'), path.join(dir, '2027-07-07_raw.flac'));
+  const q = '?path=' + encodeURIComponent(folder);
+  const settings = { sections: [{ start: 3, end: 25 }], cuts: [], fadeIn: 0, fadeOut: 0, intro: 'default' };
+  expect((await request.put('api/sermon' + q, { data: settings })).ok()).toBe(true);
+  expect((await request.post('api/sermon/save' + q)).ok()).toBe(true);
+  const run = await request.post('api/run' + q, { data: { ...settings, flac: false, mp3: true, opus: true, stereo: false, noiseReduction: 0,
+    targetLufs: -19, truePeak: -1.5, mp3Bitrate: '96k', opusBitrate: '48k', force: false } });
+  expect(run.ok(), await run.text()).toBe(true);
+  const { id } = await run.json();
+  await expect.poll(async () => (await (await request.get('api/jobs/' + id)).json()).state, { timeout: 90_000 }).toBe('done');
+
+  await page.goto('');
+  const year = page.locator('button.year-head', { hasText: '2027' });
+  if ((await year.getAttribute('aria-expanded')) !== 'true') await year.click();
+  await page.locator('tr.row', { hasText: '2027-07-07' }).click();
+  const detail = page.locator('tr.detail-row');
+  await expect(detail).toContainText('Made with: intro Jingle');
+  const only = detail.locator('.sermon-only');
+  await expect(only).toContainText('Sermon only, without intro and outro:');
+  await expect(only.getByRole('link', { name: 'Download MP3, sermon only' })).toHaveAttribute('href', /2027-07-07_sermon\.mp3/);
+  await expect(only.getByRole('link', { name: 'Download Opus, sermon only' })).toBeVisible();
+  await expect(detail.getByRole('link', { name: 'Download MP3', exact: true })).toHaveAttribute('href', /2027-07-07\.mp3/);
+  await detail.screenshot({ path: path.join(shots, 'recording-sermon-only.png') });
+
+  // A share of the sermon only.
+  await detail.getByRole('button', { name: 'Share for download…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Share for download' });
+  await dialog.locator('select[name=version]').selectOption({ label: 'Sermon only' });
+  await page.screenshot({ path: path.join(shots, 'share-sermon-only.png') });
+  await dialog.getByRole('button', { name: 'Make share' }).click();
+  await expect.poll(async () => (await (await request.get('api/shares' + q.replace('path', 'recording'))).json()).shares?.some((s) => s.sermonOnly)).toBe(true);
+
+  // A new version of the intro: the files are made with the old one.
+  expect((await request.post('api/clips/' + jingle + '/replace?name=Jingle2.wav', { data: wav(4) })).ok()).toBe(true);
+  await expect.poll(async () => (await (await request.get('api/clips')).json()).clips[0].seconds).toBeGreaterThan(3.5);
+  await page.reload();
+  await page.locator('tr.row', { hasText: '2027-07-07' }).click();
+  await expect(page.locator('tr.detail-row')).toContainText('The intro or outro has changed since');
+
+  expect((await request.put('api/clips/defaults', { data: { intro: '', outro: '' } })).ok()).toBe(true);
+  await request.post('api/clips/' + jingle + '/delete');
+  // Leave the other tests the recordings and shares they expect.
+  for (const sh of (await (await request.get('api/shares' + q.replace('path', 'recording'))).json()).shares) {
+    await request.post('api/shares/' + sh.id + '/pause');
+    expect((await request.post('api/shares/' + sh.id + '/remove')).ok()).toBe(true);
+  }
+  fs.rmSync(dir, { recursive: true });
+});

@@ -522,9 +522,10 @@ func TestRemoveOutputs(t *testing.T) {
 	ts.file(t, "2026-10-04/2026-10-04_raw.flac", "x")
 	ts.file(t, "2026-10-04/2026-10-04.mp3", "x")
 	ts.file(t, "2026-10-04/2026-10-04.opus", "x")
+	ts.file(t, "2026-10-04/2026-10-04_sermon.mp3", "x") // the sermon only goes with it
 	folder := filepath.Join(ts.root, "2026-10-04")
 	ts.updateState(folder, func(st *folderState) error {
-		st.Outputs["mp3"], st.Outputs["opus"] = outputMade{From: "a"}, outputMade{From: "b"}
+		st.Outputs["mp3"], st.Outputs["opus"], st.Outputs["mp3_sermon"] = outputMade{From: "a"}, outputMade{From: "b"}, outputMade{From: "c"}
 		return nil
 	})
 	if rec := ts.do(t, "POST", "/api/outputs/remove?path=2026-10-04&format=raw", nil); rec.Code != http.StatusBadRequest {
@@ -536,6 +537,9 @@ func TestRemoveOutputs(t *testing.T) {
 	}
 	if fileExists(filepath.Join(folder, "2026-10-04.mp3")) || !fileExists(filepath.Join(folder, "2026-10-04.opus")) || !fileExists(filepath.Join(folder, "2026-10-04_raw.flac")) {
 		t.Error("only the MP3 should be gone")
+	}
+	if fileExists(filepath.Join(folder, "2026-10-04_sermon.mp3")) {
+		t.Error("the MP3 of the sermon only is still there")
 	}
 	if made := readState(folder).Outputs; len(made) != 1 || made["opus"].From != "b" {
 		t.Errorf("outputs in recording.json: %+v", made)

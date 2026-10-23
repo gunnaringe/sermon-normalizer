@@ -12,6 +12,7 @@ The pictures show a real speech: President Kennedy's inaugural address (1961), 1
 4. [Saving and the files](#saving-and-the-files)
 5. [Shares: sending recordings, downloading sermons](#shares)
 6. [Settings, tags, language and theme](#tags)
+7. [Intro and outro clips](#intro-and-outro-clips)
 
 ## The recordings page
 
@@ -78,7 +79,8 @@ Each can have a label, which shows on the waveform.
   zoom with the buttons.
 - **The page** has five parts: **Input file** (one line with the recording's name, size, length and whether it is
   stereo or mono in effect, which opens to its format, how it came and its metadata; and *Download original*), **Edit** (the
-  waveform, sections, cuts and fades), **Metadata added to the file** (title, artist, album), **Processing** and **Output**.
+  waveform, sections, cuts and fades), **Metadata added to the file** (title, artist, album), **Processing**, **Intro and
+  outro** (for a church with its own folder) and **Output**.
   Under them, a **bar** sticks to the bottom of the window: whether the edit is saved (hover it to see both versions),
   what Save will do, **Undo** and **Redo** (also `ctrl+z` and `ctrl+shift+z`; they cover the sections, cuts, labels,
   pauses and fades, not the processing and the tags, whose fields have their own undo; the steps are kept in the
@@ -126,6 +128,14 @@ Each can have a label, which shows on the waveform.
   lengths); once changed, the processing is the recording's own, in its `recording.json`. **Use the defaults** brings the
   church's back (undo takes that back), and **Make these the defaults** makes this recording's processing and fades the church's
   (recordings that have their own keep it). A line says whether the recording is the same as the defaults.
+- **Intro and outro:** a clip before and after the sermon, such as a jingle and a closing word. Each can be the **church's
+  default**, **None**, one of the church's clips, or **this sermon's own** (*Upload for this sermon only…*: kept with the
+  recording, in its `clips/` folder; **Add to the church's clips** makes it one of the church's). A new sermon starts with the
+  church's defaults; one saved before there were clips has none. The choice is kept with the sermon, like the cut (undo covers
+  it). The clips are not noise-reduced or leveled, only brought to the sermon's loudness, with a short pause at each join; the
+  line under them tells the length with them. With an intro or outro, Save makes two versions of each format: with them (the
+  usual files) and the **sermon only** (`<date>_sermon.mp3` ...). If a clip the sermon chose has been deleted, it says so, and
+  the files cannot be made until another (or none) is chosen.
 - **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,
   green when the file is there (play and download it from the recordings list). `recording.json` keeps what each file was made from (sections, cuts,
   fades, sound, tags, bitrate), so a file made from other settings than the page shows says
@@ -222,7 +232,8 @@ someone without a login download it: a name, which of the files that have been m
 and optionally how many downloads and an expiry. The code and the link are shown once, as for uploads,
 and the share is listed under **Shares** with its downloads (file, size, address, time); it is
 paused, resumed and removed the same way. The sermon's row lists its own download shares too, under
-**Shared for download**, where they can be paused and removed as well.
+**Shared for download**, where they can be paused and removed as well. For a sermon made with an intro or outro,
+**Version** chooses whether the share gives the files with them or the **sermon only**.
 
 The share page shows the sermon's title and a button per file. A press counts one download and starts
 it from an address that works for 6 hours without the code, so the browser can download it and continue
@@ -250,6 +261,21 @@ if it has none); an unknown one is refused. They are filled in from the date fol
 (`2026-10-04` or `2026-10-04 Name`). The sermon's page shows the result and lets you change it for
 one run; a field you empty is left out. Saved in the church's `church.json` (with
 `--root` alone the settings last until restart).
+
+## Intro and outro clips
+
+**Settings → Intro and outro** has the church's clips: **Upload clip…** (any audio a recording can be, up to 5 minutes and
+90 MB; it is converted and checked, and a silent file or one that is not audio says so), a player, **Rename…** and **Replace…**
+(new audio for the same clip: sermons made with the old say so on the recordings page). The **default intro** and **default
+outro** are what new sermons start with, and the **pause at each join** goes for every sermon (0.5 s to begin with).
+
+**Archive** takes a clip out of the choices for new sermons, but keeps it: sermons that use it can still be made again with it.
+Archived clips are under **Archived**, with **Restore** and **Delete…**. Deleting one that sermons chose warns how many: their
+files stay as they are, but they cannot be regenerated until another clip is chosen. The default intro or outro cannot be
+archived or deleted; choose another default (or none) first.
+
+On the recordings page, a sermon made with clips says which (**Made with: intro …**), whether the intro or outro has changed
+since, and offers the **sermon only, without intro and outro** for download too.
 
 ## Inbox
 

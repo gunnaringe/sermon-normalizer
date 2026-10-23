@@ -79,7 +79,9 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   for the page; a chosen clip that is gone refuses the run). Its own clips are `<folder>/clips/intro|outro.flac` (`ownClips` in
   `recording.json`; `POST api/sermon/clip?which=`, `/dismiss`, `/add` copies one to the church, `GET api/sermon/clips` is what
   the editor's Intro and outro step shows). The clips' ids and versions are in `madeFrom` (`runClips.key`, "" without clips);
-  the sermon-only files are recorded as `<format>_sermon`, and a run without clips removes them (`dropSermonOnly`).
+  the sermon-only files are recorded as `<format>_sermon`, and a run without clips removes them (`dropSermonOnly`). Folder info lists
+  them as outputs `<format>_sermon` and says what the files were made with (`madeWith`, `changed` when the saved choice would
+  now give other clips); deleting a format deletes both versions; a download share can give the sermon only (`sermonOnly`).
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/trash.go`: deleting a recording moves its date folder to `<root>/.trash/<id>/` (+ `trash.json`: where from, when); `GET api/trash`,
