@@ -176,12 +176,15 @@ test('recordings: made with the intro, the sermon only for download, and a share
   await page.locator('tr.row', { hasText: '2027-07-07' }).click();
   const detail = page.locator('tr.detail-row');
   await expect(detail).toContainText('Made with: intro Jingle');
-  const only = detail.locator('.sermon-only');
-  await expect(only).toContainText('Sermon only, without intro and outro:');
-  await expect(only.getByRole('link', { name: 'Download MP3, sermon only' })).toHaveAttribute('href', /2027-07-07_sermon\.mp3/);
-  await expect(only.getByRole('link', { name: 'Download Opus, sermon only' })).toBeVisible();
+  // Download gives the files with the intro and outro, or the sermon only.
+  await detail.locator('summary', { hasText: 'Download' }).click();
   await expect(detail.getByRole('link', { name: 'Download MP3', exact: true })).toHaveAttribute('href', /2027-07-07\.mp3/);
-  await detail.screenshot({ path: path.join(shots, 'recording-sermon-only.png') });
+  await detail.getByRole('button', { name: 'Sermon only' }).click();
+  await expect(detail.getByRole('link', { name: 'Download MP3, sermon only' })).toHaveAttribute('href', /2027-07-07_sermon\.mp3/);
+  await expect(detail.getByRole('link', { name: 'Download Opus, sermon only' })).toBeVisible();
+  await expect(detail.getByRole('link', { name: 'Download MP3', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: path.join(shots, 'recording-sermon-only.png') });
+  await page.keyboard.press('Escape');
 
   // A share of the sermon only.
   await detail.getByRole('button', { name: 'Share for download…' }).click();
