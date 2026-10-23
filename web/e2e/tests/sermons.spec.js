@@ -43,7 +43,7 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await expect(detail.locator('.player-what')).toHaveText('Plays: Opus'); // no MP3 yet
   // Download opens the files: those made, with their size, and Make for the one that is not.
   await page.screenshot({ path: path.join(shots, 'sermon-list-open.png') });
-  await detail.locator('summary', { hasText: 'Download' }).click();
+  await detail.locator('summary[aria-label=Download]').click();
   await expect(detail.getByRole('link', { name: 'Download FLAC' })).toHaveAttribute('href', /download=1/);
   await expect(detail.getByRole('link', { name: 'Download Opus' })).toBeVisible();
   await expect(detail.getByRole('link', { name: 'Download MP3' })).toHaveCount(0);
@@ -53,10 +53,10 @@ test('a sermon opens its details in the list: play, download, make a missing for
   // Escape and a click outside close it.
   await page.keyboard.press('Escape');
   await expect(mp3).toBeHidden();
-  await detail.locator('summary', { hasText: 'Download' }).click();
+  await detail.locator('summary[aria-label=Download]').click();
   await page.locator('h1, header').first().click();
   await expect(mp3).toBeHidden();
-  await detail.locator('summary', { hasText: 'Download' }).click();
+  await detail.locator('summary[aria-label=Download]').click();
 
   await mp3.click();
   await expect(mp3).toHaveClass(/busy/);

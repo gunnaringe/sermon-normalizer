@@ -177,7 +177,7 @@ test('recordings: made with the intro, the sermon only for download, and a share
   const detail = page.locator('tr.detail-row');
   await expect(detail).toContainText('Made with: intro Jingle');
   // Download gives the files with the intro and outro, or the sermon only.
-  await detail.locator('summary', { hasText: 'Download' }).click();
+  await detail.locator('summary[aria-label=Download]').click();
   await expect(detail.getByRole('link', { name: 'Download MP3', exact: true })).toHaveAttribute('href', /2027-07-07\.mp3/);
   await detail.getByRole('button', { name: 'Sermon only' }).click();
   await expect(detail.getByRole('link', { name: 'Download MP3, sermon only' })).toHaveAttribute('href', /2027-07-07_sermon\.mp3/);

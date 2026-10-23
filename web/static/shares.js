@@ -35,19 +35,35 @@ function limits(s) {
   return out.join(' · ');
 }
 
-// parseExpiry reads yyyy-mm-dd or yyyy-mm-dd hh:mm in local time; a day
-// alone lasts to its end. Empty = never.
-export function parseExpiry(s) {
-  s = s.trim();
-  if (!s) return null;
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?$/);
-  const d = m && (m[4] === undefined
-    ? new Date(+m[1], m[2] - 1, +m[3], 23, 59, 59)
-    : new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]));
-  if (!d || d.getMonth() !== m[2] - 1 || d.getDate() !== +m[3] || (m[4] !== undefined && (+m[4] > 23 || +m[5] > 59))) {
-    throw new Error(t('Write the expiry as yyyy-mm-dd or yyyy-mm-dd hh:mm.'));
+// expiryInput is when a share ends: a day from the browser's date picker and, if wanted, a time on it
+// (without one, the day lasts to its end), with quick picks. value() is the time as ISO, or null for never.
+export function expiryInput() {
+  const date = h('input', { type: 'date', name: 'expires', 'aria-label': t('Expiry date') });
+  const time = h('input', { type: 'time', name: 'expiresTime', 'aria-label': t('Expiry time'), title: t('Optional: without a time, the day lasts to its end') });
+  const pick = (label, days, months) => h('button', { type: 'button', class: 'link', onclick: () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + months, d.getDate() + days);
+    date.value = days || months ? formatDate(d) : '';
+    time.value = '';
+  } }, label);
+  const el = h('span', { class: 'expiry' }, h('span', { class: 'when' }, date, time),
+    h('span', { class: 'quick' }, pick(t('In a week'), 7, 0), pick(t('In a month'), 0, 1), pick(t('Never'), 0, 0)));
+  return { el, value: () => {
+    if (date.validity.badInput) throw new Error(t('The expiry date is not complete.'));
+    return parseExpiry(date.value, time.value);
+  } };
+}
+
+// parseExpiry reads a day (yyyy-mm-dd, as a date field gives it) and a time (hh:mm, or empty for the
+// end of the day) in local time. No day = never.
+function parseExpiry(day, time = '') {
+  if (!day) {
+    if (time) throw new Error(t('Pick a day for the expiry, or no time.'));
+    return null;
   }
-  return d.toISOString();
+  const [y, m, d] = day.split('-').map(Number);
+  const [hh, mm] = time ? time.split(':').map(Number) : [23, 59];
+  return new Date(y, m - 1, d, hh, mm, time ? 0 : 59).toISOString();
 }
 
 function linkFor(url, code) {
@@ -83,11 +99,10 @@ export async function showCode(url, code, title = t('Send recordings')) {
     await navigator.clipboard.writeText(link || code);
     note.textContent = link ? t('Link copied.') : t('Code copied.');
   } }, t('Share'));
-  await alertDialog({ title: t('Share made'), body: [
+  await alertDialog({ title: t('Share made'), extra: [share, note], body: [
     t('The code is shown only once. Share it before you close this.'), h('br'), h('br'),
     codeEl, h('br'), h('span', { class: 'muted' }, t('Hold the code to copy it.')),
     ...(link ? [h('br'), h('br'), h('span', { class: 'share-link' }, link)] : []),
-    h('br'), h('br'), share, ' ', note,
   ] });
 }
 
@@ -103,8 +118,7 @@ export async function sharesView(box) {
   const fileSize = num('maxFileSize', { value: data.defaultFileSize / GB, min: 0.01 });
   const uploads = num('maxUploads', { step: 1, placeholder: t('no limit') });
   const total = num('maxTotal', { placeholder: t('no limit') });
-  const expires = h('input', { type: 'text', name: 'expires', class: 'date', maxlength: 16, autocomplete: 'off',
-    placeholder: t('yyyy-mm-dd [hh:mm]') });
+  const expires = expiryInput();
   const status = h('span', { class: 'error' });
   const create = h('button', { class: 'primary', name: 'create-share', onclick: async () => {
     status.textContent = '';
@@ -116,7 +130,7 @@ export async function sharesView(box) {
         maxFileSize: Math.round(Number(fileSize.value) * GB),
         maxUploads: Number(uploads.value) || 0,
         maxTotal: Math.round(Number(total.value) * GB) || 0,
-        expires: parseExpiry(expires.value),
+        expires: expires.value(),
       });
       await showCode(data.url, made.code);
       await refresh();
@@ -135,7 +149,7 @@ export async function sharesView(box) {
       h('label', {}, t('Max file size (GB)')), fileSize,
       h('label', {}, t('Max number of files')), uploads,
       h('label', {}, t('Max total size (GB)')), total,
-      h('label', {}, t('Expires')), expires,
+      h('span', {}, t('Expires')), expires.el,
       h('div', { class: 'wide' }, create, ' ', status))
       : h('p', { class: 'error' }, t('Shares need an inbox folder, and this church has none.')),
     h('h2', {}, t('Made')),

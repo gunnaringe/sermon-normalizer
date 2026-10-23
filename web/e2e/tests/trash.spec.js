@@ -112,7 +112,7 @@ test('delete the original: the files stay, the sermon can no longer be edited', 
   await page.goto('#/first-church/recording/' + folder);
   const detail = page.locator('tr.detail-row');
   await expect(detail).toContainText('Original deleted');
-  await detail.locator('summary', { hasText: 'Download' }).click();
+  await detail.locator('summary[aria-label=Download]').click();
   await expect(detail.getByRole('link', { name: 'Download MP3' })).toBeVisible();
   await expect(detail.locator('button[name=make-flac]')).toBeDisabled();
   await expect(detail.getByRole('button', { name: /^Delete/ })).toHaveCount(0); // that is on the edit page

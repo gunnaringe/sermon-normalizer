@@ -5,7 +5,8 @@ import { t } from './i18n.js';
 
 // ask shows a dialog with a title, a body and buttons, and resolves with the
 // dialog's result: what close() was given, or null when it was dismissed.
-function ask({ title, body, buttons, focus, result }) {
+// extra is more in the row of buttons, at its start (a Share button and its note).
+function ask({ title, body, buttons, focus, result, extra }) {
   return new Promise((resolve) => {
     const dialog = h('dialog', { class: 'dialog', 'aria-label': title });
     const close = (value) => dialog.close(value);
@@ -14,7 +15,7 @@ function ask({ title, body, buttons, focus, result }) {
       onclick: () => close(b.value),
     }, b.label));
     dialog.append(h('div', { class: 'dialog-body' },
-      h('h2', {}, title), ...[body].flat(), h('div', { class: 'dialog-buttons' }, made)));
+      h('h2', {}, title), ...[body].flat(), h('div', { class: 'dialog-buttons' }, extra ? h('span', { class: 'dialog-extra' }, extra) : '', made)));
     dialog.addEventListener('click', (e) => { if (e.target === dialog) close('cancel'); }); // the backdrop
     dialog.addEventListener('close', () => {
       const value = dialog.returnValue;
@@ -41,8 +42,8 @@ export function confirmDialog({ title, body, confirm = t('OK'), cancel = t('Canc
 }
 
 // alertDialog shows a message with one button.
-export function alertDialog({ title = t('Something went wrong'), body }) {
-  return ask({ title, body: h('p', {}, body), buttons: [{ label: t('OK'), value: 'ok', class: 'primary' }] });
+export function alertDialog({ title = t('Something went wrong'), body, extra }) {
+  return ask({ title, body: h('p', {}, body), extra, buttons: [{ label: t('OK'), value: 'ok', class: 'primary' }] });
 }
 
 // infoDialog shows any content (a table, several paragraphs) with one button.

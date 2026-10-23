@@ -92,11 +92,9 @@ export function formatDateTime(d) {
   return `${formatDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-// dateInput is a text field for a date as yyyy-mm-dd (the browser's date
-// picker would show the locale's format, e.g. mm/dd/yyyy).
+// dateInput is a date field with the browser's date picker; its value is yyyy-mm-dd.
 export function dateInput(attrs = {}) {
-  return h('input', { type: 'text', class: 'date', maxlength: 10, inputmode: 'numeric', placeholder: t('yyyy-mm-dd'),
-    pattern: '\\d{4}-\\d{2}-\\d{2}', autocomplete: 'off', ...attrs });
+  return h('input', { type: 'date', class: 'date', ...attrs });
 }
 
 export function formatSize(bytes) {

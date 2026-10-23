@@ -128,7 +128,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   church comes from the address), the Settings overlay (`openSettings`, over whichever page is shown) and About (`openAbout`,
   from the footer, `#/<church>/about`, signed with `fonts/signature.woff2`: the author's handwriting, only the letters of the
   name, not under the licence, see `NOTICE`; never add letters to it or use it for anything else; the footer sits at the bottom of a short
-  page: `body` is a flex column). `recordings.js` = the one recordings page (years, search, Newly imported, rows, `open(path)` for links); `sermons.js` = a sermon's details inside it (labels, share link, play, the Download menu,
+  page: `body` is a flex column). `recordings.js` = the one recordings page (years, search, Newly imported, rows, `open(path)` for links); `sermons.js` = a sermon's details inside it (labels, copy link, play, the Download menu,
   make a format); clicking anywhere on a date row expands it; one with no files only offers the editor there. Its status (`badges`): to do / done from `saved` (or files), plus no files / files out of date (`outdated`: an output's `cut` ≠ `cutOf` the saved version) / not saved (`adjusted`: a draft.json). `icons/` = the logo: `logo.svg` is the one source (header, favicon,
   `manifest.webmanifest`); the PNGs (home screen, favicon fallback) come from it via `scripts/make-icons.sh`;
   the public page serves only the ones listed in `sharePage`. `dialog.js` = confirm/alert/prompt in the app's look
