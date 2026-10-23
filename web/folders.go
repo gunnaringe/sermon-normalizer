@@ -34,6 +34,8 @@ type folderEntry struct {
 	// some of its files were made from another cut than that.
 	Saved    bool `json:"saved"`
 	Outdated bool `json:"outdated"`
+	// Adjusted: the editor has changes not saved (draft.json).
+	Adjusted bool `json:"adjusted"`
 	// Imported is when the recording arrived, if that is known.
 	Imported *time.Time `json:"imported,omitempty"`
 	Labels   []string   `json:"labels"`
@@ -77,6 +79,7 @@ func (s *Server) entry(abs string) folderEntry {
 		st := readState(abs)
 		e.Imported = st.Imported
 		e.Labels = append(e.Labels, st.Labels...)
+		e.Adjusted = fileExists(filepath.Join(abs, draftName))
 		if st.Saved != nil {
 			e.Saved = true
 			cut := savedCut(*st.Saved)

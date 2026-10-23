@@ -40,6 +40,7 @@ test('a sermon opens its details in the list: play, download, make a missing for
   await expect(detail.getByRole('link', { name: 'Edit sermon' })).toBeVisible();
   await expect(detail).not.toContainText('original'); // the whole service is not offered
   await expect(row).not.toContainText('raw');
+  await expect(detail.locator('.player-what')).toHaveText('Plays: Opus'); // no MP3 yet
   // Download opens the files: those made, with their size, and Make for the one that is not.
   await page.screenshot({ path: path.join(shots, 'sermon-list-open.png') });
   await detail.locator('summary', { hasText: 'Download' }).click();
@@ -98,4 +99,20 @@ test('sermon details fit a phone', async ({ browser }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: path.join(shots, 'phone-sermon-list.png') });
   await ctx.close();
+});
+
+test('a recording with changes not saved in the editor says so in the list', async ({ page, request }) => {
+  const q = '?path=' + encodeURIComponent(folder);
+  const adjusted = { sections: [{ start: 3, end: 24 }], cuts: [], fadeIn: 0, fadeOut: 0 };
+  expect((await request.put('api/sermon' + q, { data: adjusted })).ok()).toBe(true);
+  try {
+    await page.goto('');
+    const row = page.locator('.year tr.row', { hasText: '2026-07-05' });
+    await expect(row).toContainText('not saved');
+    await page.locator('.year').first().screenshot({ path: path.join(shots, 'recordings-not-saved.png') });
+  } finally {
+    expect((await request.post('api/sermon/revert' + q)).ok()).toBe(true);
+  }
+  await page.reload();
+  await expect(page.locator('.year tr.row', { hasText: '2026-07-05' })).not.toContainText('not saved');
 });

@@ -59,8 +59,14 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 	if c != http.StatusOK || f.Saved != nil || f.Adjusted == nil || len(f.Adjusted.Cuts) != 2 || f.Adjusted.FadeOut != 2 {
 		t.Fatalf("adjust: %d %+v", c, f)
 	}
+	if !ts.entry(filepath.Join(ts.root, folder)).Adjusted {
+		t.Error("the recordings list does not say it has changes not saved")
+	}
 	// Saving makes them the saved version.
 	c, f = call("POST", "/save", "")
+	if ts.entry(filepath.Join(ts.root, folder)).Adjusted {
+		t.Error("saved, but the recordings list says it has changes not saved")
+	}
 	if c != http.StatusOK || f.Saved == nil || f.Saved.Sections[0].End != 80 || f.Adjusted != nil || f.SavedAt == nil {
 		t.Fatalf("save: %d %+v", c, f)
 	}

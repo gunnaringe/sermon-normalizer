@@ -21,6 +21,9 @@ function badges(e) {
   if (e.saved && e.outputs.length === 0) {
     out.push(h('span', { class: 'badge warn', title: t('No files made: open it in the editor and press Save') }, t('no files')));
   }
+  if (e.adjusted) {
+    out.push(h('span', { class: 'badge warn', title: t('Changed in the editor, but not saved: open it to save or revert') }, t('not saved')));
+  }
   if (e.outdated) {
     out.push(h('span', { class: 'badge warn', title: t('Made from an older cut: open it in the editor and press Save') }, t('files out of date')));
   }
