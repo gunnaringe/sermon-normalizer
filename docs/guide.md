@@ -112,14 +112,14 @@ Each can have a label, which shows on the waveform.
   the sections is allowed (what is outside is left out anyway) but does nothing, and a warning by it says so (also when it is only
   partly in a section). Every section and cut can have a **label** ("Intro", "Song"), shown on the waveform and kept
   with the edit; labels change nothing in the files. *Hear join* plays 3 s either side of a cut as it will sound. In Navigate,
-  what the Play button plays is **The published parts** (the default: playback jumps over the cuts and the gaps between sections, and waits out the pauses)
-  or **The recording** (as it is, so the parts in between can be heard too). The outputs are made from
+  **Skip what is left out** next to Play (on by default) makes playback jump over the cuts and the gaps between sections,
+  and wait out the pauses, as the sermon will be published; off, the recording plays as it is, so the parts in between can be heard too. The outputs are made from
   what is left, joined with a 15 ms fade on each side so the join does not click; the length
   shown is that of the sections after the cuts.
 - **Metadata added to the file:** title, artist and album, from the church's defaults (Settings), for this recording; a field you
   empty is left out of the files.
 - **Processing:** how the sermon is made into files, kept with the sermon (with the saved version; *Revert* brings them back too).
-  *Channels* (mono ↔ stereo; stereo for a recording that is mono in effect shows a warning). *Noise*: reduction in dB, and
+  *Channels* (**Mono** or **Stereo**; stereo for a recording that is mono in effect shows a warning, with *Use mono*). *Noise*: reduction in dB, and
   **Keep room sound** (how much of the room's own sound, such as its reverb, is kept: less reduction or more room sound sounds more natural).
   *Levels*: **Leveling** (off, gentle, normal, strong) and **Compression** (off, light, normal, strong). *Loudness*: the target
   (LUFS) and the true-peak ceiling. *Encoding*: the MP3 and Opus bitrates. **Hear a sample** makes 30 seconds from the playhead with
