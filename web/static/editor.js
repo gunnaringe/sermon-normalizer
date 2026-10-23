@@ -102,7 +102,7 @@ export async function editorView(view, path, config) {
   const cutHint = h('p', { class: 'muted' });
   const cutHelp = h('p', { class: 'muted' }, t('Mark a part that should not be published, such as a cough, a song or something sensitive.'));
   const inputPanel = h('div', { class: 'panel input-file' });
-  const channelWarning = h('p', { class: 'notice', role: 'status' });
+  const channelWarning = h('p', { class: 'notice', role: 'status', hidden: true });
   const pills = h('div', { class: 'pills', role: 'group', 'aria-label': t('Formats') });
   const outputNote = h('p', { class: 'muted' });
   const checkOut = h('div', {});
@@ -141,6 +141,14 @@ export async function editorView(view, path, config) {
     h('div', { class: 'save-what' }, outputNote, checkOut),
     h('div', { class: 'save-actions' }, undoButton, redoButton, revertButton, saveButton));
 
+  // Deleting (below): the recording into the trash, or only its original.
+  const folderName = path.split('/').pop();
+  const originalGone = () => t('The original recording was deleted {date}, to free the space. The files made from it are kept, but the sermon can no longer be edited or regenerated.',
+    { date: formatDateTime(info.originalDeleted) });
+  // The original can go once files have been made from it, and nothing is being made.
+  const canDeleteOriginal = () => Boolean(info.raw) && (info.outputs || []).length > 0;
+  const deletePanel = h('div', { class: 'panel delete-panel' });
+
   let processingEl = processingPanel();
   const clipsBox = h('div', { class: 'panel clip-choice' });
   const clipsSection = h('section', { class: 'step', 'aria-labelledby': 'step-clips', hidden: true },
@@ -157,6 +165,7 @@ export async function editorView(view, path, config) {
     h('section', { class: 'step', 'aria-labelledby': 'step-output' }, h('h2', { id: 'step-output' }, t('Output')),
       h('div', { class: 'panel' }, pills),
       jobPanel),
+    h('section', { class: 'step', 'aria-labelledby': 'step-delete' }, h('h2', { id: 'step-delete' }, t('Delete')), deletePanel),
     saveBar,
   );
 
@@ -166,7 +175,7 @@ export async function editorView(view, path, config) {
   function showInput() {
     const raw = info.raw, rec = info.recording, from = info.convertedFrom;
     if (!raw) {
-      inputPanel.replaceChildren(h('p', {}, t('No recording yet.')));
+      inputPanel.replaceChildren(h('p', {}, info.originalDeleted ? originalGone() : t('No recording yet.')));
       return;
     }
     const fmt = rec && rec.format;
@@ -194,8 +203,55 @@ export async function editorView(view, path, config) {
         h('dl', { class: 'facts' }, rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
         md.length ? h('details', { class: 'metadata' }, h('summary', {}, t('Metadata in the file ({n})', { n: md.length })),
           h('dl', { class: 'facts' }, md.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : ''),
-      h('a', { class: 'button', href: fileURL(raw, true) }, t('Download original'))));
+      h('span', { class: 'input-actions' }, h('a', { class: 'button', href: fileURL(raw, true) }, t('Download original')),
+        canDeleteOriginal() ? h('button', { type: 'button', class: 'delete', name: 'delete-original', onclick: deleteOriginal }, t('Delete original…')) : '')));
     showChannelWarning();
+  }
+
+  // ---- deleting: the recording into the trash, or only its original, keeping the files, to free the space ----
+
+
+  async function deleteOriginal() {
+    const ok = await confirmDialog({
+      title: t('Delete the original of {name}?', { name: folderName }),
+      body: [
+        h('p', {}, t('The original recording ({name}, {size}) is deleted for good, not moved to the trash. The files made from it are kept, and can still be downloaded and shared.',
+          { name: info.raw.name, size: formatSize(info.raw.size) })),
+        h('p', { class: 'notice' }, t('The sermon can no longer be edited or regenerated: no new cuts, formats, processing or intro and outro.')),
+      ],
+      confirm: t('Delete original'), danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api('POST', 'api/recordings/delete-original?path=' + q(path));
+      location.reload(); // the page without the waveform
+    } catch (e) {
+      alertDialog({ body: tr(e.message) });
+    }
+  }
+
+  function renderDelete() {
+    deletePanel.replaceChildren(
+      h('p', { class: 'muted' }, t('Delete recording moves it to the trash, with its files and the original, for {days} days. Until then you can restore it under Settings → Trash.', { days: config.trashDays })),
+      h('p', { class: 'actions' },
+        h('button', { type: 'button', class: 'delete', name: 'delete-recording', onclick: deleteRecording }, t('Delete recording…')),
+        canDeleteOriginal() ? h('button', { type: 'button', class: 'delete', name: 'delete-original', onclick: deleteOriginal }, t('Delete original…')) : ''),
+      canDeleteOriginal() ? h('p', { class: 'muted' }, t('Delete original frees the space of the original recording and keeps the files made from it, but then the sermon can no longer be edited or regenerated.')) : '');
+  }
+
+  async function deleteRecording() {
+    const ok = await confirmDialog({
+      title: t('Delete {name}?', { name: folderName }),
+      body: h('p', {}, t('It is moved to the trash, with its files and the original recording, and is removed for good after {days} days. Until then you can restore it under Settings → Trash.', { days: config.trashDays })),
+      confirm: t('Delete'), danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api('POST', 'api/recordings/delete?path=' + q(path));
+      location.hash = href();
+    } catch (e) {
+      alertDialog({ body: tr(e.message) });
+    }
   }
 
   // verdict is what the recording's channels are, for people.
@@ -234,9 +290,10 @@ export async function editorView(view, path, config) {
   async function refreshInfo() {
     const inf = await api('GET', 'api/folder?path=' + q(path));
     if (!alive) return;
-    Object.assign(info, { raw: inf.raw, recording: inf.recording, convertedFrom: inf.convertedFrom, outputs: inf.outputs });
+    Object.assign(info, { raw: inf.raw, recording: inf.recording, convertedFrom: inf.convertedFrom, outputs: inf.outputs, originalDeleted: inf.originalDeleted });
     showInput();
     renderOutputs();
+    renderDelete();
   }
   showInput();
   // The facts come with the waveform's preparation: look again until they are there.
@@ -1870,9 +1927,18 @@ export async function editorView(view, path, config) {
   } else {
     waveSection.replaceChildren(h('p', {}, t('Nothing to cut yet. Upload a recording first.')));
   }
+  renderDelete();
+  // Without the original there is nothing left to edit: the page has what it was made into, and Delete.
+  const gone = !info.raw && info.originalDeleted;
+  if (gone) {
+    for (const id of ['step-edit', 'step-metadata', 'step-processing', 'step-clips']) view.querySelector('#' + id).parentElement.remove();
+    saveBar.remove();
+  }
   renderVersion();
   renderOutputs();
-  check();
-  loadClips();
+  if (!gone) {
+    check();
+    loadClips();
+  }
   return teardown;
 }

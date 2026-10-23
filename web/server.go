@@ -235,6 +235,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/make", s.handleMake)
 	mux.HandleFunc("POST /api/outputs/remove", s.handleRemoveOutputs)
 	mux.HandleFunc("POST /api/recordings/delete", s.handleDelete)
+	mux.HandleFunc("POST /api/recordings/delete-original", s.handleDeleteOriginal)
 	mux.HandleFunc("GET /api/trash", s.handleTrash)
 	mux.HandleFunc("POST /api/trash/restore", s.handleRestore)
 	mux.HandleFunc("POST /api/trash/remove", s.handleTrashRemove)
@@ -333,9 +334,10 @@ func (s *Server) pathParam(w http.ResponseWriter, r *http.Request) (string, bool
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"inbox":    s.cfg.Inbox != "",
-		"chunk":    MaxChunk,
-		"defaults": s.defaults(),
+		"inbox":     s.cfg.Inbox != "",
+		"chunk":     MaxChunk,
+		"defaults":  s.defaults(),
+		"trashDays": s.trashDays(),
 	})
 }
 
