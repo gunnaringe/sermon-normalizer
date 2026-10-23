@@ -400,8 +400,10 @@ export async function editorView(view, path, config) {
       });
       regions.enableDragSelection({ color: css('--selection') });
       const initial = sermon.adjusted || sermon.saved;
-      if (initial) applySettings(initial);
-      else proposeSection(data.silences);
+      if (initial) {
+        applySettings(initial);
+        lastSent = JSON.stringify(currentSettings()); // as the page shows it: opening is not an adjustment
+      } else proposeSection(data.silences);
       present = snapshot(); // what undo goes back to, at most
       loadHistory();
     });

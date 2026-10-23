@@ -72,6 +72,15 @@ func TestSermonSavedAndAdjusted(t *testing.T) {
 		t.Errorf("save again: %d", c)
 	}
 
+	// One saved before the sound was kept (sermonA has none) is the same with the church's processing, as
+	// the editor shows it: sending that back is not an adjustment.
+	q := ts.processing().start()
+	withSound := strings.Replace(sermonA, `"fadeOut":2`, fmt.Sprintf(`"fadeOut":2,"sound":{"stereo":%t,"noiseReduction":%d,"roomSound":%d,"leveling":%q,"compression":%q,"targetLufs":%g,"truePeak":%g,"mp3Bitrate":%q,"opusBitrate":%q}`,
+		q.Stereo, q.NoiseReduction, q.RoomSound, q.Leveling, q.Compression, q.TargetLUFS, q.TruePeak, q.Mp3Bitrate, q.OpusBitrate), 1)
+	if c, f = call("PUT", "", withSound); c != http.StatusOK || f.Adjusted != nil {
+		t.Errorf("the saved sermon with the default sound: %d, adjusted %+v", c, f.Adjusted)
+	}
+
 	// Adjustments sit next to the saved version, which stays as it was.
 	c, f = call("PUT", "", sermonB)
 	if c != http.StatusOK || f.Saved == nil || start(f.Saved) != 20 || f.Adjusted == nil || start(f.Adjusted) != 10 || len(f.Adjusted.Sections) != 2 {
