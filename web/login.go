@@ -354,12 +354,12 @@ func (au *auth) fail(w http.ResponseWriter, r *http.Request, err error) {
 	http.Redirect(w, r, au.url("loggedout.html")+"?failed", http.StatusSeeOther)
 }
 
-// public reports the paths anyone may fetch without a session: the login
-// itself, and the files of the page that says you are logged out (no studio
-// data is in them).
+// publicPath reports the paths anyone may fetch without a session: the login
+// itself, the health check, and the static files but the studio's page (no
+// studio data is in them).
 func publicPath(rel string) bool {
 	switch {
-	case strings.HasPrefix(rel, "auth/"):
+	case strings.HasPrefix(rel, "auth/"), rel == "healthz":
 		return true
 	case rel == "" || rel == "index.html" || strings.HasPrefix(rel, "api/"):
 		return false

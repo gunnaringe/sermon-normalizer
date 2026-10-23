@@ -368,6 +368,8 @@ func (a *App) Handler() http.Handler {
 	sub, _ := fs.Sub(static, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
 	mux.HandleFunc("GET /api/session", a.handleSession)
+	// healthz is for the health checks (Kubernetes): open, also with the login.
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	if a.auth != nil {
 		mux.HandleFunc("GET /auth/login", a.auth.handleLogin)
 		mux.HandleFunc("GET /auth/callback", a.auth.handleCallback)

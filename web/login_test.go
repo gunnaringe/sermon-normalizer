@@ -188,6 +188,10 @@ func TestLoginFlow(t *testing.T) {
 	if w := l.do("GET", "/loggedout.html", ""); w.Code != http.StatusOK {
 		t.Errorf("loggedout.html: %d", w.Code)
 	}
+	// So is the health check.
+	if w := l.do("GET", "/healthz", ""); w.Code != http.StatusOK {
+		t.Errorf("healthz: %d", w.Code)
+	}
 
 	w := l.login("/#/kirke-a/settings", "good-code")
 	c := cookieOf(w, sessionCookie)

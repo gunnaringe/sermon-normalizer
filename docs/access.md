@@ -20,6 +20,7 @@ sermon-studio --data-dir /data --oidc-issuer https://id.example.org --oidc-clien
 - A user is the provider's issuer and `sub`, nothing else. Name and email from the login are shown, never used
   to give access. Users are kept in `<data-dir>/users.json`, sessions (30 days, only their hashes) in `sessions.json`.
 - Every page and every API call needs a session: a page goes to the login and comes back, the API answers 401.
+  Health checks use `/healthz`, which is open.
 - A church's members are in `<church>/members.json`, each an admin or a member. A user who is no church's member
   is told to ask for an invite link.
 - **Invite links** are made where the studio runs, and are single use (7 days by default):
