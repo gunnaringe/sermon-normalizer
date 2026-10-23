@@ -48,6 +48,17 @@ func (s *soundSettings) applyTo(q *runRequest) {
 	q.TargetLUFS, q.TruePeak, q.Mp3Bitrate, q.OpusBitrate = s.TargetLUFS, s.TruePeak, s.Mp3Bitrate, s.OpusBitrate
 }
 
+// withSound is c with the church's processing as its sound when it has none (saved before the sound was
+// kept): the editor shows it with those, so the same sermon sent back is not an adjustment.
+func (c sermonSettings) withSound(p processing) sermonSettings {
+	if c.Sound == nil {
+		q := p.start()
+		c.Sound = &soundSettings{Stereo: q.Stereo, NoiseReduction: q.NoiseReduction, RoomSound: q.RoomSound, Leveling: q.Leveling,
+			Compression: q.Compression, TargetLUFS: q.TargetLUFS, TruePeak: q.TruePeak, Mp3Bitrate: q.Mp3Bitrate, OpusBitrate: q.OpusBitrate}
+	}
+	return c
+}
+
 // sermonFile is the sermon as the API gives it: the saved version (recording.json) and the adjustments the
 // editor keeps as you make them (draft.json); saving makes them the saved version, and reverting drops them.
 type sermonFile struct {
@@ -143,8 +154,9 @@ func (s *Server) handleSermonPut(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	p := s.processing()
 	s.changeSermon(w, r, func(f *sermonFile) error {
-		if f.Saved != nil && reflect.DeepEqual(*f.Saved, c) {
+		if f.Saved != nil && reflect.DeepEqual(f.Saved.withSound(p), c.withSound(p)) {
 			f.Adjusted = nil
 		} else {
 			f.Adjusted = &c

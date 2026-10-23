@@ -388,6 +388,20 @@ test('the adjustments are kept as you go (draft.json); Save makes them the saved
   await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled();
 });
 
+test('opening a sermon saved before its sound was kept is not an adjustment', async ({ page }) => {
+  const folder = '2026/2026-10-04';
+  forget(folder);
+  const file = path.join(DATA, 'root', folder, 'recording.json');
+  const st = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  fs.writeFileSync(file, JSON.stringify({ ...st, saved: { sections: [{ start: 12, end: 88 }], cuts: [], fadeIn: 0, fadeOut: 0 }, savedAt: '2026-10-01T10:00:00Z' }));
+  await openEditor(page, folder, { keep: true });
+  await expect(page.locator('.save-bar')).toContainText('Saved');
+  await page.waitForTimeout(1500); // longer than the page waits before it keeps a change
+  await expect(page.locator('.save-bar')).not.toContainText('Adjusted, not saved');
+  await expect(page.getByRole('button', { name: 'Revert…' })).toBeDisabled();
+  expect(sermonOf(folder).adjusted).toBeNull();
+});
+
 test('a recording not cut yet starts with the sermon set to all of it but the silence at the ends', async ({ page }) => {
   const folder = '2026/2026-06-14'; // a minute: silence, speech from 3 to 56 s, silence
   const read = () => sermonOf(folder);
