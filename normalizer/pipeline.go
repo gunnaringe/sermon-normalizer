@@ -728,6 +728,66 @@ func (f FFmpeg) Sample(ctx context.Context, raw string, o Options, start, second
 	return p.renderMaster(ctx, dst, seconds, []string{"-c:a", "libmp3lame", "-b:a", "96k"})
 }
 
+// JoinClipSeconds and JoinSermonSeconds are how much of the clip and of the sermon a join sample has.
+const (
+	JoinClipSeconds   = 6.0
+	JoinSermonSeconds = 10.0
+)
+
+// JoinSample makes an MP3 at dst to hear how o's sermon joins its intro (which = "intro") or outro: the end of
+// the intro, the pause and the start of the sermon, or the end of the sermon, the pause and the start of the
+// outro. That part of the sermon is made as the files are (its processing, and its fade at that end), from its
+// first or last kept part.
+func (f FFmpeg) JoinSample(ctx context.Context, raw string, o Options, which, dst string) error {
+	clip := map[string]string{"intro": o.Intro, "outro": o.Outro}[which]
+	if clip == "" {
+		return fmt.Errorf("this sermon has no %s", which)
+	}
+	end, err := f.Duration(ctx, raw)
+	if err != nil {
+		return err
+	}
+	kept := o.keep(end)
+	if len(kept) == 0 {
+		return errors.New("the cuts leave nothing of the sermon")
+	}
+	w := o
+	w.Cuts, w.Pauses = nil, nil
+	if which == "intro" {
+		w.Start, w.End, w.Outro, w.FadeOut = kept[0].Start, math.Min(kept[0].End, kept[0].Start+JoinSermonSeconds), "", 0
+	} else {
+		last := kept[len(kept)-1]
+		w.Start, w.End, w.Intro, w.FadeIn = math.Max(last.Start, last.End-JoinSermonSeconds), last.End, "", 0
+	}
+	length := w.End - w.Start
+	w.FadeIn, w.FadeOut = math.Min(w.FadeIn, length), math.Min(w.FadeOut, length)
+	p := &Pipeline{FF: f, Opt: w, Out: io.Discard, raw: raw}
+	defer func() {
+		for _, name := range p.cleanup {
+			Remove(name)
+		}
+	}()
+	stem := filepath.Join(filepath.Dir(dst), "."+strings.TrimSuffix(filepath.Base(dst), filepath.Ext(dst)))
+	p.master = stem + ".m.flac"
+	joined := stem + ".j.flac"
+	p.cleanup = append(p.cleanup, p.master, joined)
+	if err := p.renderMaster(ctx, p.master, length, []string{"-c:a", "flac", "-sample_fmt", "s32"}); err != nil {
+		return err
+	}
+	if err := p.join(ctx, joined); err != nil {
+		return err
+	}
+	clipLength, err := f.Duration(ctx, clip)
+	if err != nil {
+		return err
+	}
+	from, to := math.Max(0, clipLength-JoinClipSeconds), clipLength+w.ClipPause+length
+	if which == "outro" {
+		from, to = 0, length+w.ClipPause+math.Min(clipLength, JoinClipSeconds)
+	}
+	return f.RunTo(ctx, dst, "-ss", secs(from), "-to", secs(to), "-i", joined, "-c:a", "libmp3lame", "-b:a", "128k")
+}
+
 // pending reports whether an output file needs to be made.
 func (p *Pipeline) pending(path string) bool { return p.Opt.Force || !exists(path) }
 

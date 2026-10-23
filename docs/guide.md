@@ -133,7 +133,8 @@ Each can have a label, which shows on the waveform.
   recording, in its `clips/` folder; **Add to the church's clips** makes it one of the church's). A new sermon starts with the
   church's defaults; one saved before there were clips has none. The choice is kept with the sermon, like the cut (undo covers
   it). The clips are not noise-reduced or leveled, only brought to the sermon's loudness, with a short pause at each join; the
-  line under them tells the length with them. With an intro or outro, Save makes two versions of each format: with them (the
+  line under them tells the length with them. **Hear the intro join** (and the outro join) plays the end of the intro, the
+  pause and the start of the sermon, made as the files will be. With an intro or outro, Save makes two versions of each format: with them (the
   usual files) and the **sermon only** (`<date>_sermon.mp3` ...). If a clip the sermon chose has been deleted, it says so, and
   the files cannot be made until another (or none) is chosen.
 - **Output:** a pill per format (FLAC, MP3, Opus), one under the other: click to choose it,

@@ -114,6 +114,13 @@ test('editor: the intro and outro of a sermon, its own clip, and a deleted one',
   await expect(outro).toHaveValue('own');
   await expect(outro.locator('option:checked')).toHaveText("This sermon's own: Takk");
   await expect.poll(() => draft().outro).toBe('own');
+  // The joins can be heard before the files are made.
+  await step.getByRole('button', { name: 'Hear the intro join' }).click();
+  await expect(step.getByLabel('The join')).toBeVisible({ timeout: 30_000 });
+  await expect(step.getByLabel('The join')).toHaveAttribute('src', /^blob:/);
+  await step.getByRole('button', { name: 'Hear the outro join' }).click();
+  await expect(step.getByText('Making the join…')).toHaveCount(0, { timeout: 30_000 });
+  await expect(step.locator('.error')).toHaveCount(0);
   await step.screenshot({ path: path.join(shots, 'editor-intro-outro.png') });
 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
