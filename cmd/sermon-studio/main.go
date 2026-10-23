@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +24,13 @@ import (
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		if err := runAdmin(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
@@ -36,6 +44,11 @@ func run() error {
 	inbox := flag.String("inbox", "", "with --root: the folder new recordings arrive in (optional)")
 	groupsHeader := flag.String("groups-header", "", "request header in which the login proxy sends the user's groups (space-separated); turns on access control: a church is for the group sermon_studio_<church id, - as _>, sermon_studio_admin sees all and can add churches")
 	logoutURL := flag.String("logout-url", "", "the login proxy's logout address (a POST); shows a Log out button in the header")
+	oidcIssuer := flag.String("oidc-issuer", "", "the OpenID Connect provider (its issuer URL); turns on the studio's own login: a church is for its members, who join with an invite link (sermon-studio admin invite)")
+	oidcClientID := flag.String("oidc-client-id", "", "with --oidc-issuer: the studio's client id at the provider")
+	oidcSecretFile := flag.String("oidc-client-secret-file", "", "with --oidc-issuer: a file with the client secret (none = a public client, PKCE only)")
+	publicURL := flag.String("public-url", "", "with --oidc-issuer: the studio's address as the browser sees it (the callback is <public-url>/auth/callback)")
+	cookieDomain := flag.String("cookie-domain", "", "with --oidc-issuer: a parent domain for the session cookie, shared by the studio's hosts (default: this host only)")
 	cacheDir := flag.String("cache-dir", defaultCacheDir(), "where waveform data and previews are kept")
 	cacheDays := flag.Int("cache-days", 30, "remove cached analyses not used for this many days")
 	trashDays := flag.Int("trash-days", web.DefaultTrashDays, "keep a deleted recording in the trash for this many days")
@@ -79,6 +92,17 @@ func run() error {
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	web.CleanCache(*cacheDir, time.Duration(*cacheDays)*24*time.Hour)
+	var oidc *web.OIDCOptions
+	if *oidcIssuer != "" {
+		oidc = &web.OIDCOptions{Issuer: *oidcIssuer, ClientID: *oidcClientID, PublicURL: *publicURL, CookieDomain: *cookieDomain}
+		if *oidcSecretFile != "" {
+			b, err := os.ReadFile(*oidcSecretFile)
+			if err != nil {
+				return fmt.Errorf("--oidc-client-secret-file: %w", err)
+			}
+			oidc.ClientSecret = strings.TrimSpace(string(b))
+		}
+	}
 	var share *web.ShareOptions
 	if *shareListen != "" {
 		share = &web.ShareOptions{URL: *shareURL, IPHeader: *shareIPHeader, Limits: limits}
@@ -86,7 +110,7 @@ func run() error {
 	srv, err := web.NewApp(web.AppConfig{
 		Base: web.Config{Root: *root, Inbox: *inbox, CacheDir: *cacheDir,
 			Layout: *layout, TrashDays: *trashDays, FFmpeg: normalizer.FFmpeg{Bin: bin}, Logger: logger},
-		DataDir: *dataDir, GroupsHeader: *groupsHeader, LogoutURL: *logoutURL,
+		DataDir: *dataDir, GroupsHeader: *groupsHeader, LogoutURL: *logoutURL, OIDC: oidc,
 		Share: share, ParallelRuns: *parallelRuns,
 	})
 	if err != nil {

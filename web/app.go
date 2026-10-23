@@ -46,6 +46,9 @@ type AppConfig struct {
 	// LogoutURL is where the header's Log out button posts to (the login
 	// proxy's logout). "" = no button.
 	LogoutURL string
+	// OIDC turns on the studio's own login (login.go): a church is then for
+	// its members (members.go). nil = no login (or GroupsHeader).
+	OIDC *OIDCOptions
 	// Share turns on shares (codes for the public upload page); nil = off.
 	Share *ShareOptions
 	// ParallelRuns is how many runs (and samples) can work at once, across all churches; 0 = 1. A run uses
@@ -82,7 +85,8 @@ type tenant struct {
 	srv *Server
 	api http.Handler
 
-	shares []*Share // guarded by App.shareMu
+	shares  []*Share // guarded by App.shareMu
+	members []member // guarded by App.mu
 }
 
 func (t *tenant) info() TenantInfo {
@@ -120,6 +124,7 @@ type App struct {
 
 	share   *shareState // nil = shares are off
 	shareMu sync.Mutex  // every church's shares and uploads in progress
+	auth    *auth       // nil = no login of its own
 }
 
 // shareState is what the public upload page keeps in memory.
@@ -143,6 +148,15 @@ func NewApp(cfg AppConfig) (*App, error) {
 		a.share = &shareState{limits: newLimiter(cfg.Share.Limits), busy: map[string]bool{}, sending: map[string]int{}, done: make(chan struct{})}
 	}
 	fail := func(err error) (*App, error) { a.Close(); return nil, err }
+	if cfg.OIDC != nil {
+		if cfg.GroupsHeader != "" {
+			return nil, errors.New("use the login (OIDC) or the groups header, not both")
+		}
+		var err error
+		if a.auth, err = newAuth(*cfg.OIDC, cfg.DataDir, cfg.Base.Logger); err != nil {
+			return nil, err
+		}
+	}
 	if cfg.Base.Root != "" {
 		if _, err := a.start(RootTenant, "", churchConfig{}); err != nil {
 			return fail(fmt.Errorf("--root: %w", err))
@@ -256,6 +270,9 @@ func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
 		if t.shares, err = readShares(dir); err != nil {
 			return nil, err
 		}
+		if t.members, err = readMembers(dir); err != nil {
+			return nil, err
+		}
 	}
 	srv, err := New(cfg)
 	if err != nil {
@@ -351,6 +368,13 @@ func (a *App) Handler() http.Handler {
 	sub, _ := fs.Sub(static, "static")
 	mux.Handle("GET /", http.FileServerFS(sub))
 	mux.HandleFunc("GET /api/session", a.handleSession)
+	if a.auth != nil {
+		mux.HandleFunc("GET /auth/login", a.auth.handleLogin)
+		mux.HandleFunc("GET /auth/callback", a.auth.handleCallback)
+		mux.HandleFunc("POST /auth/logout", a.auth.handleLogout)
+		mux.HandleFunc("GET /api/invite", a.handleInvite)
+		mux.HandleFunc("POST /api/invite", a.handleInviteAccept)
+	}
 	mux.HandleFunc("GET /api/tenants", a.handleTenants)
 	mux.HandleFunc("POST /api/tenants", a.handleTenantCreate)
 	mux.HandleFunc("PUT /api/church", a.handleChurchRename)
@@ -378,14 +402,23 @@ func (a *App) Handler() http.Handler {
 	for _, method := range []string{"GET", "POST", "PUT"} {
 		mux.HandleFunc(method+" /api/", toChurch)
 	}
-	// Once a login proxy sets a cookie, other sites must not be able to
+	var h http.Handler = mux
+	if a.auth != nil {
+		h = a.auth.require(mux)
+	}
+	// Once there is a login cookie, other sites must not be able to
 	// start runs, uploads or imports on the user's behalf.
-	return http.NewCrossOriginProtection().Handler(mux)
+	return http.NewCrossOriginProtection().Handler(h)
 }
 
 // handleSession tells the page what it needs before it knows the user has
 // a church: where to log out.
 func (a *App) handleSession(w http.ResponseWriter, r *http.Request) {
+	if a.auth != nil {
+		u := a.userOf(r)
+		writeJSON(w, http.StatusOK, map[string]string{"logoutUrl": "auth/logout", "user": a.auth.userName(u.id)})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"logoutUrl": a.cfg.LogoutURL})
 }
 
@@ -396,7 +429,7 @@ func (a *App) handleTenants(w http.ResponseWriter, r *http.Request) {
 		list = append(list, a.infoFor(t, u))
 	}
 	if len(list) == 0 {
-		writeError(w, http.StatusForbidden, errNoChurch())
+		writeError(w, http.StatusForbidden, a.errNoChurch())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.cfg.DataDir != "" && u.admin, "shares": a.share != nil})

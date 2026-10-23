@@ -181,8 +181,8 @@ button:active:not(:disabled), .button:active { transform: translateY(1px); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.danger { background: linear-gradient(135deg, #dc2626, #be185d); border-color: transparent; color: #fff; font-weight: 600; }
 button.danger:hover:not(:disabled) { background: linear-gradient(135deg, #ef4444, #db2777); box-shadow: 0 6px 16px -6px rgba(220, 38, 38, 0.6); }
-button.primary { background: var(--grad); border-color: transparent; color: var(--accent-fg); font-weight: 600; box-shadow: 0 4px 14px -4px rgba(4, 120, 87, 0.5); }
-button.primary:hover:not(:disabled) { background: var(--grad-hover); box-shadow: 0 8px 20px -6px rgba(4, 120, 87, 0.65); transform: translateY(-1px); }
+button.primary, a.button.primary { background: var(--grad); border-color: transparent; color: var(--accent-fg); font-weight: 600; box-shadow: 0 4px 14px -4px rgba(4, 120, 87, 0.5); }
+button.primary:hover:not(:disabled), a.button.primary:hover { background: var(--grad-hover); box-shadow: 0 8px 20px -6px rgba(4, 120, 87, 0.65); transform: translateY(-1px); }
 input[type=text], input[type=number], input[type=date], input[type=time] {
   font: inherit;
   padding: 0.35rem 0.6rem;
