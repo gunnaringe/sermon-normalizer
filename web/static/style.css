@@ -506,6 +506,11 @@ button.delete:hover:not(:disabled) { border-color: var(--error); background: col
 .clip audio { height: 2rem; max-width: 100%; }
 .clips details.archived { margin-top: 0.6rem; }
 .clips details.archived summary { cursor: pointer; color: var(--muted); }
+.clip-choice .clip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; margin-bottom: 0.6rem; }
+.clip-choice .clip-row label { display: inline-flex; align-items: center; gap: 0.6rem; }
+.clip-choice .clip-row label .name { min-width: 4.5rem; }
+.clip-choice .clip-row p { flex-basis: 100%; margin: 0; }
+.clip-choice audio { height: 2rem; max-width: 100%; }
 
 /* what Play plays, and the pause fields */
 .mode { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--panel); }

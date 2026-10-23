@@ -75,6 +75,11 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   intro or outro cannot be archived or deleted. A sermon's choice is `intro`/`outro` in `sermonSettings` (`default`, `own`, a
   clip id, "" = none): only its form is validated, never that the clip exists (a saved sermon must not be dropped).
   `clipUse` counts the sermons (saved or draft) that chose each clip. Settings → Intro and outro is `clips.js`.
+- `web/sermonclips.go`: a sermon's clips: `check` resolves its choice (`applyClips`: the files into `Options.Intro/Outro`, `plan.clips`
+  for the page; a chosen clip that is gone refuses the run). Its own clips are `<folder>/clips/intro|outro.flac` (`ownClips` in
+  `recording.json`; `POST api/sermon/clip?which=`, `/dismiss`, `/add` copies one to the church, `GET api/sermon/clips` is what
+  the editor's Intro and outro step shows). The clips' ids and versions are in `madeFrom` (`runClips.key`, "" without clips);
+  the sermon-only files are recorded as `<format>_sermon`, and a run without clips removes them (`dropSermonOnly`).
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/trash.go`: deleting a recording moves its date folder to `<root>/.trash/<id>/` (+ `trash.json`: where from, when); `GET api/trash`,

@@ -401,6 +401,9 @@ type runRequest struct {
 	Mp3Bitrate     string  `json:"mp3Bitrate"`
 	OpusBitrate    string  `json:"opusBitrate"`
 	Force          bool    `json:"force"`
+	// Intro and Outro are the sermon's choices of clips (sermonSettings.Intro/Outro).
+	Intro string `json:"intro"`
+	Outro string `json:"outro"`
 	// Tags for this run; nil = the church's defaults for the folder, "" = no tag.
 	Title  *string `json:"title"`
 	Artist *string `json:"artist"`
@@ -438,6 +441,7 @@ type plan struct {
 	Outputs map[string]outputState `json:"outputs,omitempty"` // when it can run
 	Error   string                 `json:"error,omitempty"`
 	Notices []string               `json:"notices"`
+	Clips   runClips               `json:"clips"` // the intro and outro, as the run would use them
 
 	opt   normalizer.Options
 	paths normalizer.Paths
@@ -461,6 +465,9 @@ func (s *Server) check(abs string, q runRequest) plan {
 		return fail(err)
 	}
 	pl.paths = paths
+	if pl.Clips, err = s.applyClips(abs, q.Intro, q.Outro, &pl.opt); err != nil {
+		return fail(err)
+	}
 	var note string
 	if pl.opt.Tags, note = s.runTags(abs, q); note != "" {
 		pl.Notices = append(pl.Notices, note)
@@ -474,7 +481,7 @@ func (s *Server) check(abs string, q runRequest) plan {
 	case s.analyses.converting(raw):
 		return fail(errors.New("the recording is still being converted"))
 	}
-	pl.Outputs = s.outputStatus(paths, pl.opt)
+	pl.Outputs = s.outputStatus(paths, pl.opt, pl.Clips)
 	return pl
 }
 
@@ -487,18 +494,35 @@ type outputState struct {
 	Stale  bool `json:"stale"`
 }
 
-func (s *Server) outputStatus(paths normalizer.Paths, o normalizer.Options) map[string]outputState {
+// With clips, the sermon-only outputs are there too, as flac_sermon...
+func (s *Server) outputStatus(paths normalizer.Paths, o normalizer.Options, clips runClips) map[string]outputState {
 	made := readState(paths.Folder).Outputs
 	out := map[string]outputState{}
-	for _, x := range outputsOf(paths) {
+	for _, x := range runOutputs(paths, clips) {
 		var st outputState
 		if _, err := os.Stat(x.path); err == nil {
 			m, ok := made[x.format]
-			st = outputState{Exists: true, Known: ok, Stale: ok && m.From != madeFrom(o, x.format)}
+			st = outputState{Exists: true, Known: ok, Stale: ok && m.From != madeFrom(o, baseFormat(x.format), clipsOf(x, clips))}
 		}
 		out[x.format] = st
 	}
 	return out
+}
+
+// runOutputs are the outputs a run makes: the main ones, and with clips the sermon only too.
+func runOutputs(paths normalizer.Paths, clips runClips) []output {
+	if clips.key() == "" {
+		return outputsOf(paths)
+	}
+	return append(outputsOf(paths), sermonOnlyOutputs(paths)...)
+}
+
+// clipsOf is the clips fingerprint of an output of a run: the clips for a main one, none for the sermon only.
+func clipsOf(x output, clips runClips) string {
+	if x.format != baseFormat(x.format) {
+		return ""
+	}
+	return clips.key()
 }
 
 // recordOutputs keeps in recording.json how the outputs a run wrote (those
@@ -506,10 +530,15 @@ func (s *Server) outputStatus(paths normalizer.Paths, o normalizer.Options) map[
 func (s *Server) recordOutputs(pl plan, began time.Time) {
 	on := map[string]bool{"flac": pl.opt.Outputs.Flac, "mp3": pl.opt.Outputs.Mp3, "opus": pl.opt.Outputs.Opus}
 	made := map[string]outputMade{}
-	for _, x := range outputsOf(pl.paths) {
-		if st, err := os.Stat(x.path); err == nil && on[x.format] && !st.ModTime().Before(began.Add(-time.Second)) {
-			made[x.format] = outputMade{MadeAt: st.ModTime().UTC(), From: madeFrom(pl.opt, x.format), Cut: cutOf(pl.opt),
-				Stereo: pl.opt.Stereo, Bitrate: bitrateFor(pl.opt, x.format)}
+	for _, x := range runOutputs(pl.paths, pl.Clips) {
+		f := baseFormat(x.format)
+		if st, err := os.Stat(x.path); err == nil && on[f] && !st.ModTime().Before(began.Add(-time.Second)) {
+			m := outputMade{MadeAt: st.ModTime().UTC(), From: madeFrom(pl.opt, f, clipsOf(x, pl.Clips)), Cut: cutOf(pl.opt),
+				Stereo: pl.opt.Stereo, Bitrate: bitrateFor(pl.opt, f)}
+			if clipsOf(x, pl.Clips) != "" {
+				m.Intro, m.Outro = pl.Clips.Intro, pl.Clips.Outro
+			}
+			made[x.format] = m
 		}
 	}
 	if len(made) == 0 {

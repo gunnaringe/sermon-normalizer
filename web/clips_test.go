@@ -195,3 +195,124 @@ func TestIntegrationClips(t *testing.T) {
 		t.Errorf("left in the clips folder: %v", des)
 	}
 }
+
+// runJob starts a run and waits for it to end; it returns the last state.
+func runJob(t *testing.T, ts *testServer, folder string, q runRequest) jobSnapshot {
+	t.Helper()
+	rec := ts.do(t, "POST", "/api/run?path="+folder, q)
+	if rec.Code != 202 {
+		t.Fatalf("run: %d %s", rec.Code, rec.Body)
+	}
+	j := ts.jobs.get(decode[jobSnapshot](t, rec).ID)
+	for {
+		if s := j.snapshot(); s.State != "queued" && s.State != "running" {
+			return s
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A run with clips: the main files with them and the sermon only, both recorded; a new version of a clip
+// makes the main files out of date and leaves the sermon only alone; the sermon's own clip; a run without
+// clips removes the sermon only; a deleted clip refuses the run.
+func TestIntegrationRunWithClips(t *testing.T) {
+	ff := requireFFmpeg(t)
+	ts, _ := clipServer(t, ff, nil)
+	src := t.TempDir()
+	tone := func(name string, seconds float64) string {
+		p := filepath.Join(src, name)
+		if _, err := ff.Run(context.Background(), "-y", "-f", "lavfi", "-i", "aevalsrc=0.3*sin(2*PI*440*t):s=44100:d="+strconv.FormatFloat(seconds, 'f', -1, 64), p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	uploadClip(t, ts, "/api/clips?", tone("Jingle.wav", 3))
+	id := waitClips(t, ts).Clips[0].ID
+	ts.do(t, "PUT", "/api/clips/defaults", map[string]any{"intro": id, "outro": "", "pause": 0.5})
+
+	folder := filepath.Join(ts.root, "2026-10-04")
+	ts.file(t, "2026-10-04/x", "")
+	service(t, ff, filepath.Join(folder, "2026-10-04_raw.wav"))
+	q := ts.processing().start()
+	q.Sections = []span{{Start: 21, End: 79}}
+	q.Flac, q.Opus = false, false
+	pl := decode[plan](t, ts.do(t, "POST", "/api/check?path=2026-10-04", q))
+	if pl.Error != "" || pl.Clips.Intro == nil || pl.Clips.Intro.Name != "Jingle" || pl.Clips.Outro != nil || pl.Clips.Pause != 0.5 {
+		t.Fatalf("check: %+v", pl)
+	}
+	if j := runJob(t, ts, "2026-10-04", q); j.State != "done" {
+		t.Fatalf("run: %+v", j)
+	}
+	length := func(name string) float64 { return duration(t, filepath.Join(folder, name)) }
+	if d := length("2026-10-04.mp3"); d < 61.3 || d > 61.7 {
+		t.Errorf("with the intro: %.2f s, want 61.5", d)
+	}
+	if d := length("2026-10-04_sermon.mp3"); d < 57.9 || d > 58.1 {
+		t.Errorf("the sermon only: %.2f s, want 58", d)
+	}
+	made := readState(folder).Outputs
+	if made["mp3"].Intro == nil || made["mp3"].Intro.ID != id || made["mp3_sermon"].From == "" || made["mp3_sermon"].Intro != nil {
+		t.Errorf("records: %+v", made)
+	}
+
+	uploadClip(t, ts, "/api/clips/"+id+"/replace?", tone("Jingle 2.wav", 2))
+	waitClips(t, ts)
+	pl = decode[plan](t, ts.do(t, "POST", "/api/check?path=2026-10-04", q))
+	if !pl.Outputs["mp3"].Stale || pl.Outputs["mp3_sermon"].Stale || !pl.Outputs["mp3_sermon"].Exists {
+		t.Errorf("after a new version of the intro: %+v", pl.Outputs)
+	}
+
+	// The sermon's own outro.
+	f, _ := os.Open(tone("Takk.wav", 2))
+	rec := httptest.NewRecorder()
+	ts.h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/sermon/clip?path=2026-10-04&which=outro&name=Takk.wav", f))
+	f.Close()
+	if rec.Code != 202 {
+		t.Fatalf("own clip: %d %s", rec.Code, rec.Body)
+	}
+	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		v := ts.sermonClipsView(folder)
+		if len(v["ownPending"].(map[string]pendingClip)) == 0 {
+			if v["own"].(map[string]any)["outro"] == nil {
+				t.Fatalf("no own outro: %+v", v)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the own outro was not ready in time")
+		}
+	}
+	q.Outro, q.Force = clipOwn, true
+	if j := runJob(t, ts, "2026-10-04", q); j.State != "done" {
+		t.Fatalf("run with the own outro: %+v", j)
+	}
+	if d := length("2026-10-04.mp3"); d < 62.8 || d > 63.2 {
+		t.Errorf("with the intro and own outro: %.2f s, want 63", d)
+	}
+	if o := readState(folder).Outputs["mp3"].Outro; o == nil || o.ID != clipOwn || o.Name != "Takk" {
+		t.Errorf("own outro in the record: %+v", o)
+	}
+	added := decode[map[string]any](t, ts.do(t, "POST", "/api/sermon/clip/add?path=2026-10-04&which=outro", nil))["added"].(string)
+	if got := waitClips(t, ts); len(got.Clips) != 2 || got.Clips[1].ID != added || got.Clips[1].Name != "Takk" {
+		t.Errorf("added to the church: %+v", got.Clips)
+	}
+
+	// Without clips, the sermon only goes.
+	q.Intro, q.Outro = "", ""
+	if j := runJob(t, ts, "2026-10-04", q); j.State != "done" {
+		t.Fatalf("run without clips: %+v", j)
+	}
+	if fileExists(filepath.Join(folder, "2026-10-04_sermon.mp3")) {
+		t.Error("the sermon only is still there")
+	}
+	if made := readState(folder).Outputs; len(made) != 1 || made["mp3"].Intro != nil {
+		t.Errorf("records without clips: %+v", made)
+	}
+
+	// A clip that was deleted refuses the run, and says so.
+	q.Intro = added
+	ts.do(t, "POST", "/api/clips/"+added+"/delete", nil)
+	if pl := decode[plan](t, ts.do(t, "POST", "/api/check?path=2026-10-04", q)); pl.Error != "the intro this sermon used has been deleted: choose another intro, or none" {
+		t.Errorf("deleted intro: %q", pl.Error)
+	}
+}

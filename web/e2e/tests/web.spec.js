@@ -434,9 +434,9 @@ test('a recording not cut yet starts with the sermon set to all of it but the si
 const pill = (page, label) => page.locator(`.pill[data-format=${label.toLowerCase()}]`);
 const pick = (page, label) => pill(page, label).locator('button.pick');
 
-test('the page: Input file, Edit, Metadata, Processing, Output', async ({ page }) => {
+test('the page: Input file, Edit, Metadata, Processing, Intro and outro, Output', async ({ page }) => {
   await openEditor(page, '2026/2026-10-04');
-  await expect(page.locator('section.step > h2')).toHaveText(['Input file', 'Edit', 'Metadata added to the file', 'Processing', 'Output']);
+  await expect(page.locator('section.step > h2')).toHaveText(['Input file', 'Edit', 'Metadata added to the file', 'Processing', 'Intro and outro', 'Output']);
 
   // Input file: the recording, where it came from, its channels, a download.
   const input = page.locator('.input-file');

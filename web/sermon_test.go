@@ -267,7 +267,7 @@ func TestCuttingPauses(t *testing.T) {
 	}
 	withPause := plain
 	withPause.Pauses = []normalizer.Pause{{At: 30, Seconds: 2}}
-	if cutOf(plain) == cutOf(withPause) || madeFrom(plain, "mp3") == madeFrom(withPause, "mp3") {
+	if cutOf(plain) == cutOf(withPause) || madeFrom(plain, "mp3", "") == madeFrom(withPause, "mp3", "") {
 		t.Error("a pause does not change the fingerprints")
 	}
 }

@@ -5,9 +5,9 @@ import RegionsPlugin from './vendor/wavesurfer/plugins/regions.esm.js';
 import TimelinePlugin from './vendor/wavesurfer/plugins/timeline.esm.js';
 import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
-import { confirmDialog, infoDialog } from './dialog.js';
+import { alertDialog, confirmDialog, infoDialog } from './dialog.js';
 import { t, tn, tr, lang } from './i18n.js';
-import { api, q, h, href, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, currentTenant, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
+import { api, q, h, href, INPUT_TYPES, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, currentTenant, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
 
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
 
@@ -38,6 +38,10 @@ const SOUND_KEYS = ['stereo', 'noiseReduction', 'roomSound', 'leveling', 'compre
 // DEFAULT_KEYS are what the church's default processing sets: the sound and the fades.
 const DEFAULT_KEYS = [...SOUND_KEYS, 'fadeIn', 'fadeOut'];
 
+// CLIP_KEYS are the clips around the sermon, kept with it: 'default' (the church's), 'own', a church clip's
+// id, or '' for none.
+const CLIP_KEYS = ['intro', 'outro'];
+
 // FORMAT_KEYS are chosen per recording.
 const FORMAT_KEYS = ['flac', 'mp3', 'opus'];
 
@@ -54,6 +58,9 @@ export async function editorView(view, path, config) {
   // The processing kept with this recording comes before them.
   const keptSound = info.sermon && (info.sermon.adjusted || info.sermon.saved)?.sound;
   if (keptSound) Object.assign(opts, keptSound);
+  // The intro and outro: a new sermon starts with the church's defaults, one kept from before without them has none.
+  const kept = info.sermon && (info.sermon.adjusted || info.sermon.saved);
+  if (kept) for (const which of CLIP_KEYS) opts[which] = kept[which] || '';
   // Going back to the church's defaults, or making this processing the default (see useDefaults).
   const sameAsDefaults = () => DEFAULT_KEYS.every((k) => String(opts[k]) === String(config.defaults.start[k]));
   const defaultsNote = h('span', { class: 'muted', role: 'status' });
@@ -135,6 +142,9 @@ export async function editorView(view, path, config) {
     h('div', { class: 'save-actions' }, undoButton, redoButton, revertButton, saveButton));
 
   let processingEl = processingPanel();
+  const clipsBox = h('div', { class: 'panel clip-choice' });
+  const clipsSection = h('section', { class: 'step', 'aria-labelledby': 'step-clips', hidden: true },
+    h('h2', { id: 'step-clips' }, t('Intro and outro')), clipsBox);
   view.replaceChildren(
     h('div', { class: 'crumbs' }, h('a', { href: href('recording', path) }, t('← Recordings'))),
     h('h1', {}, info.date, ' ', renameButton),
@@ -143,6 +153,7 @@ export async function editorView(view, path, config) {
     h('section', { class: 'step', 'aria-labelledby': 'step-edit' }, h('h2', { id: 'step-edit' }, t('Edit')), waveSection),
     h('section', { class: 'step', 'aria-labelledby': 'step-metadata' }, h('h2', { id: 'step-metadata' }, t('Metadata added to the file')), metadataPanel()),
     h('section', { class: 'step', 'aria-labelledby': 'step-processing' }, h('h2', { id: 'step-processing' }, t('Processing')), processingEl),
+    clipsSection,
     h('section', { class: 'step', 'aria-labelledby': 'step-output' }, h('h2', { id: 'step-output' }, t('Output')),
       h('div', { class: 'panel' }, pills),
       jobPanel),
@@ -1020,6 +1031,7 @@ export async function editorView(view, path, config) {
     const pauses = activePauses();
     const what = [parts, cuts.length ? tn(cuts.length, '{n} cut', '{n} cuts') : '', pauses.length ? tn(pauses.length, '{n} pause', '{n} pauses') : ''].filter(Boolean).join(' ' + t('and') + ' ');
     lengthOut.textContent = sections.length ? t('Length {time}', { time: formatTime(keptLength() + pauses.reduce((n, p) => n + p.seconds, 0), 1) }) + (what ? ` (${what})` : '') : '';
+    showClipLength();
     drawPauseMarks(pauses);
     drawFades();
   }
@@ -1076,7 +1088,7 @@ export async function editorView(view, path, config) {
     if (list.some((c) => c.end - c.start < 0.05)) return null; // one outside the sermon is fine
     if (!(opts.fadeIn >= 0) || !(opts.fadeOut >= 0)) return null;
     if ([opts.noiseReduction, opts.roomSound, opts.targetLufs, opts.truePeak].some(Number.isNaN)) return null;
-    return { sections: secs, cuts: list, fadeIn: opts.fadeIn, fadeOut: opts.fadeOut, sound: Object.fromEntries(SOUND_KEYS.map((k) => [k, opts[k]])) };
+    return { sections: secs, cuts: list, fadeIn: opts.fadeIn, fadeOut: opts.fadeOut, sound: Object.fromEntries(SOUND_KEYS.map((k) => [k, opts[k]])), ...clipChoices() };
   }
 
   // persistAdjusted keeps what is on the page as the adjustments.
@@ -1105,6 +1117,8 @@ export async function editorView(view, path, config) {
       for (const c of set.cuts) addCut(c.start, c.end, c.label, c.pause);
       if (sections.length && show) reveal(first());
       for (const key of ['fadeIn', 'fadeOut']) opts[key] = set[key];
+      for (const key of CLIP_KEYS) opts[key] = set[key] || '';
+      drawClips();
       if (set.sound) {
         Object.assign(opts, set.sound);
         redrawProcessing();
@@ -1126,7 +1140,7 @@ export async function editorView(view, path, config) {
 
   // snapshot is the edit on the page, also when there is no section.
   const snapshot = () => JSON.stringify({ sections: sections.map(spanOf), cuts: cuts.map(spanOf), fadeIn: opts.fadeIn || 0, fadeOut: opts.fadeOut || 0,
-    sound: Object.fromEntries(SOUND_KEYS.map((k) => [k, opts[k]])) });
+    sound: Object.fromEntries(SOUND_KEYS.map((k) => [k, opts[k]])), ...clipChoices() });
 
   // record makes the edit as it is now a step that can be undone, if it changed.
   function record() {
@@ -1493,6 +1507,151 @@ export async function editorView(view, path, config) {
     };
   }
 
+  // ---- intro and outro: the clips around the sermon, the church's or the sermon's own ----
+
+  let clipData = null; // api/sermon/clips: the church's clips and defaults, the sermon's own, uploads under way
+  let clipPoll = null;
+  const awaitingOwn = {}; // an own clip uploaded for intro or outro: chosen once it is ready
+  const clipLength = h('p', { class: 'muted', 'aria-live': 'polite' });
+  const clipNote = h('p', { class: 'muted', role: 'status' });
+  const ownInput = h('input', { type: 'file', name: 'own-clip', accept: INPUT_TYPES.join(','), hidden: true });
+  let ownFor = null; // which of the two the file chosen is for
+  const UPLOAD = '__upload';
+  cleanups.push(() => clearTimeout(clipPoll));
+
+  // clipChoices are the choices as they are kept with the sermon: none is left out.
+  function clipChoices() {
+    return Object.fromEntries(CLIP_KEYS.filter((k) => opts[k]).map((k) => [k, opts[k]]));
+  }
+
+  async function loadClips() {
+    try {
+      showClips(await api('GET', 'api/sermon/clips?path=' + q(path)));
+    } catch { /* without clips the step stays hidden */ }
+  }
+
+  function showClips(data) {
+    clipData = data;
+    clipsSection.hidden = !data.available;
+    for (const which of CLIP_KEYS) {
+      const p = data.ownPending[which];
+      if (!awaitingOwn[which] || (p && !p.error)) continue;
+      delete awaitingOwn[which];
+      if (!p && data.own[which]) { // ready: the sermon's own clip becomes the choice
+        opts[which] = 'own';
+        changed();
+      }
+    }
+    clearTimeout(clipPoll);
+    if (alive && Object.values(data.ownPending).some((p) => !p.error)) clipPoll = setTimeout(loadClips, 1000);
+    drawClips();
+  }
+
+  // clipOf is what a choice means now: the clip (with its address to listen to), null for none, or
+  // { missing: true } when the clip it chose is gone.
+  function clipOf(which, choice) {
+    const d = clipData;
+    if (!d || !choice) return null;
+    if (choice === 'own') {
+      const c = d.own[which];
+      return c ? { ...c, url: forTenant('api/sermon/clip/audio?path=' + q(path) + '&which=' + which) + '&v=' + c.version } : { missing: true, own: true };
+    }
+    const id = choice === 'default' ? d[which] : choice;
+    if (!id) return null;
+    const c = d.clips.find((x) => x.id === id);
+    return c ? { ...c, url: forTenant('api/clips/' + c.id + '/audio') + '&v=' + c.version } : { missing: true };
+  }
+
+  function drawClips() {
+    if (!clipData) return;
+    const d = clipData;
+    const rows = CLIP_KEYS.map((which) => {
+      const choice = opts[which] || '';
+      const label = which === 'intro' ? t('Intro') : t('Outro');
+      const def = d.clips.find((c) => c.id === d[which]);
+      const options = [
+        ['default', def ? t('Church default: {name}', { name: def.name }) : t('Church default: none')],
+        ['', t('None')],
+        ...d.clips.filter((c) => !c.archived || c.id === choice).map((c) => [c.id, c.archived ? t('{name} (archived)', { name: c.name }) : c.name]),
+      ];
+      if (d.own[which] || choice === 'own') {
+        options.push(['own', d.own[which] ? t("This sermon's own: {name}", { name: d.own[which].name }) : t("This sermon's own (missing)")]);
+      }
+      if (!options.some(([v]) => v === choice)) options.push([choice, t('A deleted clip')]);
+      options.push([UPLOAD, t('Upload for this sermon only…')]);
+      const select = h('select', { name: which, 'aria-label': label, onchange: (e) => {
+        if (e.target.value === UPLOAD) {
+          e.target.value = choice;
+          ownFor = which;
+          ownInput.click();
+          return;
+        }
+        opts[which] = e.target.value;
+        clipNote.textContent = '';
+        changed();
+        drawClips();
+      } }, options.map(([v, text]) => h('option', { value: v, selected: v === choice }, text)));
+      const clip = clipOf(which, choice);
+      const pending = d.ownPending[which];
+      const parts = [h('label', {}, h('span', { class: 'name' }, label), select)];
+      if (clip && clip.url) {
+        parts.push(h('span', { class: 'muted' }, formatTime(clip.seconds, 0)),
+          h('audio', { controls: true, preload: 'none', src: clip.url, 'aria-label': t('Listen to {name}', { name: clip.name }) }));
+      }
+      if (choice === 'own' && d.own[which] && d.available && !d.clips.some((c) => c.id === d.own[which].copiedAs)) {
+        parts.push(h('button', { type: 'button', name: 'add-' + which, onclick: async () => {
+          try {
+            showClips(await api('POST', 'api/sermon/clip/add?path=' + q(path) + '&which=' + which));
+            clipNote.textContent = t("{name} is among the church's clips now.", { name: d.own[which].name });
+          } catch (e) { alertDialog({ body: e.message }); }
+        } }, t("Add to the church's clips")));
+      }
+      if (clip && clip.missing) {
+        parts.push(h('p', { class: 'error' }, clip.own ? t("This sermon's own clip is missing. Upload it again, or choose another.")
+          : which === 'intro' ? t('The intro this sermon used has been deleted. Choose another intro, or none.')
+            : t('The outro this sermon used has been deleted. Choose another outro, or none.')));
+      }
+      if (pending) {
+        parts.push(pending.error
+          ? h('p', { class: 'error' }, t('{name}: {error}', { name: pending.name, error: tr(pending.error) }), ' ',
+            h('button', { type: 'button', name: 'dismiss-' + which, onclick: async () => showClips(await api('POST', 'api/sermon/clip/dismiss?path=' + q(path) + '&which=' + which)) }, t('Remove')))
+          : h('p', { class: 'muted' }, t('Preparing {name}…', { name: pending.name })));
+      }
+      return h('div', { class: 'clip-row', 'data-which': which }, parts);
+    });
+    clipsBox.replaceChildren(...rows, clipLength, clipNote, ownInput);
+    showClipLength();
+  }
+
+  // showClipLength tells how long the files with the intro and outro are.
+  function showClipLength() {
+    if (!clipData) return;
+    const clips = CLIP_KEYS.map((w) => clipOf(w, opts[w])).filter((c) => c && !c.missing);
+    if (!clips.length || !sections.length) {
+      clipLength.textContent = clips.length ? '' : t('No intro or outro: the files are the sermon only.');
+      return;
+    }
+    const sermon = keptLength() + activePauses().reduce((n, p) => n + p.seconds, 0);
+    const total = sermon + clips.reduce((n, c) => n + c.seconds + clipData.pause, 0);
+    clipLength.textContent = t('With the intro and outro: {time}. The sermon only is made too.', { time: formatTime(total, 1) });
+  }
+
+  ownInput.addEventListener('change', async () => {
+    const file = ownInput.files[0];
+    ownInput.value = '';
+    if (!file || !ownFor) return;
+    const which = ownFor;
+    const url = 'api/sermon/clip?path=' + q(path) + '&which=' + which + '&name=' + q(file.name);
+    const resp = await fetch(forTenant(url), { method: 'POST', body: file }).catch((e) => ({ ok: false, json: async () => ({ error: e.message }) }));
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      alertDialog({ body: tr(body.error || `${resp.status} ${resp.statusText}`) });
+      return;
+    }
+    awaitingOwn[which] = true;
+    showClips(body);
+  });
+
   // ---- check and run ----
   const check = debounce(async () => {
     if (!alive) return;
@@ -1681,5 +1840,6 @@ export async function editorView(view, path, config) {
   renderVersion();
   renderOutputs();
   check();
+  loadClips();
   return teardown;
 }

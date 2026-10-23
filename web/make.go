@@ -30,6 +30,7 @@ func (s *Server) handleMake(w http.ResponseWriter, r *http.Request) {
 	q := s.processing().start() // for one saved before the studio kept its sound
 	q.cutting = sf.Saved.cutting
 	q.FadeIn, q.FadeOut = sf.Saved.FadeIn, sf.Saved.FadeOut
+	q.Intro, q.Outro = sf.Saved.Intro, sf.Saved.Outro
 	sf.Saved.Sound.applyTo(&q)
 	q.Flac, q.Mp3, q.Opus = format == "flac", format == "mp3", format == "opus"
 	pl := s.check(abs, q)

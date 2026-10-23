@@ -40,8 +40,11 @@ type folderState struct {
 	// Saved is the sermon as last saved; what is being edited is in draft.json (draft.go).
 	Saved   *sermonSettings `json:"saved"`
 	SavedAt *time.Time      `json:"savedAt,omitempty"`
-	// Outputs is how each output (flac, mp3, opus) was made, by the format.
+	// Outputs is how each output (flac, mp3, opus) was made, by the format; the sermon only, made by a run
+	// with an intro or outro, is under flac_sermon, mp3_sermon, opus_sermon.
 	Outputs map[string]outputMade `json:"outputs"`
+	// OwnClips are the sermon's own intro and outro (sermonclips.go), kept in <folder>/clips/<which>.flac.
+	OwnClips map[string]clipInfo `json:"ownClips,omitempty"`
 }
 
 // recStamp tells whether a file is still the one that was looked at.
@@ -80,6 +83,9 @@ type outputMade struct {
 	Cut     string    `json:"cut,omitempty"` // cutOf: which cut it was made from
 	Stereo  bool      `json:"stereo"`
 	Bitrate string    `json:"bitrate,omitempty"`
+	// Intro and Outro are the clips around the sermon in it (none for the sermon only).
+	Intro *clipRef `json:"intro,omitempty"`
+	Outro *clipRef `json:"outro,omitempty"`
 }
 
 const stateName = "recording.json"
@@ -234,7 +240,8 @@ func (s *Server) lookAt(ctx context.Context, raw string) error {
 // madeFrom is the fingerprint of an output made with o: the parts of the
 // recording, the fades, the sound, the tags and, for MP3 and Opus, the bitrate.
 // It does not depend on which other outputs a run makes.
-func madeFrom(o normalizer.Options, format string) string {
+// clips is runClips.key for the main outputs of a run with clips, else "".
+func madeFrom(o normalizer.Options, format, clips string) string {
 	v := struct {
 		Start, End, FadeIn, FadeOut float64
 		Cuts                        []normalizer.Span
@@ -246,7 +253,8 @@ func madeFrom(o normalizer.Options, format string) string {
 		TargetLUFS, TruePeak        float64
 		Tags                        normalizer.Tags
 		Format, Bitrate             string
-	}{o.Start, o.End, o.FadeIn, o.FadeOut, o.Cuts, o.Pauses, o.Stereo, o.NoiseReduction, o.RoomSound, o.LevelingName(), o.CompressionName(), o.TargetLUFS, o.TruePeak, o.Tags, format, bitrateFor(o, format)}
+		Clips                       string `json:",omitempty"` // omitted without clips: older fingerprints stay as they were
+	}{o.Start, o.End, o.FadeIn, o.FadeOut, o.Cuts, o.Pauses, o.Stereo, o.NoiseReduction, o.RoomSound, o.LevelingName(), o.CompressionName(), o.TargetLUFS, o.TruePeak, o.Tags, format, bitrateFor(o, format), clips}
 	data, _ := json.Marshal(v)
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:8])
