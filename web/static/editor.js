@@ -221,12 +221,12 @@ export async function editorView(view, path, config) {
   function showChannelWarning() {
     const v = info.recording && info.recording.channels;
     const mono = v && ['mono', 'identical', 'one-sided'].includes(v.kind);
-    channelWarning.textContent = opts.stereo && mono
-      ? t(v.kind === 'one-sided'
-        ? '⚠ The recording is {verdict}: stereo gives the sermon on one side only. Choose mono.'
-        : '⚠ The recording is {verdict}: stereo gives the same sound in bigger files. Choose mono.', { verdict: verdict(v).toLowerCase() })
-      : '';
-    channelWarning.hidden = !channelWarning.textContent;
+    const warn = opts.stereo && mono;
+    channelWarning.replaceChildren(...(warn ? [t(v.kind === 'one-sided'
+      ? '⚠ The recording is {verdict}: stereo gives the sermon on one side only. Choose mono.'
+      : '⚠ The recording is {verdict}: stereo gives the same sound in bigger files. Choose mono.', { verdict: verdict(v).toLowerCase() }),
+    ' ', h('button', { type: 'button', name: 'use-mono', onclick: () => setStereo(false) }, t('Use mono'))] : []));
+    channelWarning.hidden = !warn;
   }
 
   // refreshInfo reads the folder again: the recording and the outputs change
@@ -283,12 +283,11 @@ export async function editorView(view, path, config) {
     const clock = h('span', { class: 'clock' });
     const playButton = h('button', { onclick: () => ws.playPause(), title: t('Play / pause (space)') }, t('▶ Play'));
     const button = (label, title, fn) => h('button', { title, onclick: fn }, label);
-    const modeButton = (mode, label, title) => h('button', { type: 'button', class: 'seg', name: 'play-' + mode, title, 'aria-pressed': String(playMode === mode),
-      onclick: (e) => {
-        playMode = mode;
-        localStorage.setItem('playMode', mode);
-        for (const b of e.currentTarget.parentElement.children) b.setAttribute('aria-pressed', String(b === e.currentTarget));
-      } }, label);
+    // Play skips what is left out (the published parts), or plays the recording as it is.
+    const skipBox = h('input', { type: 'checkbox', name: 'play-skip', checked: playMode === 'published', onchange: (e) => {
+      playMode = e.target.checked ? 'published' : 'recording';
+      localStorage.setItem('playMode', playMode);
+    } });
     addCutButton = h('button', { title: t('Start a cut at the playhead; press again where it ends (c)'), onclick: addCutHere }, t('Cut out here'));
     waveSection.replaceChildren(
       minimapEl, waveEl,
@@ -297,9 +296,8 @@ export async function editorView(view, path, config) {
           h('strong', {}, t('Navigate')),
           h('div', { class: 'toolbar' },
             playButton,
-            h('span', { class: 'mode', role: 'group', 'aria-label': t('What Play plays') },
-              modeButton('published', t('The published parts'), t('Play what will be published: the sections, without the cuts and the parts between the sections')),
-              modeButton('recording', t('The recording'), t('Play the recording as it is, with the cuts and the parts between the sections'))),
+            h('label', { class: 'check play-skip', title: t('On: Play jumps over the cuts and the parts between the sections, and waits out the pauses, as the sermon will be published. Off: the recording plays as it is.') },
+              skipBox, ' ', t('Skip what is left out')),
             h('span', { class: 'sep' }),
             button(t('◀ silence'), t('Previous silence edge ([)'), () => jump(-1)),
             button(t('silence ▶'), t('Next silence edge (])'), () => jump(1)),
@@ -1417,18 +1415,11 @@ export async function editorView(view, path, config) {
       values.map(([value, text]) => h('option', { value, selected: opts[key] === value }, text))));
     const group = (title, ...children) => h('div', { class: 'pgroup' }, h('strong', {}, title), ...children);
     const hint = (text) => h('p', { class: 'muted hint' }, text);
-    // Mono or stereo: a switch between the two, not a box to tick.
-    const stereo = h('input', {
-      type: 'checkbox', role: 'switch', name: 'stereo', checked: opts.stereo, 'aria-label': t('Stereo'),
-      onchange: (e) => {
-        followChannels(e.target.checked);
-        opts.stereo = e.target.checked;
-        showChannelWarning();
-        changed();
-      },
-    });
+    // Mono or stereo: a choice between the two, not on and off.
+    const channelButton = (stereo, label) => h('button', { type: 'button', class: 'seg', name: stereo ? 'stereo' : 'mono',
+      'aria-pressed': String(opts.stereo === stereo), onclick: () => setStereo(stereo) }, label);
     const channels = h('div', { class: 'channels' },
-      h('label', { class: 'switch' }, h('span', { class: 'side off' }, t('Mono')), stereo, h('span', { class: 'track', 'aria-hidden': 'true' }), h('span', { class: 'side on' }, t('Stereo'))));
+      h('span', { class: 'mode', role: 'group', 'aria-label': t('Channels') }, channelButton(false, t('Mono')), channelButton(true, t('Stereo'))));
     const roomValue = h('output', { class: 'muted' }, `${opts.roomSound}%`);
     const room = field(t('Keep room sound'), h('span', { class: 'range' }, h('input', {
       type: 'range', name: 'roomSound', min: 0, max: 100, step: 5, value: opts.roomSound,
@@ -1482,6 +1473,16 @@ export async function editorView(view, path, config) {
         h('p', {}, sampleButton, ' ', sampleStatus),
         sample,
         hint(t('Makes 30 seconds from the playhead with these settings, to listen to. The cuts, pauses and fades are not applied.'))));
+  }
+
+  // setStereo chooses mono or stereo.
+  function setStereo(stereo) {
+    if (opts.stereo === stereo) return;
+    followChannels(stereo);
+    opts.stereo = stereo;
+    for (const b of view.querySelectorAll('.channels button.seg')) b.setAttribute('aria-pressed', String((b.name === 'stereo') === stereo));
+    showChannelWarning();
+    changed();
   }
 
   // followChannels moves the loudness and bitrates to the new defaults when

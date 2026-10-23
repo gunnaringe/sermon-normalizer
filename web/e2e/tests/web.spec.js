@@ -460,18 +460,23 @@ test('the page: Input file, Edit, Metadata, Processing, Intro and outro, Output'
   await expect(input).toContainText('1:40');
   await expect(input.getByRole('link', { name: 'Download original' })).toHaveAttribute('href', /download=1/);
 
-  // Processing has the mono/stereo switch, which warns on this mono-in-effect recording.
-  const stereo = page.getByRole('switch', { name: 'Stereo' });
-  await expect(stereo).not.toBeChecked();
+  // Processing has Mono and Stereo to choose between; stereo warns on this mono-in-effect recording.
+  const mono = page.getByRole('button', { name: 'Mono', exact: true });
+  const stereo = page.getByRole('button', { name: 'Stereo', exact: true });
+  await expect(mono).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText(/stereo gives the same sound in bigger files/)).toBeHidden();
-  await page.locator('label.switch').click();
-  await expect(stereo).toBeChecked();
+  await stereo.click();
+  await expect(stereo).toHaveAttribute('aria-pressed', 'true');
+  await expect(mono).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByText('⚠ The recording is mono (both channels are the same): stereo gives the same sound in bigger files. Choose mono.')).toBeVisible();
   await expect(page.getByLabel('Target loudness (LUFS)')).toHaveValue('-16'); // the stereo default
   await page.locator('section.step').nth(2).screenshot({ path: path.join(shots, 'edit-metadata.png') });
   await page.locator('section.step').nth(3).screenshot({ path: path.join(shots, 'edit-processing.png') });
-  await page.locator('label.switch').click();
-  await expect(stereo).not.toBeChecked();
+  // Use mono in the warning goes back to mono, and its loudness.
+  await page.getByRole('button', { name: 'Use mono' }).click();
+  await expect(mono).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText(/stereo gives the same sound in bigger files/)).toBeHidden();
+  await expect(page.getByLabel('Target loudness (LUFS)')).toHaveValue('-19');
 
   // Output: a pill per format, all chosen, none made yet.
   await editor(page, () => window.__editor.addSection(21, 79));
@@ -1310,7 +1315,8 @@ test('split a section, put in a pause, and choose what Play plays', async ({ pag
 
   // What will be published is the default: playback waits out the pause. The recording plays on.
   const playing = () => editor(page, () => window.__editor.ws.isPlaying());
-  await expect(page.getByRole('button', { name: 'The published parts' })).toHaveAttribute('aria-pressed', 'true');
+  const skip = page.getByRole('checkbox', { name: 'Skip what is left out' });
+  await expect(skip).toBeChecked();
   await editor(page, () => window.__editor.ws.setTime(49.4));
   await page.locator('h1').click();
   await page.keyboard.press(' ');
@@ -1319,8 +1325,8 @@ test('split a section, put in a pause, and choose what Play plays', async ({ pag
   await expect.poll(playing, { timeout: 5000 }).toBe(true); // and on
   await page.keyboard.press(' ');
 
-  await page.getByRole('button', { name: 'The recording' }).click();
-  await expect(page.getByRole('button', { name: 'The recording' })).toHaveAttribute('aria-pressed', 'true');
+  await skip.uncheck();
+  await page.locator('h1').click(); // space on the box would tick it again
   expect(await page.evaluate(() => localStorage.getItem('playMode'))).toBe('recording');
   await editor(page, () => window.__editor.ws.setTime(49.4));
   await page.keyboard.press(' ');
