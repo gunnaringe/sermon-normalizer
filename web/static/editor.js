@@ -1514,6 +1514,8 @@ export async function editorView(view, path, config) {
   const awaitingOwn = {}; // an own clip uploaded for intro or outro: chosen once it is ready
   const clipLength = h('p', { class: 'muted', 'aria-live': 'polite' });
   const clipNote = h('p', { class: 'muted', role: 'status' });
+  const joinPlayer = h('audio', { controls: true, hidden: true, 'aria-label': t('The join') });
+  cleanups.push(() => URL.revokeObjectURL(joinPlayer.src));
   const ownInput = h('input', { type: 'file', name: 'own-clip', accept: INPUT_TYPES.join(','), hidden: true });
   let ownFor = null; // which of the two the file chosen is for
   const UPLOAD = '__upload';
@@ -1598,6 +1600,10 @@ export async function editorView(view, path, config) {
         parts.push(h('span', { class: 'muted' }, formatTime(clip.seconds, 0)),
           h('audio', { controls: true, preload: 'none', src: clip.url, 'aria-label': t('Listen to {name}', { name: clip.name }) }));
       }
+      if (clip && clip.url) {
+        parts.push(h('button', { type: 'button', name: 'join-' + which, disabled: !sections.length, onclick: (e) => hearJoin(which, e.target) },
+          which === 'intro' ? t('Hear the intro join') : t('Hear the outro join')));
+      }
       if (choice === 'own' && d.own[which] && d.available && !d.clips.some((c) => c.id === d.own[which].copiedAs)) {
         parts.push(h('button', { type: 'button', name: 'add-' + which, onclick: async () => {
           try {
@@ -1619,8 +1625,32 @@ export async function editorView(view, path, config) {
       }
       return h('div', { class: 'clip-row', 'data-which': which }, parts);
     });
-    clipsBox.replaceChildren(...rows, clipLength, clipNote, ownInput);
+    clipsBox.replaceChildren(...rows, clipLength, joinPlayer, clipNote, ownInput);
     showClipLength();
+  }
+
+  // hearJoin makes and plays the end of the intro and the start of the sermon (or the end of the sermon and
+  // the start of the outro), made as the files will be.
+  async function hearJoin(which, button) {
+    button.disabled = true;
+    clipNote.className = 'muted';
+    clipNote.textContent = t('Making the join…');
+    try {
+      const resp = await fetch(forTenant('api/sample/join?path=' + q(path) + '&which=' + which), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request()),
+      });
+      if (!resp.ok) throw new Error(tr((await resp.json().catch(() => ({}))).error || `${resp.status} ${resp.statusText}`));
+      URL.revokeObjectURL(joinPlayer.src);
+      joinPlayer.src = URL.createObjectURL(await resp.blob());
+      joinPlayer.hidden = false;
+      clipNote.textContent = '';
+      joinPlayer.play().catch(() => {});
+    } catch (e) {
+      clipNote.className = 'error';
+      clipNote.textContent = t('Could not make the join: {error}', { error: e.message });
+    } finally {
+      button.disabled = false;
+    }
   }
 
   // showClipLength tells how long the files with the intro and outro are.

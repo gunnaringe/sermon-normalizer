@@ -238,6 +238,7 @@ func (s *Server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/trash/restore", s.handleRestore)
 	mux.HandleFunc("POST /api/trash/remove", s.handleTrashRemove)
 	mux.HandleFunc("POST /api/sample", s.handleSample)
+	mux.HandleFunc("POST /api/sample/join", s.handleJoinSample)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleJob)
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.handleJobEvents)
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.handleJobCancel)

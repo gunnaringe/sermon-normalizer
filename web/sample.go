@@ -87,3 +87,60 @@ func (s *Server) handleSample(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	http.ServeContent(w, r, "sample.mp3", time.Now(), f)
 }
+
+// handleJoinSample makes a sample to hear how the sermon joins its intro or outro: POST
+// api/sample/join?path=<date folder>&which=intro|outro with the settings as for a run (the sections and cuts,
+// the sound, the intro and outro); the answer is an MP3 (normalizer.JoinSample). Done in the request, as a sample.
+func (s *Server) handleJoinSample(w http.ResponseWriter, r *http.Request) {
+	abs, ok := s.pathParam(w, r)
+	if !ok {
+		return
+	}
+	which, ok := whichParam(w, r)
+	if !ok {
+		return
+	}
+	var q runRequest
+	if err := decodeRequest(r, &q); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	q.Flac, q.Mp3, q.Opus = false, true, false
+	pl := s.check(abs, q)
+	if pl.Error != "" {
+		writeError(w, http.StatusBadRequest, errors.New(pl.Error))
+		return
+	}
+	raw := pl.paths.Source()
+	if s.analyses.stage(raw) != "" {
+		writeError(w, http.StatusConflict, errors.New("the recording is still being converted or prepared; try again in a moment"))
+		return
+	}
+	select {
+	case s.limits.encode <- struct{}{}:
+		defer func() { <-s.limits.encode }()
+	default:
+		writeError(w, http.StatusConflict, errors.New("another conversion is running; try again when it is done"))
+		return
+	}
+	tmp, err := os.CreateTemp(s.cfg.CacheDir, "join-*.mp3")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	tmp.Close()
+	defer normalizer.Remove(tmp.Name())
+	if err := s.cfg.FFmpeg.JoinSample(r.Context(), raw, pl.opt, which, tmp.Name()); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	f, err := os.Open(tmp.Name())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "audio/mpeg")
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, "join.mp3", time.Now(), f)
+}

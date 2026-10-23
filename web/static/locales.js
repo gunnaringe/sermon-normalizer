@@ -706,6 +706,13 @@ export const nb = {
   "Sermon only, without intro and outro:": "Bare prekenen, uten intro og outro:",
   "Download {format}, sermon only": "Last ned {format}, bare prekenen",
   "sermon only": "bare prekenen",
+  "The join": "Overgangen",
+  "Hear the intro join": "Hør overgangen fra introen",
+  "Hear the outro join": "Hør overgangen til outroen",
+  "Making the join…": "Lager overgangen …",
+  "Could not make the join: {error}": "Klarte ikke å lage overgangen: {error}",
+  "this sermon has no intro": "denne prekenen har ingen intro",
+  "this sermon has no outro": "denne prekenen har ingen outro",
 };
 
 export const nn = {
@@ -1412,4 +1419,11 @@ export const nn = {
   "Sermon only, without intro and outro:": "Berre preika, utan intro og outro:",
   "Download {format}, sermon only": "Last ned {format}, berre preika",
   "sermon only": "berre preika",
+  "The join": "Overgangen",
+  "Hear the intro join": "Høyr overgangen frå introen",
+  "Hear the outro join": "Høyr overgangen til outroen",
+  "Making the join…": "Lagar overgangen …",
+  "Could not make the join: {error}": "Klarte ikkje å lage overgangen: {error}",
+  "this sermon has no intro": "denne preika har ingen intro",
+  "this sermon has no outro": "denne preika har ingen outro",
 };

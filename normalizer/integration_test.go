@@ -732,3 +732,32 @@ func TestIntegrationClips(t *testing.T) {
 		t.Errorf("expected the missing intro, got %v", err)
 	}
 }
+
+// A join sample has the end of the intro, the pause and the start of the sermon (or the end of the sermon, the
+// pause and the start of the outro).
+func TestIntegrationJoinSample(t *testing.T) {
+	ff := requireFFmpeg(t)
+	dir := t.TempDir()
+	raw, intro, outro := filepath.Join(dir, "raw.flac"), filepath.Join(dir, "intro.wav"), filepath.Join(dir, "outro.wav")
+	service(t, ff, raw, 1)
+	clipFile(t, ff, intro, 0.5, 9, 2, 44100)
+	clipFile(t, ff, outro, 0.5, 3, 1, 48000)
+	opt := DefaultOptions()
+	opt.Start, opt.End, opt.Intro, opt.Outro, opt.ClipPause = 20, 80, intro, outro, 1
+	for which, want := range map[string]float64{"intro": 6 + 1 + 10, "outro": 10 + 1 + 3} {
+		dst := filepath.Join(dir, which+".mp3")
+		if err := ff.JoinSample(context.Background(), raw, opt, which, dst); err != nil {
+			t.Fatalf("%s: %v", which, err)
+		}
+		if d := probeFile(t, dst).duration; !near(d, want, 0.15) {
+			t.Errorf("%s: %.2f s, want %g", which, d, want)
+		}
+	}
+	if des, _ := os.ReadDir(dir); len(des) != 5 {
+		t.Errorf("left behind: %v", des)
+	}
+	opt.Outro = ""
+	if err := ff.JoinSample(context.Background(), raw, opt, "outro", filepath.Join(dir, "x.mp3")); err == nil || err.Error() != "this sermon has no outro" {
+		t.Errorf("no outro: %v", err)
+	}
+}

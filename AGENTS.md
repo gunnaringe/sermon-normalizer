@@ -82,6 +82,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   the sermon-only files are recorded as `<format>_sermon`, and a run without clips removes them (`dropSermonOnly`). Folder info lists
   them as outputs `<format>_sermon` and says what the files were made with (`madeWith`, `changed` when the saved choice would
   now give other clips); deleting a format deletes both versions; a download share can give the sermon only (`sermonOnly`).
+  `POST api/sample/join?which=` plays a join (`normalizer.FFmpeg.JoinSample`: 10 s of the sermon made as the files are, with
+  6 s of the clip and the pause), in the request like a sample.
 - `web/names.go`: sermon names (`<date> <name>` folders; `cleanName`), rename/change date
   (`POST api/rename`: folder + files named after it, also in `original/`).
 - `web/trash.go`: deleting a recording moves its date folder to `<root>/.trash/<id>/` (+ `trash.json`: where from, when); `GET api/trash`,
