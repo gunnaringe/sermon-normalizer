@@ -1,0 +1,6 @@
+# Not served: the Worker's own files and what wrangler makes.
+.assetsignore
+wrangler.jsonc
+README.md
+node_modules
+.wrangler
