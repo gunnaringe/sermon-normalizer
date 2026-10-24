@@ -41,6 +41,20 @@ test('without a session, the invite goes to the login and back', async ({ page }
   await expect(page).toHaveURL(/auth\/login\?next=%2Finvite\.html%23kirke\.abc$/);
 });
 
+test('with signup, an invite without a login offers Log in and Create an account', async ({ page }) => {
+  await page.route('**/api/invite**', (route) => route.fulfill({ status: 401,
+    json: { error: 'log in first', login: true, signup: 'https://id.example.org/signup' } }));
+  await page.route('**/auth/login**', (route) => route.fulfill({ body: 'login' }));
+  await page.goto('invite.html#kirke.abc');
+  await expect(page.getByText('You are invited to Sermon Studio.')).toBeVisible();
+  const create = page.getByRole('link', { name: 'Create an account' });
+  await expect(create).toHaveAttribute('href', 'https://id.example.org/signup');
+  await expect(create).toHaveAttribute('target', '_blank');
+  await page.screenshot({ path: path.join(shots, 'invite-signup.png') });
+  await page.getByRole('button', { name: 'Log in' }).click();
+  await expect(page).toHaveURL(/auth\/login\?next=%2Finvite\.html%23kirke\.abc$/);
+});
+
 test('the logged-out page offers to log in again', async ({ page }) => {
   await page.goto('loggedout.html');
   await expect(page.getByRole('heading', { name: 'You are logged out' })).toBeVisible();

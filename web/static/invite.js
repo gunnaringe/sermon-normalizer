@@ -20,8 +20,12 @@ async function call(method, url, body) {
   const resp = await fetch(url, opts);
   const data = await resp.json().catch(() => ({}));
   if (resp.status === 401 && data.login) {
-    toLogin();
-    return new Promise(() => {}); // the page is leaving
+    if (data.signup) {
+      chooseLogin(data.signup);
+    } else {
+      toLogin();
+    }
+    return new Promise(() => {}); // the page waits for a choice, or is leaving
   }
   if (!resp.ok) throw new Error(tr(data.error || `${resp.status} ${resp.statusText}`));
   return data;
@@ -31,6 +35,18 @@ const studio = (church) => './#/' + encodeURIComponent(church.id);
 
 function show(...children) {
   view.replaceChildren(h('h1', {}, t('Invitation')), ...children);
+}
+
+// chooseLogin is for someone without a session, when the provider lets people
+// make an account (--oidc-signup-url): log in, or make an account first in a
+// new tab. Making it logs them in at the provider, so Log in then goes straight
+// through and comes back here.
+function chooseLogin(signup) {
+  show(h('p', {}, t('You are invited to Sermon Studio. Log in to see the invitation and accept it.')),
+    h('p', { class: 'choices' },
+      h('button', { class: 'primary', type: 'button', name: 'login', onclick: toLogin }, t('Log in')), ' ',
+      h('a', { class: 'button', href: signup, target: '_blank', rel: 'noopener', name: 'signup' }, t('Create an account'))),
+    h('p', { class: 'muted' }, t('New here? Create an account in the tab that opens, and make a passkey when you are asked to. Then come back to this tab and press Log in.')));
 }
 
 async function start() {

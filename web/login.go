@@ -43,6 +43,10 @@ type OIDCOptions struct {
 	// CookieDomain sets the session cookie's Domain (a parent domain the
 	// studio's hosts share); "" = this host only.
 	CookieDomain string
+	// SignupURL is where someone without an account at the provider makes one
+	// (Pocket ID: <issuer>/signup); an invite link offers it next to Log in.
+	// "" = not offered.
+	SignupURL string
 }
 
 const (
@@ -101,6 +105,9 @@ func (id userID) key() string { return id.Issuer + " " + id.Subject }
 func newAuth(opt OIDCOptions, dataDir string, logger *log.Logger) (*auth, error) {
 	if dataDir == "" {
 		return nil, errors.New("the login needs --data-dir (users and members are kept there)")
+	}
+	if u, err := url.Parse(opt.SignupURL); opt.SignupURL != "" && (err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "") {
+		return nil, fmt.Errorf("signup URL %q: give the whole address, like https://id.example.org/signup", opt.SignupURL)
 	}
 	if opt.Issuer == "" || opt.ClientID == "" || opt.PublicURL == "" {
 		return nil, errors.New("the login needs the issuer, the client id and the public URL")
@@ -454,7 +461,8 @@ func (au *auth) require(next http.Handler) http.Handler {
 		}
 		if strings.HasPrefix(rel, "api/") {
 			// login: the page should go to the login (util.js toLogin).
-			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "log in first", "login": true})
+			// signup: where to make an account first (invite.js offers it).
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "log in first", "login": true, "signup": au.opt.SignupURL})
 			return
 		}
 		http.Redirect(w, r, au.url("auth/login")+"?next="+url.QueryEscape(au.base.Path+rel), http.StatusFound)

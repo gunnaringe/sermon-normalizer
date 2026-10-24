@@ -531,3 +531,31 @@ func TestLoginSettings(t *testing.T) {
 	}
 	a.Close()
 }
+
+// With a signup URL, the 401 says where to make an account; the invite page offers it.
+func TestLoginSignupURL(t *testing.T) {
+	l := newLoginApp(t)
+	if w := l.do("GET", "/api/invite?token=x", ""); strings.Contains(w.Body.String(), `"signup":"http`) {
+		t.Errorf("signup without the setting: %s", w.Body.String())
+	}
+	cfg := l.app.cfg
+	opt := *cfg.OIDC
+	opt.SignupURL = "https://id.example.org/signup"
+	cfg.OIDC = &opt
+	a, err := NewApp(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a.Close)
+	r := httptest.NewRequest("GET", "https://studio.example/api/invite?token=x", nil)
+	w := httptest.NewRecorder()
+	a.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), `"signup":"https://id.example.org/signup"`) {
+		t.Errorf("401: %d %s", w.Code, w.Body.String())
+	}
+	opt.SignupURL = "/signup"
+	if a, err := NewApp(cfg); err == nil {
+		a.Close()
+		t.Error("a relative signup URL was accepted")
+	}
+}

@@ -50,6 +50,7 @@ type serveCmd struct {
 	OIDCClientSecretFile string `name:"oidc-client-secret-file" type:"existingfile" group:"Login (one of --oidc-issuer and --no-login is required)" help:"With --oidc-issuer: a file with the client secret (none = a public client, PKCE only)."`
 	PublicURL            string `group:"Login (one of --oidc-issuer and --no-login is required)" help:"The studio's address as the browser sees it (with --oidc-issuer, the callback is <public-url>/auth/callback)."`
 	CookieDomain         string `group:"Login (one of --oidc-issuer and --no-login is required)" help:"With --oidc-issuer: a parent domain for the session cookie, shared by the studio's hosts (default: this host only)."`
+	OIDCSignupURL        string `name:"oidc-signup-url" group:"Login (one of --oidc-issuer and --no-login is required)" help:"With --oidc-issuer: where someone without an account at the provider makes one (Pocket ID: <issuer>/signup); an invite link then offers Create an account next to Log in."`
 
 	CacheDir     string `default:"${cacheDir}" help:"Where waveform data and previews are kept."`
 	CacheDays    int    `default:"30" help:"Remove cached analyses not used for this many days."`
@@ -77,7 +78,7 @@ func (s *serveCmd) Validate() error {
 	if s.ParallelRuns < 1 {
 		return errors.New("--parallel-runs must be at least 1")
 	}
-	if s.NoLogin && (s.OIDCClientID != "" || s.OIDCClientSecretFile != "" || s.CookieDomain != "") {
+	if s.NoLogin && (s.OIDCClientID != "" || s.OIDCClientSecretFile != "" || s.CookieDomain != "" || s.OIDCSignupURL != "") {
 		return errors.New("--no-login, but OIDC settings are given: choose the login (--oidc-issuer) or none")
 	}
 	return nil
@@ -202,7 +203,8 @@ func (s *serveCmd) Run() error {
 	web.CleanCache(s.CacheDir, time.Duration(s.CacheDays)*24*time.Hour)
 	var oidc *web.OIDCOptions
 	if !s.NoLogin {
-		oidc = &web.OIDCOptions{Issuer: s.OIDCIssuer, ClientID: s.OIDCClientID, PublicURL: s.PublicURL, CookieDomain: s.CookieDomain}
+		oidc = &web.OIDCOptions{Issuer: s.OIDCIssuer, ClientID: s.OIDCClientID, PublicURL: s.PublicURL, CookieDomain: s.CookieDomain,
+			SignupURL: s.OIDCSignupURL}
 		if s.OIDCClientSecretFile != "" {
 			b, err := os.ReadFile(s.OIDCClientSecretFile)
 			if err != nil {

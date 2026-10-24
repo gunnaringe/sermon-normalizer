@@ -25,7 +25,7 @@ In Pocket ID: **Settings → Administration → OIDC Clients → Add OIDC Client
 | Logout Callback URLs | `<public-url>/auth/logout/callback` |
 | Public Client | off: the studio is a confidential client, with a secret |
 | PKCE | on |
-| Requires Re-Authentication | optional: on asks for the passkey at every login, even when already logged in to Pocket ID |
+| Requires Re-Authentication | off (on asks for the passkey at every login, even when already logged in to Pocket ID; Log out already ends Pocket ID's login, and a new user from an invite needs it off) |
 | Skip Consent Screen | on is fine: the studio is your own app |
 | Logo | `docs/pocket-id/client-logo.png` (the sun tab; the same works for the moon tab) |
 
@@ -56,9 +56,11 @@ Pocket ID logs out but stays on its own page.
 
 ![Making an account (dark mode)](pocket-id/screenshots/signup-dark.png)
 
-An invite link from the studio leads to Pocket ID's sign-in, which has no Sign Up button: someone without an account
-makes one first, at `<pocket-id>/signup` (or **Sign Up** on `<pocket-id>/login`), then opens the invite link again.
-Say so in the message with the link.
+Pocket ID's sign-in page for an app has no Sign Up button, so the studio offers it: with
+`--oidc-signup-url <pocket-id>/signup` (`SERMON_STUDIO_OIDC_SIGNUP_URL`), an invite link opened without a login shows
+**Log in** and **Create an account**. Create an account opens Pocket ID's signup in a new tab; making the account
+logs them in at Pocket ID, so **Log in** in the invite's tab then goes straight through to the invitation. Keep
+**Requires Re-Authentication** off with this: a new user who skipped making a passkey could not log in again.
 
 ## The studio
 
@@ -83,6 +85,7 @@ data:
   SERMON_STUDIO_OIDC_ISSUER: https://id.example.org
   SERMON_STUDIO_OIDC_CLIENT_ID: <client id>
   SERMON_STUDIO_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc/client-secret
+  SERMON_STUDIO_OIDC_SIGNUP_URL: https://id.example.org/signup
 ---
 apiVersion: v1
 kind: Secret

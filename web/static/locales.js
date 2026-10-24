@@ -786,6 +786,9 @@ export const nb = {
   "no such member": "fant ikke medlemmet",
   "an invite lasts from 1 to 30 days": "en invitasjon varer fra 1 til 30 dager",
   "no such invite: it may have been used, or have expired": "fant ikke invitasjonen: den kan være brukt eller utløpt",
+  "You are invited to Sermon Studio. Log in to see the invitation and accept it.": "Du er invitert til Sermon Studio. Logg inn for å se invitasjonen og godta den.",
+  "Create an account": "Lag en konto",
+  "New here? Create an account in the tab that opens, and make a passkey when you are asked to. Then come back to this tab and press Log in.": "Ny her? Lag en konto i fanen som åpnes, og lag en passnøkkel når du blir bedt om det. Kom så tilbake til denne fanen og trykk Logg inn.",
 };
 
 export const nn = {
@@ -1572,4 +1575,7 @@ export const nn = {
   "no such member": "fann ikkje medlemmen",
   "an invite lasts from 1 to 30 days": "ein invitasjon varer frå 1 til 30 dagar",
   "no such invite: it may have been used, or have expired": "fann ikkje invitasjonen: han kan vere brukt eller gått ut",
+  "You are invited to Sermon Studio. Log in to see the invitation and accept it.": "Du er invitert til Sermon Studio. Logg inn for å sjå invitasjonen og godta han.",
+  "Create an account": "Lag ein konto",
+  "New here? Create an account in the tab that opens, and make a passkey when you are asked to. Then come back to this tab and press Log in.": "Ny her? Lag ein konto i fana som blir opna, og lag ein passnøkkel når du blir beden om det. Kom så tilbake til denne fana og trykk Logg inn.",
 };

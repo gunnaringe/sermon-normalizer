@@ -72,6 +72,7 @@ church and no right to add more sees just its name in the header; otherwise a qu
 | `--no-login` | | no login and no access control: anyone who reaches the studio can use every church (the desktop, a trusted network). This or `--oidc-issuer` is required |
 | `--oidc-client-id`, `--oidc-client-secret-file` | | the studio's client at the provider; no secret file = a public client (PKCE) |
 | `--public-url` | | with `--oidc-issuer`: the studio's address as the browser sees it (the callback is `<public-url>/auth/callback`) |
+| `--oidc-signup-url` | | with `--oidc-issuer`: where someone without an account makes one (Pocket ID: `<issuer>/signup`); an invite link then offers Create an account next to Log in |
 | `--cookie-domain` | | with `--oidc-issuer`: a parent domain for the session cookie, shared by the studio's hosts |
 | `--listen` | `:8080` | address to listen on |
 | `--cache-dir` | user cache folder | waveform data and listening previews |

@@ -27,6 +27,7 @@ func TestLoginMustBeChosen(t *testing.T) {
 		{[]string{"--data-dir", "d"}, "--oidc-issuer=STRING or --no-login"},
 		{[]string{"--data-dir", "d", "--oidc-issuer", "https://id.example", "--no-login"}, "can't be used together"},
 		{[]string{"--data-dir", "d", "--no-login", "--oidc-client-id", "x"}, "OIDC settings are given"},
+		{[]string{"--data-dir", "d", "--no-login", "--oidc-signup-url", "https://id.example/signup"}, "OIDC settings are given"},
 		{[]string{"--data-dir", "d", "--oidc-isuer", "https://id.example"}, "did you mean"},
 		{[]string{"--no-login"}, "--root or --data-dir"},
 		{[]string{"--data-dir", "d", "--no-login"}, ""},
