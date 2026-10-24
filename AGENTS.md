@@ -237,6 +237,7 @@ scripts/pr-shots.sh --pr <name|png>...        # adds them to this branch's PR
 lands in `main`). Show only the screens that changed; for a new screen, add a
 `page.screenshot` to an e2e test so it can be shown again later.
 
-Deploy: merging to `main` → GitHub Actions publishes `ghcr.io/gunnaringe/sermon-studio:main-<ts>-<sha>`
+Deploy: merging to `main` → GitHub Actions publishes `ghcr.io/gunnaringe/sermon-studio:main-<ts>-<sha>` (not for a change
+only to `site/`: `image.yml` and `test.yml` skip it, `site.yml` checks the website instead)
 → Flux rolls it out on kate (`clusters/kate/norkirken/`, namespace `norkirken`,
 https://sermons.haxxor.xyz).
