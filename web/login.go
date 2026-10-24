@@ -89,8 +89,9 @@ type session struct {
 type auth struct {
 	opt     OIDCOptions
 	dir     string
-	base    *url.URL // PublicURL
-	secure  bool     // cookies only over HTTPS
+	base    *url.URL     // PublicURL
+	hosts   *churchHosts // church hosts (hosts.go), nil = none
+	secure  bool         // cookies only over HTTPS
 	scopes  []string
 	client  *http.Client
 	log     *log.Logger
@@ -163,7 +164,7 @@ func (au *auth) url(path string) string {
 func (au *auth) cookie(name, value string, maxAge time.Duration) *http.Cookie {
 	c := &http.Cookie{Name: name, Value: value, Path: au.base.Path, HttpOnly: true, Secure: au.secure,
 		SameSite: http.SameSiteLaxMode, MaxAge: int(maxAge.Seconds())}
-	if name == sessionCookie {
+	if name == sessionCookie || name == logoutCookie { // logout ends on the login host, wherever it started
 		c.Domain = au.opt.CookieDomain
 	}
 	if maxAge < 0 {
@@ -255,14 +256,40 @@ type loginState struct {
 // safeNext is where to go after the login: a path of this studio, else its start.
 func (au *auth) safeNext(next string) string {
 	bad := strings.ContainsFunc(next, func(r rune) bool { return r < 0x20 || r == 0x7f || r == '\\' })
-	if bad || !strings.HasPrefix(next, au.base.Path) || strings.HasPrefix(next, "//") {
+	if bad {
+		return au.base.Path
+	}
+	// With church hosts, the way back may be another host of the site (sameSiteURL).
+	if u, err := url.Parse(next); err == nil && u.IsAbs() && au.hosts != nil && au.sameSiteURL(u) {
+		return u.String()
+	}
+	if !strings.HasPrefix(next, au.base.Path) || strings.HasPrefix(next, "//") {
 		return au.base.Path
 	}
 	return next
 }
 
+// here is the address of the request's page as the browser sees it: a path on
+// the login host, else the whole address (a church host).
+func (au *auth) here(r *http.Request, path string) string {
+	if au.hosts == nil || r.Host == au.base.Host {
+		return path
+	}
+	return au.base.Scheme + "://" + r.Host + path
+}
+
 // handleLogin sends the browser to the provider: GET auth/login?next=<path>.
 func (au *auth) handleLogin(w http.ResponseWriter, r *http.Request) {
+	// The callback is on the login host: a login started on a church host goes
+	// there, to come back to the church host.
+	if au.hosts != nil && r.Host != au.base.Host {
+		next := r.URL.Query().Get("next")
+		if strings.HasPrefix(next, "/") && !strings.HasPrefix(next, "//") {
+			next = au.here(r, next)
+		}
+		http.Redirect(w, r, au.url("auth/login")+"?next="+url.QueryEscape(next), http.StatusFound)
+		return
+	}
 	p, err := au.provider(r.Context())
 	if err != nil {
 		au.fail(w, r, fmt.Errorf("the login service cannot be reached: %w", err))
@@ -465,7 +492,7 @@ func (au *auth) require(next http.Handler) http.Handler {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "log in first", "login": true, "signup": au.opt.SignupURL})
 			return
 		}
-		http.Redirect(w, r, au.url("auth/login")+"?next="+url.QueryEscape(au.base.Path+rel), http.StatusFound)
+		http.Redirect(w, r, au.url("auth/login")+"?next="+url.QueryEscape(au.here(r, au.base.Path+rel)), http.StatusFound)
 	})
 }
 

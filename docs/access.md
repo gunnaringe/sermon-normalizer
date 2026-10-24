@@ -38,6 +38,32 @@ sermon-studio --data-dir /data --oidc-issuer https://id.example.org --oidc-clien
   studio's logged-out page. For that the ID token from the login is kept with the session in `sessions.json`,
   never in a cookie. A provider without it leaves its own login as it is.
 
+## Each church at its own address
+
+With `--church-host '{church}.sermon-studio.app'` every church has a host of its own
+(`norkirken-melhus.sermon-studio.app`), and the login is on the host of `--public-url`:
+
+```bash
+sermon-studio --data-dir /data --oidc-issuer https://id.example.org --oidc-client-id <id> \
+  --oidc-client-secret-file /run/secrets/oidc --public-url https://app.sermon-studio.app/ \
+  --cookie-domain sermon-studio.app --church-host '{church}.sermon-studio.app'
+```
+
+- **The church is the host's**, and the user must be one of its members: asking a church's host for another
+  church, or the login host for any, finds nothing. An unknown church's host says so.
+- **One login for all of them**: the session cookie is set on `--cookie-domain`, which both the login host and the
+  church hosts must be under (checked at start). A page on a church host goes to the login on the login host and
+  comes back to where it was; the way back may only be the login host or a church host, with the same scheme and port.
+- **Log out** on any host ends the session everywhere and comes back through the login host, so the provider still
+  has exactly two addresses: `<public-url>/auth/callback` and `<public-url>/auth/logout/callback`.
+- **The login host** serves the login, invite links (`<public-url>/invite.html#…`, which take you to the church's
+  host) and the church picker (`/`, which goes straight to your church when you have one).
+- The church stays in the page's address (`#/norkirken-melhus/…`); a link that names another church goes to that
+  church's host.
+- Church ids the site's own hosts may have are reserved: `app`, `share`, `www`, `id`, `api`, `auth`, `login`, `mail`,
+  `admin`, `static`, `status`, `docs`, `help`.
+- The public share page keeps its own host (`--share-listen`, `--share-url`, e.g. `share.sermon-studio.app`).
+
 ## The site administrator: `sermon-studio admin`
 
 Run where the studio runs, with the same data dir (`--data-dir`, or `SERMON_STUDIO_DATA_DIR`, which the container

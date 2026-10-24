@@ -80,6 +80,11 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/admin.go`: the site administrator's API (`AdminHandler`), served by `serve` only on the Unix socket
   `<data-dir>/.admin.sock` (`web.AdminSocket`, 0600; one that answers = another studio on the data dir, refused). `addChurch`
   and `renameChurch` are shared with the studio's API; `statusError`/`writeStatusError` carry an error's HTTP status.
+- `web/hosts.go`: church hosts (`--church-host '{church}.example.org'`, #82): `tenantFor` takes the church from the host (a
+  request naming another, or on the login host, gets none); `hostGate` sends the login host's `/` to `churches.html` (the picker)
+  and answers an unknown church's host; `sameSiteURL`/`safeNext` let the login go back only to the login host or a church
+  host; the session and logout cookies are on `--cookie-domain` (`checkHosts` at start). `TenantInfo.url` is a church's
+  address; `app.js` and `invite.js` follow it. `hostReserved`: ids a church cannot have.
 - `web/access.go`: who sees which church: with the login, its members; without, everyone (and only then are churches added in
   the studio, `canAdd`). `default` and the page words are reserved ids. Every church request goes through `App.tenantFor`,
   which only picks churches the user sees.

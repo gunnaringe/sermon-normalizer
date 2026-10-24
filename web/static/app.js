@@ -45,6 +45,12 @@ async function route() {
     view.replaceChildren(h('p', { class: 'error' }, t('No such church: {church}.', { church }), ' ', h('a', { href: '#/' }, t('Go to the recordings'))));
     return;
   }
+  // With church hosts (each church at its own address), a church is shown at its own address.
+  const own = churches.tenants.find((t) => t.id === church).url;
+  if (own && new URL(own).host !== location.host) {
+    location.replace(own + location.hash);
+    return;
+  }
   if (church !== currentTenant()) {
     setTenant(church);
     fillPicker();
@@ -456,7 +462,9 @@ async function loadChurches() {
 // Switching church is going to its address; adding one goes there too.
 select.addEventListener('change', async () => {
   if (select.value !== '+') {
-    location.hash = '#/' + select.value;
+    const own = churches.tenants.find((t) => t.id === select.value)?.url;
+    if (own && new URL(own).host !== location.host) location.href = own + '#/' + select.value;
+    else location.hash = '#/' + select.value;
     return;
   }
   const name = await promptDialog({ title: t('Add a church'), label: t('Name of the new church'), confirm: t('Add church') });

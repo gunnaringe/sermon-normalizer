@@ -102,6 +102,7 @@ type loginApp struct {
 	app  *App
 	h    http.Handler
 	data string
+	host string // the login host, studio.example
 }
 
 func newLoginApp(t *testing.T) *loginApp {
@@ -117,11 +118,16 @@ func newLoginApp(t *testing.T) *loginApp {
 		t.Fatal(err)
 	}
 	t.Cleanup(a.Close)
-	return &loginApp{t: t, prov: p, app: a, h: a.Handler(), data: data}
+	return &loginApp{t: t, prov: p, app: a, h: a.Handler(), data: data, host: "studio.example"}
 }
 
 func (l *loginApp) do(method, target, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(method, "https://studio.example"+target, strings.NewReader(body))
+	return l.doOn(l.host, method, target, body, cookies...)
+}
+
+// doOn sends a request to another host of the studio (a church host).
+func (l *loginApp) doOn(host, method, target, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, "https://"+host+target, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	for _, c := range cookies {
 		r.AddCookie(c)
@@ -151,7 +157,7 @@ func (l *loginApp) login(next, code string) *httptest.ResponseRecorder {
 	to, _ := url.Parse(w.Header().Get("Location"))
 	q := to.Query()
 	if !strings.HasPrefix(to.String(), l.prov.srv.URL+"/authorize") || q.Get("code_challenge_method") != "S256" ||
-		q.Get("redirect_uri") != "https://studio.example/auth/callback" || q.Get("client_id") != "studio" {
+		q.Get("redirect_uri") != "https://"+l.host+"/auth/callback" || q.Get("client_id") != "studio" {
 		t.Fatalf("authorize URL: %s", to)
 	}
 	l.prov.nonce, l.prov.verifier = q.Get("nonce"), q.Get("code_challenge")

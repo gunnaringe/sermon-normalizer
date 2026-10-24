@@ -788,6 +788,8 @@ export const nb = {
   "You are invited to Sermon Studio. Log in to see the invitation and accept it.": "Du er invitert til Sermon Studio. Logg inn for å se invitasjonen og godta den.",
   "Create an account": "Lag en konto",
   "New here? Create an account in the tab that opens, and make a passkey when you are asked to. Then come back to this tab and press Log in.": "Ny her? Lag en konto i fanen som åpnes, og lag en passnøkkel når du blir bedt om det. Kom så tilbake til denne fanen og trykk Logg inn.",
+  "Your churches": "Dine menigheter",
+  "Choose a church.": "Velg en menighet.",
 };
 
 export const nn = {
@@ -1576,4 +1578,6 @@ export const nn = {
   "You are invited to Sermon Studio. Log in to see the invitation and accept it.": "Du er invitert til Sermon Studio. Logg inn for å sjå invitasjonen og godta han.",
   "Create an account": "Lag ein konto",
   "New here? Create an account in the tab that opens, and make a passkey when you are asked to. Then come back to this tab and press Log in.": "Ny her? Lag ein konto i fana som blir opna, og lag ein passnøkkel når du blir beden om det. Kom så tilbake til denne fana og trykk Logg inn.",
+  "Your churches": "Kyrkjelydane dine",
+  "Choose a church.": "Vel ein kyrkjelyd.",
 };

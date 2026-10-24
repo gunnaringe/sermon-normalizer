@@ -600,3 +600,7 @@ input.pause { width: 4.5em; }
 
 /* sliders and boxes to tick in the app's colour */
 input[type=range], input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
+
+/* The church picker (churches.html) */
+.church-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; max-width: 24rem; }
+.church-list .button { display: block; }

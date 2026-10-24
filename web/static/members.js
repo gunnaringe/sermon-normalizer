@@ -76,7 +76,7 @@ export async function membersView(box, church, admin) {
     try {
       const made = await api('POST', 'api/invites', { role: role.value, days: Number(days.value) });
       await draw();
-      await showInvite(new URL('invite.html#' + made.token, location.href).href, made.invite, church);
+      await showInvite(made.link || new URL('invite.html#' + made.token, location.href).href, made.invite, church);
     } catch (err) { status.textContent = err.message; }
   } }, t('Make invite link'));
 

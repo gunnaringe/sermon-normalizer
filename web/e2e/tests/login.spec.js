@@ -128,3 +128,29 @@ test('a member sees no church settings, and can leave', async ({ page }) => {
   await page.getByRole('dialog', { name: 'Leave Norkirken Melhus?' }).getByRole('button', { name: 'Leave' }).click();
   await expect.poll(() => left).toBe(true);
 });
+
+// With church hosts (--church-host), the login host's start is the church picker, and a church
+// is shown at its own address. The church list is answered here, as the studio would with them.
+test('the church picker lists the churches, and goes straight to the only one', async ({ page }) => {
+  const two = { tenants: [{ id: 'kirke-a', name: 'Kirke A', url: 'http://kirke-a.localhost:8080/' },
+    { id: 'kirke-b', name: 'Kirke B', url: 'http://kirke-b.localhost:8080/' }], default: 'kirke-a', login: true };
+  await page.route('**/api/tenants', (r) => r.fulfill({ json: two }));
+  await page.goto('churches.html');
+  await expect(page.getByRole('heading', { name: 'Your churches' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Kirke B' })).toHaveAttribute('href', 'http://kirke-b.localhost:8080/#/kirke-b');
+  await page.screenshot({ path: path.join(shots, 'churches.png') });
+
+  await page.route('**/api/tenants', (r) => r.fulfill({ json: { ...two, tenants: two.tenants.slice(0, 1) } }));
+  await page.route('http://kirke-a.localhost:8080/**', (r) => r.fulfill({ body: 'kirke a' }));
+  await page.goto('churches.html');
+  await expect(page).toHaveURL('http://kirke-a.localhost:8080/#/kirke-a');
+});
+
+test('a church that has its own address is shown there', async ({ page }) => {
+  await page.route('**/api/tenants', (r) => r.fulfill({ json: { tenants: [
+    { id: 'first-church', name: 'Norkirken Melhus', role: 'admin', url: 'http://first-church.localhost:8080/' }],
+  default: 'first-church', canAdd: false, shares: false, login: true } }));
+  await page.route('http://first-church.localhost:8080/**', (r) => r.fulfill({ body: 'its own address' }));
+  await page.goto('#/first-church/settings');
+  await expect(page).toHaveURL('http://first-church.localhost:8080/#/first-church/settings');
+});
