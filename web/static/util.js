@@ -9,6 +9,12 @@ export function setTenant(id) {
   localStorage.setItem('tenant', id);
 }
 
+// The user's role in each church (admin or member), from the church list.
+// Without the studio's login everyone is an admin.
+let roles = {};
+export function setRoles(list) { roles = Object.fromEntries(list.map((c) => [c.id, c.role || 'admin'])); }
+export const isAdmin = () => roles[tenant] !== 'member';
+
 // Whether the scroll wheel zooms the waveform only with ctrl/cmd held. A
 // choice of this browser, not of the church: kept in localStorage.
 export const wheelZoomNeedsKey = () => localStorage.getItem('wheelZoom') === 'key';

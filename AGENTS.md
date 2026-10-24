@@ -62,8 +62,12 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `index.html` are public. Logout (`POST auth/logout`) ends the session and shows `loggedout.html`. The provider is found on the
   first login, so the studio starts while it is down.
 - `web/members.go`: with the login, a church is for its members (`<church>/members.json`: issuer, sub, role admin/member). They
-  join by an invite link `invite.html#<church>.<secret>` (`CreateInvite`, from `sermon-studio admin invite`; `<church>/invites.json`
-  keeps hashes, single use, an expiry). `api/invite` (GET what it is for, POST accept) needs a session but no church.
+  join by an invite link `invite.html#<church>.<secret>` (`addInvite`: from Settings → Members, `POST api/invites`, or
+  `sermon-studio admin invite`, `CreateInvite`; `<church>/invites.json` keeps hashes, single use, an expiry; revoke by `id`, the
+  hash's start). `api/invite` (GET what it is for, POST accept) needs a session but no church. Admin-only requests are listed in
+  `adminOnly` and stopped by `requireAdmin` before any handler (settings, logo, clips, ended-days, members, invites); a member
+  gets 403. `changeMembers` keeps an admin. The church list carries the user's `role`; `util.js` `isAdmin()` hides the admin
+  parts of Settings (`members.js` is the Members section) and the editor's Add to the church's clips.
 - `web/access.go`: who sees which church: with the login, its members; without, everyone (and only then are churches added in
   the studio, `canAdd`). `default` and the page words are reserved ids. Every church request goes through `App.tenantFor`,
   which only picks churches the user sees.

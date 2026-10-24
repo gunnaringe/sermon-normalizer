@@ -21,18 +21,22 @@ sermon-studio --data-dir /data --oidc-issuer https://id.example.org --oidc-clien
   to give access. Users are kept in `<data-dir>/users.json`, sessions (30 days, only their hashes) in `sessions.json`.
 - Every page and every API call needs a session: a page goes to the login and comes back, the API answers 401.
   Health checks use `/healthz`, which is open.
-- A church's members are in `<church>/members.json`, each an admin or a member. A user who is no church's member
-  is told to ask for an invite link.
-- **Invite links** are made where the studio runs, and are single use (7 days by default):
+- A church's members are in `<church>/members.json`, each an **admin** or a **member**. Members use the studio:
+  recordings, editing, runs, downloads and shares. Admins also change the church's settings (name, logo, tags,
+  processing, intro and outro clips, how long ended shares are kept) and who its members are. A user who is no
+  church's member is told to ask for an invite link.
+- **Settings → Members** (admins): the members with their name and email from the login, their role, Remove; invite
+  links (role, 1, 7 or 30 days), shown once with a copy button; the open invites, with Revoke. A member sees only
+  **Leave this church…**. A church always keeps an admin: the last one cannot step down, leave or be removed.
+- **Invite links** are single use and kept only as a hash, in `<church>/invites.json`. Opening one logs in and asks
+  to accept; accepting makes that login a member (an admin invite makes a member an admin). They can also be made
+  where the studio runs, which is how to get back in when a church has lost its admins:
 
   ```bash
   sermon-studio admin invite norkirken-melhus --role admin --data-dir /data --public-url https://sermons.example.org/
   # on Kubernetes: kubectl exec deploy/sermon-studio -- sermon-studio admin invite …
   ```
 
-  Opening the link logs in and asks to accept; accepting makes that login a member (an admin invite makes a
-  member an admin). Only a hash of each invite is kept, in `<church>/invites.json`. This is also how to get back in
-  when a church has lost its admins.
 - With the login on, churches are not added in the studio.
 - **Log out** ends the studio's session. The provider's own login is left as it is: on a shared computer, log out
   there too.

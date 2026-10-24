@@ -3,13 +3,14 @@
 // #/<church>/folder/<path> (the editor), #/<church>/settings (the settings over the recordings), #/<church>/shares (the
 // shares, the same way), #/<church>/about (what the studio is). They also open as an overlay from their icon in the
 // header, or the link in the footer.
-import { api, q, h, href, INPUT_TYPES, isInputType, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, debounce, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
+import { api, q, h, href, INPUT_TYPES, isInputType, formatSize, formatDate, formatDateTime, dateInput, forTenant, currentTenant, setTenant, setRoles, isAdmin, debounce, wheelZoomNeedsKey, setWheelZoomNeedsKey } from './util.js';
 import { editorView } from './editor.js';
 import { alertDialog, promptDialog } from './dialog.js';
 import { sharesView } from './shares.js';
 import { trashView } from './trash.js';
 import { clipsView } from './clips.js';
 import { processingView } from './processing.js';
+import { membersView } from './members.js';
 import { recordingsView } from './recordings.js';
 import { t, tn, tr, lang, LANGS, setLang, getTheme, setTheme } from './i18n.js';
 
@@ -374,18 +375,27 @@ async function settingsView(box, part) {
   const processing = h('section', { id: 'processing' });
   await processingView(processing, async () => { config = await api('GET', 'api/config'); });
 
+  // Members, with the login. A member does not see the church's own settings (name, logo, tags, processing, clips).
+  const admin = isAdmin();
+  const church = tenants.tenants.find((c) => c.id === currentTenant());
+  const members = h('section', { id: 'members' });
+  if (tenants.login && church) await membersView(members, church, admin);
+
   const view_ = h('div', {},
     h('h2', {}, t('Appearance')),
     appearance(),
-    h('h2', {}, t('Church')),
-    h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, t('Name')), nameInput), h('div', {}, saveName, ' ', nameStatus),
-      h('p', { class: 'muted' }, t('Logo, shown in a square in the header: use a square one, like an app icon; other shapes are shrunk to fit. PNG, JPEG, WebP or SVG, up to 1 MB.')), logoBox),
-    h('h2', {}, t('Default tags')),
-    h('p', { class: 'muted' }, t('Written into all generated recordings. You can change them for one recording in the editor. Placeholders:'), ' ',
-      data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + tr(p.help) + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
-    h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
-    processing,
-    clips,
+    admin ? [
+      h('h2', {}, t('Church')),
+      h('div', { class: 'panel tags' }, h('label', {}, h('span', { class: 'name' }, t('Name')), nameInput), h('div', {}, saveName, ' ', nameStatus),
+        h('p', { class: 'muted' }, t('Logo, shown in a square in the header: use a square one, like an app icon; other shapes are shrunk to fit. PNG, JPEG, WebP or SVG, up to 1 MB.')), logoBox),
+      h('h2', {}, t('Default tags')),
+      h('p', { class: 'muted' }, t('Written into all generated recordings. You can change them for one recording in the editor. Placeholders:'), ' ',
+        data.placeholders.flatMap((p, i) => [h('code', {}, '{' + p.name + '}'), ' ' + tr(p.help) + (i < data.placeholders.length - 1 ? ' · ' : '.')])),
+      h('div', { class: 'panel tags' }, rows, h('div', {}, save, ' ', status)),
+      processing,
+      clips,
+    ] : '',
+    tenants.login ? members : '',
     trash,
     h('h2', {}, t('Waveform')),
     h('p', { class: 'muted' }, t('Saved in this browser only.')),
@@ -437,6 +447,7 @@ function fillPicker() {
 
 async function loadChurches() {
   churches = await api('GET', 'api/tenants');
+  setRoles(churches.tenants);
   if (!churches.tenants.some((t) => t.id === currentTenant())) setTenant(churches.default);
   fillPicker();
   countActive();

@@ -49,3 +49,68 @@ test('the logged-out page offers to log in again', async ({ page }) => {
   await page.goto('loggedout.html?failed');
   await expect(page.getByText('The login did not work.')).toBeVisible();
 });
+
+// Members in the settings (with the login). The test server has none, so the church list and the
+// members' API are answered here, as the studio would with one.
+const church = { id: 'first-church', name: 'Norkirken Melhus' };
+const tenants = (role) => ({ tenants: [{ ...church, role }], default: church.id, canAdd: false, shares: false, login: true });
+
+test('an admin sees the members, changes a role and makes an invite link', async ({ page }) => {
+  const members = [
+    { id: 'a1', name: 'Kari Nordmann', email: 'kari@example.org', role: 'admin', joined: '2026-10-24T06:25:00Z', you: true },
+    { id: 'm1', name: 'Ola Nordmann', email: 'ola@example.org', role: 'member', joined: '2026-10-25T10:00:00Z', invitedBy: 'Kari Nordmann' },
+  ];
+  const invites = [{ id: 'i1', role: 'member', createdBy: 'Kari Nordmann', created: '2026-10-25T09:00:00Z', expires: '2026-11-01T09:00:00Z' }];
+  const calls = [];
+  await page.route('**/api/tenants', (r) => r.fulfill({ json: tenants('admin') }));
+  await page.route('**/api/members**', (r) => {
+    if (r.request().method() !== 'GET') calls.push([r.request().method(), new URL(r.request().url()).pathname, r.request().postDataJSON()]);
+    return r.fulfill({ json: { members, invites } });
+  });
+  await page.route('**/api/invites**', (r) => {
+    calls.push([r.request().method(), new URL(r.request().url()).pathname, r.request().postDataJSON()]);
+    return r.fulfill({ status: 201, json: { token: 'first-church.secret',
+      invite: { id: 'i2', role: 'admin', createdBy: 'Kari Nordmann', created: '2026-10-25T09:00:00Z', expires: '2026-10-26T09:00:00Z' } } });
+  });
+  await page.goto('#/first-church/settings/members');
+  const section = page.locator('#members');
+  await expect(section.getByRole('heading', { name: 'Members' })).toBeVisible();
+  await expect(section.getByText('Ola Nordmann')).toBeVisible();
+  await expect(section.getByText('(you)')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Default tags' })).toBeVisible(); // an admin's settings
+  await section.locator('h2').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await page.screenshot({ path: path.join(shots, 'settings-members.png') });
+
+  await section.getByRole('combobox', { name: 'Role of Ola Nordmann' }).selectOption('admin');
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls[0]).toEqual(['PUT', '/api/members/m1', { role: 'admin' }]);
+
+  await section.locator('select[name=invite-role]').selectOption('admin');
+  await section.locator('select[name=invite-days]').selectOption('1');
+  await section.getByRole('button', { name: 'Make invite link' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Invite link made' });
+  await expect(dialog.getByText(/invite\.html#first-church\.secret$/)).toBeVisible();
+  await expect(dialog.getByText('as an admin')).toBeVisible();
+  await dialog.screenshot({ path: path.join(shots, 'invite-made.png') });
+  expect(calls[1]).toEqual(['POST', '/api/invites', { role: 'admin', days: 1 }]);
+  await dialog.getByRole('button', { name: 'OK' }).click();
+
+  await section.getByRole('button', { name: 'Revoke' }).click();
+  await page.getByRole('dialog', { name: 'Revoke this invite?' }).getByRole('button', { name: 'Revoke' }).click();
+  await expect.poll(() => calls.length).toBe(3);
+  expect(calls[2].slice(0, 2)).toEqual(['POST', '/api/invites/i1/revoke']);
+});
+
+test('a member sees no church settings, and can leave', async ({ page }) => {
+  let left = false;
+  await page.route('**/api/tenants', (r) => r.fulfill({ json: tenants('member') }));
+  await page.route('**/api/members/leave**', (r) => { left = true; return r.fulfill({ json: {} }); });
+  await page.goto('#/first-church/settings/members');
+  await expect(page.getByText('You are a member of Norkirken Melhus.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Trash' })).toBeVisible();
+  for (const name of ['Church', 'Default tags']) await expect(page.getByRole('heading', { name, exact: true })).toHaveCount(0);
+  await expect(page.locator('#clips')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Leave this church…' }).click();
+  await page.getByRole('dialog', { name: 'Leave Norkirken Melhus?' }).getByRole('button', { name: 'Leave' }).click();
+  await expect.poll(() => left).toBe(true);
+});

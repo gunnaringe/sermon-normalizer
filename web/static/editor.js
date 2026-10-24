@@ -7,7 +7,7 @@ import MinimapPlugin from './vendor/wavesurfer/plugins/minimap.esm.js';
 import HoverPlugin from './vendor/wavesurfer/plugins/hover.esm.js';
 import { alertDialog, confirmDialog, infoDialog } from './dialog.js';
 import { t, tn, tr, lang } from './i18n.js';
-import { api, q, h, href, INPUT_TYPES, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, currentTenant, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
+import { api, q, h, href, INPUT_TYPES, converts, isVideo, parseTime, formatTime, formatSize, typing, debounce, forTenant, currentTenant, isAdmin, dateInput, formatDateTime, wheelZoomNeedsKey, kbdText } from './util.js';
 
 const MAX_ZOOM = 200; // px per second: 5 ms per pixel, enough to cut between words
 
@@ -1664,7 +1664,7 @@ export async function editorView(view, path, config) {
         parts.push(h('button', { type: 'button', name: 'join-' + which, disabled: !sections.length, onclick: (e) => hearJoin(which, e.target) },
           which === 'intro' ? t('Hear the intro join') : t('Hear the outro join')));
       }
-      if (choice === 'own' && d.own[which] && d.available && !d.clips.some((c) => c.id === d.own[which].copiedAs)) {
+      if (isAdmin() && choice === 'own' && d.own[which] && d.available && !d.clips.some((c) => c.id === d.own[which].copiedAs)) {
         parts.push(h('button', { type: 'button', name: 'add-' + which, onclick: async () => {
           try {
             showClips(await api('POST', 'api/sermon/clip/add?path=' + q(path) + '&which=' + which));
