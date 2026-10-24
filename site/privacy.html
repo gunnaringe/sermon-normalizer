@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-t="privacy.title">Sermon Studio</title>
+  <meta name="description" data-t-content="privacy.description" content="">
+  <meta name="theme-color" content="#047857">
+  <link rel="icon" href="img/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="img/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="site.js"></script>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <a class="brand" href="./" data-t-aria-label="nav.home"><img src="img/logo.svg" alt="" width="30" height="30"><span>Sermon Studio</span></a>
+      <nav>
+        <a href="./#how" data-t="nav.how"></a>
+        <a href="./#churches" data-t="nav.churches"></a>
+        <a href="./#download" data-t="nav.download"></a>
+        <a href="guide.html" data-t="nav.guide"></a>
+        <a href="privacy.html" aria-current="page" data-t="nav.privacy"></a>
+      </nav>
+      <div class="tools">
+        <select id="lang" data-t-aria-label="lang.label"></select>
+        <a id="login" class="button primary" hidden data-t="nav.login"></a>
+      </div>
+    </div>
+  </header>
+  <!-- The facts here come from the code (web/login.go, members.go, recording.go, draft.go, share.go, sharesite.go,
+       trash.go, analysis.go) and docs/access.md. Keep them in step when those change. -->
+  <main class="doc">
+    <noscript><p data-t="noscript">This page needs JavaScript to show its text.</p></noscript>
+    <section>
+      <h1 data-t="privacy.h1"></h1>
+      <p class="lede" data-t="privacy.lede"></p>
+    </section>
+    <section id="website">
+      <h2 data-t="privacy.site.h2"></h2>
+      <p data-t="privacy.site.p"></p>
+    </section>
+    <section id="stored">
+      <h2 data-t="privacy.stored.h2"></h2>
+      <h3 data-t="privacy.login.h3"></h3>
+      <p data-t="privacy.login.p"></p>
+      <h3 data-t="privacy.members.h3"></h3>
+      <p data-t="privacy.members.p"></p>
+      <h3 data-t="privacy.recordings.h3"></h3>
+      <p data-t="privacy.recordings.p"></p>
+      <h3 data-t="privacy.shares.h3"></h3>
+      <p data-t="privacy.shares.p"></p>
+      <h3 data-t="privacy.logs.h3"></h3>
+      <p data-t="privacy.logs.p"></p>
+      <h3 data-t="privacy.browser.h3"></h3>
+      <p data-t="privacy.browser.p"></p>
+    </section>
+    <section id="where">
+      <h2 data-t="privacy.where.h2"></h2>
+      <!-- TODO(#84): name the hosting provider and the region (and where backups are kept) once the hosting exists. -->
+      <p data-t="privacy.where.p"></p>
+    </section>
+    <section id="who">
+      <h2 data-t="privacy.who.h2"></h2>
+      <!-- TODO(#84): name who runs the hosted studio (the data processor and its contact), the hosting provider and the
+           login provider, and whether the studio's traffic goes through Cloudflare, once the hosting exists. -->
+      <p data-t="privacy.who.p1"></p>
+      <p data-t="privacy.who.p2"></p>
+    </section>
+    <section id="kept">
+      <h2 data-t="privacy.kept.h2"></h2>
+      <ul>
+        <li data-t="privacy.kept.1"></li>
+        <li data-t="privacy.kept.2"></li>
+        <li data-t="privacy.kept.3"></li>
+        <li data-t="privacy.kept.4"></li>
+        <li data-t="privacy.kept.5"></li>
+        <!-- TODO(#84): how long the hosting keeps the server's logs and the backups, in days. -->
+        <li data-t="privacy.kept.6"></li>
+      </ul>
+    </section>
+    <section id="delete">
+      <h2 data-t="privacy.delete.h2"></h2>
+      <p data-t="privacy.delete.p1"></p>
+      <p data-t="privacy.delete.p2"></p>
+    </section>
+  </main>
+  <footer>
+    <div class="bar">
+      <p data-t="footer.contact"></p>
+      <p><a href="guide.html" data-t="nav.guide"></a> · <a href="privacy.html" data-t="nav.privacy"></a> · <a href="https://github.com/gunnaringe/sermon-studio" data-t="footer.source"></a></p>
+      <p data-t="footer.licence"></p>
+    </div>
+  </footer>
+</body>
+</html>

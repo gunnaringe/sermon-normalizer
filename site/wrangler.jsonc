@@ -1,0 +1,14 @@
+{
+  // The website at sermon-studio.app: a Cloudflare Worker with static assets only (no script of its own).
+  // Workers Builds deploys it on a push to main (root directory site, build watch paths site/**): see README.md.
+  // Keep the name: it is the Worker the Workers Builds import makes. The domains are set up in the dashboard.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sermon-studio-site",
+  "compatibility_date": "2026-10-20",
+  "assets": {
+    "directory": ".",
+    // guide.html is served as /guide; an unknown path gets 404.html, with status 404.
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

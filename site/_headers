@@ -1,0 +1,9 @@
+# Response headers (Workers static assets read this file; it is not served).
+# The site loads nothing from other hosts, and the policy keeps it that way.
+/*
+  Content-Security-Policy: default-src 'self'; img-src 'self'; media-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/media/*
+  Cache-Control: public, max-age=86400

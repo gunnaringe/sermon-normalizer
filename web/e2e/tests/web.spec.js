@@ -819,7 +819,7 @@ test('about: from the footer, over the page; the footer is at the bottom of a sh
   const dialog = page.getByRole('dialog', { name: 'About Sermon Studio' });
   await page.locator('footer').getByRole('link', { name: 'About' }).click();
   await expect(dialog.getByText('I made Sermon Studio for my own church.')).toBeVisible();
-  await expect(dialog.getByRole('link', { name: 'contact@sermon-studio.app' })).toHaveAttribute('href', 'mailto:contact@sermon-studio.app');
+  await expect(dialog.getByRole('link', { name: 'sermon-studio@apphub.casa' })).toHaveAttribute('href', 'mailto:sermon-studio@apphub.casa');
   const signature = dialog.getByRole('link', { name: 'Gunnar Inge Gjøvik Sortland' });
   await expect(signature).toHaveAttribute('href', 'https://gunnaringe.sort.land');
   await expect(signature).toHaveCSS('text-decoration-line', 'none');

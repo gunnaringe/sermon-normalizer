@@ -19,6 +19,8 @@ scripts/test.sh desktop               # the desktop program as released, from th
 scripts/test.sh image                 # Docker build; before release changes
 scripts/fetch-sample.sh && scripts/test.sh guide   # redo docs/img (the guide's pictures) when the UI changes
 scripts/check-links.sh                # relative links and pictures in the Markdown files
+scripts/test.sh site                  # the website (site/): pages, languages, links, video (~30 s); after changing site/
+scripts/site-shots.sh [shots|video]   # redo the website's pictures and video (~10 min) when the UI changes
 ```
 
 ffmpeg is not on the dev host; `all`/`e2e` run in podman, in images with ffmpeg that `test.sh` builds
@@ -164,6 +166,13 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   server's English messages (those with a value in them are matched by pattern, e.g. `{size}`). A new text needs its `nb` and `nn`
   entry in `locales.js` (`TestLocales` fails otherwise). Never name a variable `t` where `t()` is called. The language is the
   browser's (`no` = bokmål) unless chosen in Settings → Appearance (or on the public page's header); stored in localStorage.
+- `site/`: the website at sermon-studio.app (`site/README.md`): plain HTML, `site.js` and `style.css` (the studio's look), the
+  texts in `site/lang/{en,nb,nn}.json` (the same keys; `data-t="key"` in the pages), Log in hidden behind `SHOW_LOGIN` in
+  `site.js`. A Cloudflare Worker with static assets only (`site/wrangler.jsonc`, `_headers` keeps it to its own host), deployed by
+  Workers Builds on a push to `main` that changes `site/**`. Its pictures (`site/img/shots/<lang>/`) and its English video
+  (`site/media/`) come from `scripts/site-shots.sh` (`web/e2e/site-shots/`: the real studio, `--no-login`, the sample speech;
+  the video has a drawn pointer and captions); its test is `web/e2e/site/` (`scripts/test.sh site`, also the PR screenshots
+  `site-*.png`). It knows nothing of the studio's code: copy what it needs (the logo), never link into `web/static`.
 - `normalizer/`: the pipeline (`pipeline.go`; `Options.Cuts` = parts left out of
   Start..End, each kept part is its own ffmpeg input joined by `cutInput`'s filter graph; `Intro`/`Outro` clips are
   joined around the finished sermon by `join`, making the main files with them and `<date>_sermon.*` without, `versions`),

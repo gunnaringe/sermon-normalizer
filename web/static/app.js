@@ -238,7 +238,7 @@ const openAbout = () => openOverlay('about', t('About Sermon Studio'), t('Close 
 const REPO = 'https://github.com/gunnaringe/sermon-studio';
 const AUTHOR = 'Gunnar Inge Gjøvik Sortland';
 const HOME = 'https://gunnaringe.sort.land';
-const EMAIL = 'contact@sermon-studio.app';
+const EMAIL = 'sermon-studio@apphub.casa';
 
 // aboutView tells why the studio was made, where to write, and where to find more; signed by hand (fonts/signature.woff2), a link
 // to the author's page.

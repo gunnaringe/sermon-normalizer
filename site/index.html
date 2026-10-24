@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-t="home.title">Sermon Studio</title>
+  <meta name="description" data-t-content="home.description" content="">
+  <meta name="theme-color" content="#047857">
+  <link rel="icon" href="img/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="img/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="site.js"></script>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <a class="brand" href="./" data-t-aria-label="nav.home"><img src="img/logo.svg" alt="" width="30" height="30"><span>Sermon Studio</span></a>
+      <nav>
+        <a href="#how" data-t="nav.how"></a>
+        <a href="#churches" data-t="nav.churches"></a>
+        <a href="#download" data-t="nav.download"></a>
+        <a href="guide.html" data-t="nav.guide"></a>
+        <a href="privacy.html" data-t="nav.privacy"></a>
+      </nav>
+      <div class="tools">
+        <select id="lang" data-t-aria-label="lang.label"></select>
+        <a id="login" class="button primary" hidden data-t="nav.login"></a>
+      </div>
+    </div>
+  </header>
+  <main>
+    <noscript><p data-t="noscript">This page needs JavaScript to show its text.</p></noscript>
+
+    <section class="hero">
+      <h1 data-t="home.h1"></h1>
+      <p class="lede" data-t="home.lede"></p>
+      <p class="actions">
+        <a class="button primary" href="#how" data-t="home.cta.how"></a>
+        <a class="button" href="#download" data-t="home.cta.download"></a>
+      </p>
+      <img class="shot" data-shot="editor" data-t-alt="home.hero.alt" alt="" width="1280" height="800">
+    </section>
+
+    <section id="video">
+      <h2 data-t="home.video.h2"></h2>
+      <!-- The same English video on every language's page (scripts/site-shots.sh video makes it). -->
+      <video controls muted playsinline preload="none" poster="media/demo-poster.webp" width="1280" height="720">
+        <source src="media/demo.webm" type="video/webm">
+        <source src="media/demo.mp4" type="video/mp4">
+        <p data-t="home.video.fallback"></p>
+      </video>
+      <p class="note" data-t="home.video.note"></p>
+    </section>
+
+    <section id="how">
+      <h2 data-t="home.how.h2"></h2>
+      <p class="muted" data-t="home.how.intro"></p>
+      <ol class="steps">
+        <li class="step">
+          <div><h3 data-t="home.step1.h3"></h3><p data-t="home.step1.p"></p></div>
+          <div class="pictures"><img class="shot" data-shot="recordings" data-t-alt="home.step1.alt" alt="" width="1280" height="800" loading="lazy"></div>
+        </li>
+        <li class="step">
+          <div><h3 data-t="home.step2.h3"></h3><p data-t="home.step2.p"></p></div>
+          <div class="pictures"><img class="shot" data-shot="editor" data-t-alt="home.step2.alt" alt="" width="1280" height="800" loading="lazy"></div>
+        </li>
+        <li class="step">
+          <div><h3 data-t="home.step3.h3"></h3><p data-t="home.step3.p"></p></div>
+          <div class="pictures">
+            <img class="shot" data-shot="processing" data-t-alt="home.step3.alt" alt="" loading="lazy">
+            <img class="shot" data-shot="intro-outro" data-t-alt="home.step3.alt2" alt="" loading="lazy">
+          </div>
+        </li>
+        <li class="step">
+          <div><h3 data-t="home.step4.h3"></h3><p data-t="home.step4.p"></p></div>
+          <div class="pictures"><img class="shot" data-shot="making" data-t-alt="home.step4.alt" alt="" width="1280" height="800" loading="lazy"></div>
+        </li>
+        <li class="step">
+          <div><h3 data-t="home.step5.h3"></h3><p data-t="home.step5.p"></p></div>
+          <div class="pictures">
+            <img class="shot" data-shot="files" data-t-alt="home.step5.alt" alt="" width="1280" height="800" loading="lazy">
+            <img class="shot" data-shot="share" data-t-alt="home.step5.alt2" alt="" width="1280" height="800" loading="lazy">
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section id="what">
+      <h2 data-t="home.what.h2"></h2>
+      <ul class="features">
+        <li data-t="home.what.1"></li>
+        <li data-t="home.what.2"></li>
+        <li data-t="home.what.3"></li>
+        <li data-t="home.what.4"></li>
+      </ul>
+    </section>
+
+    <section id="churches">
+      <h2 data-t="home.churches.h2"></h2>
+      <div class="panel">
+        <p data-t="home.churches.p1"></p>
+        <p data-t="home.churches.p2"></p>
+        <p data-t="home.churches.p3"></p>
+      </div>
+    </section>
+
+    <section id="download">
+      <h2 data-t="home.download.h2"></h2>
+      <p data-t="home.download.p1"></p>
+      <p><a class="button primary" href="https://github.com/gunnaringe/sermon-studio/releases" data-t="home.download.button"></a></p>
+      <p class="note" data-t="home.download.unsigned"></p>
+    </section>
+  </main>
+  <footer>
+    <div class="bar">
+      <p data-t="footer.contact"></p>
+      <p><a href="guide.html" data-t="nav.guide"></a> · <a href="privacy.html" data-t="nav.privacy"></a> · <a href="https://github.com/gunnaringe/sermon-studio" data-t="footer.source"></a></p>
+      <p data-t="footer.licence"></p>
+    </div>
+  </footer>
+</body>
+</html>

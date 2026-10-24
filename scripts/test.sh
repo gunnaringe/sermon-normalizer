@@ -11,6 +11,8 @@
 #                              e.g. scripts/test.sh e2e -g upload
 #   scripts/test.sh guide      the pictures of the documentation (docs/img), from a real speech;
 #                              fetch it first with scripts/fetch-sample.sh
+#   scripts/test.sh site [args] the website in site/ (Playwright, served as files): pages, languages, links
+#   scripts/test.sh site-shots [shots|video]  the website's pictures and video (use scripts/site-shots.sh)
 #   scripts/test.sh image      the Docker image (vet + all tests inside)
 #
 # ffmpeg comes in images built once from scripts/test-images/ (kept, retagged when they change).
@@ -71,11 +73,23 @@ guide)
 	"$run" run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -v "$PWD/docs/img":/out:Z -w /work "$image" sh guide.sh "$@" 2>&1 |
 		grep -v -e '^debconf' -e '^$'
 	;;
+site)
+	image=$(testimage e2e "$playwright")
+	mkdir -p web/e2e/screenshots
+	"$run" run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -v "$PWD/site":/site:ro,z -w /work "$image" sh site/run.sh "$@"
+	;;
+site-shots)
+	incontainer 'go build -o web/e2e/bin/sermon-studio ./cmd/sermon-studio'
+	image=$(testimage e2e "$playwright")
+	mkdir -p site/img/shots site/media
+	"$run" run --rm --ipc=host -v "$PWD/web/e2e":/work:Z -v "$PWD/site":/site:z -v "$PWD/web/static":/static:ro,z -w /work \
+		"$image" sh site-shots/run.sh "$@"
+	;;
 image)
 	"$run" build -q -t sermon-studio .
 	;;
 *)
-	sed -n '2,15p' "$0"
+	sed -n '2,17p' "$0"
 	exit 2
 	;;
 esac
