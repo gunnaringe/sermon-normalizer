@@ -38,8 +38,18 @@ export async function api(method, url, body) {
   }
   const resp = await fetch(url.startsWith('api/tenants') || url === 'api/session' ? url : forTenant(url), opts);
   const data = await resp.json().catch(() => ({}));
+  if (resp.status === 401 && data.login) {
+    toLogin();
+    return new Promise(() => {}); // the page is leaving
+  }
   if (!resp.ok) throw new Error(tr(data.error || `${resp.status} ${resp.statusText}`));
   return data;
+}
+
+// toLogin goes to the studio's login (the session has ended, or there was
+// none), which comes back to this page.
+export function toLogin() {
+  location.href = 'auth/login?next=' + encodeURIComponent(location.pathname + location.search + location.hash);
 }
 
 export const q = (path) => encodeURIComponent(path);

@@ -4,7 +4,8 @@ Agent notes (`CLAUDE.md` imports this file).
 
 Go web service: cut a church service recording on a waveform, get
 loudness-normalised FLAC/MP3/Opus. `README.md` = what it is, `docs/` = guide, running, outputs, design (was PLAN.md).
-The standard library and `golang.org/x/sys` (for Windows); ffmpeg is run as a command. Keep dependencies few.
+The standard library, `golang.org/x/sys` (for Windows), `coreos/go-oidc` + `golang.org/x/oauth2` (the login); ffmpeg is run as a
+command. Keep dependencies few.
 
 ## Checks (use these, in this order; output is already short)
 
@@ -39,7 +40,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 
 ## Map
 
-- `cmd/sermon-studio/main.go`: flags, startup, shutdown. No logic.
+- `cmd/sermon-studio/main.go`: flags, startup, shutdown. No logic. `admin.go`: `sermon-studio admin invite` (prints an invite link).
 - `cmd/sermon-studio-desktop/`: the desktop app (docs/desktop.md), a wrapper around `web.App`: `main.go`
   starts it; `internal/desktop/` has its folders and `settings.json`, the Host check (`Guard`), the window
   (`OpenWindow`), one copy at a time (`/_desktop/hello` with the token) and stopping when idle (`Presence`:
@@ -54,7 +55,16 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `<id>/Innboks`. Picks the `Server` per request (`?tenant=` / `X-Tenant`, default
   = first), shared limits: `--parallel-runs` encodes (runs, samples; 1 by default), one decode. A `Server` is one church.
   `--root`/`--inbox` = one church without a folder (settings not saved).
-- `web/access.go`: `--groups-header` access control: group `sermon_studio_<church id, - → _>` = that church,
+- `web/login.go`: the studio's own login (`--oidc-issuer`, `AppConfig.OIDC`): authorization code + PKCE, the ID token checked by
+  go-oidc (+ nonce), then a session of its own (cookie `studio_session`, 30 days; `<data-dir>/sessions.json` keeps only hashes;
+  `users.json` = issuer + sub, with name/email for display only, never for access). `require` wraps the whole handler: no session
+  = a page goes to `auth/login?next=`, `api/…` answers 401 (`util.js` `toLogin`); only `auth/*` and static files other than
+  `index.html` are public. Logout (`POST auth/logout`) ends the session and shows `loggedout.html`. The provider is found on the
+  first login, so the studio starts while it is down. Refused together with `--groups-header`.
+- `web/members.go`: with the login, a church is for its members (`<church>/members.json`: issuer, sub, role admin/member). They
+  join by an invite link `invite.html#<church>.<secret>` (`CreateInvite`, from `sermon-studio admin invite`; `<church>/invites.json`
+  keeps hashes, single use, an expiry). `api/invite` (GET what it is for, POST accept) needs a session but no church.
+- `web/access.go`: `--groups-header` access control (until the login replaces it, #78): group `sermon_studio_<church id, - → _>` = that church,
   `sermon_studio_admin` = all + add churches; `admin`/`default` are reserved ids. Every church request
   goes through `App.tenantFor`, which only picks churches the user sees.
 - `web/server.go`: Config, routes, `resolve` (every path parameter: inside the

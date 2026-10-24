@@ -1,12 +1,14 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 )
 
-// Access control. The login proxy (Pocket ID's forward-auth) puts the user's
+// Access control. With the login (AppConfig.OIDC, login.go), a church is for
+// its members (members.go). Else, the login proxy (Pocket ID's forward-auth) puts the user's
 // groups in a request header (AppConfig.GroupsHeader), space-separated. A
 // church is for the members of its group, groupOf(id): "sermon_studio_" and
 // the id with underscores for hyphens, like Pocket ID's own group names;
@@ -39,6 +41,7 @@ type user struct {
 	open   bool // no access control
 	admin  bool
 	groups map[string]bool
+	id     userID // with the login: who it is
 }
 
 // userOf reads the groups the login proxy sent with the request. The proxy
@@ -46,6 +49,10 @@ type user struct {
 // authResponseHeaders before copying them from the auth response), so a
 // client cannot send its own.
 func (a *App) userOf(r *http.Request) user {
+	if a.auth != nil {
+		id, _ := a.auth.sessionOf(r)
+		return user{id: id}
+	}
 	if a.cfg.GroupsHeader == "" {
 		return user{open: true, admin: true}
 	}
@@ -57,8 +64,11 @@ func (a *App) userOf(r *http.Request) user {
 	return u
 }
 
-// sees reports whether the user may use the church.
+// sees reports whether the user may use the church; call with a.mu held.
 func (u user) sees(t *tenant) bool {
+	if u.id != (userID{}) {
+		return t.isMember(u.id)
+	}
 	return u.open || u.admin || u.groups[groupOf(t.id)]
 }
 
@@ -76,6 +86,9 @@ func (a *App) visible(u user) []*tenant {
 }
 
 // errNoChurch is what a user without any church is told.
-func errNoChurch() error {
+func (a *App) errNoChurch() error {
+	if a.auth != nil {
+		return errors.New("you are not a member of any church yet: ask the church's admin for an invite link")
+	}
 	return fmt.Errorf("you do not have access to any church: ask an administrator to add you to a %s<church> group", GroupPrefix)
 }

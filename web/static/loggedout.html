@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Sermon Studio</title>
+  <link rel="icon" href="icons/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="theme.js"></script>
+  <script type="module" src="loggedout.js"></script>
+</head>
+<body>
+  <header>
+    <span class="brand"><img src="icons/logo.svg" alt="" width="28" height="28"><span>Sermon Studio</span></span>
+    <div class="tools"><select id="lang" title="Language" aria-label="Language" data-i18n-title="Language" data-i18n-aria-label="Language"></select></div>
+  </header>
+  <main id="view" class="narrow">
+    <h1 id="title" data-i18n="You are logged out">You are logged out</h1>
+    <p id="failed" class="error" hidden data-i18n="The login did not work. Try again, or ask the church's admin if it keeps failing.">The login did not work. Try again, or ask the church's admin if it keeps failing.</p>
+    <p class="muted" data-i18n="On a shared computer, also log out of the login service.">On a shared computer, also log out of the login service.</p>
+    <p><a class="button primary" href="auth/login" data-i18n="Log in">Log in</a></p>
+  </main>
+</body>
+</html>
