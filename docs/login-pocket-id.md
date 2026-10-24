@@ -2,7 +2,8 @@
 
 [Pocket ID](https://pocket-id.org) is the recommended login for the studio: a small OpenID Connect provider where
 people log in with a passkey, no passwords. This is the setup we recommend, checked against Pocket ID v2.14. How
-access works in the studio itself (members, roles, invite links) is in [access.md](access.md).
+access works in the studio itself (members, roles, invite links) is in [access.md](access.md); installing Pocket ID
+is in [its own docs](https://pocket-id.org/docs).
 
 In short: anyone can make an account in Pocket ID, and anyone with an account can log in to the studio, but they
 see nothing until a church invites them. The studio's members decide who gets in, not Pocket ID.
