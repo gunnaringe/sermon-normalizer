@@ -218,7 +218,7 @@ test('the studio in use', async ({ browser }) => {
   await pause(2200);
 
   // The files, on the recordings page.
-  await caption('5. Download the files', 'With the intro, or the sermon only');
+  await caption('6. Download the files', 'With the intro, or the sermon only');
   await click(page.locator('header .brand'));
   const row = page.locator('tr.row', { hasText: '2026-10-18' }).first();
   await expect(row).toBeVisible();
