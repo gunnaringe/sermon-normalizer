@@ -5,7 +5,7 @@ Cut the sermon out on a waveform. Get evenly loud FLAC, MP3 and Opus, ready for 
 
 [![Build](https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml/badge.svg)](https://github.com/gunnaringe/sermon-studio/actions/workflows/image.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-![Go, the standard library, x/sys and OpenID Connect](https://img.shields.io/badge/go-stdlib%20%2B%20x%2Fsys%20%2B%20OIDC-00ADD8)
+![Go, the standard library, x/sys, OpenID Connect and kong](https://img.shields.io/badge/go-stdlib%20%2B%20x%2Fsys%20%2B%20OIDC%20%2B%20kong-00ADD8)
 ![English, Norwegian bokmål and nynorsk](https://img.shields.io/badge/UI-English%20%C2%B7%20bokm%C3%A5l%20%C2%B7%20nynorsk-lightgrey)
 
 ![The editor: a 14-minute speech as a waveform, two sections kept, a cough cut out](docs/img/hero.png)
@@ -75,7 +75,7 @@ A recording is a folder named after its date:
 
 ## Under the hood
 
-One Go binary with **few dependencies** (`golang.org/x/sys` for Windows; `coreos/go-oidc` and `golang.org/x/oauth2` for the login) and ffmpeg run as a command. The frontend is plain
+One Go binary with **few dependencies** (`golang.org/x/sys` for Windows; `coreos/go-oidc` and `golang.org/x/oauth2` for the login; `alecthomas/kong` for the command line) and ffmpeg run as a command. The frontend is plain
 JavaScript with [wavesurfer.js](https://wavesurfer.xyz/) for the waveform: no framework and no build
 step. State is plain files in the data folder, so there is no database to run or back up. The
 studio logs users in with any OpenID Connect provider and keeps who may use which church itself (members join with an
@@ -105,10 +105,11 @@ docker build -t sermon-studio .
 mkdir -p data/my-church/Taler data/my-church/Innboks cache
 docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
   -v "$PWD/data:/data" -v "$PWD/cache:/cache" \
-  sermon-studio --data-dir /data --cache-dir /cache
+  sermon-studio --no-login --data-dir /data --cache-dir /cache
 ```
 
-Open <http://localhost:8080>. Each folder in `data/` is a church; add more from the app. All options
+Open <http://localhost:8080>. `--no-login` means anyone who reaches it can use it: fine on your own machine;
+for a server, use the studio's own login ([access](docs/access.md)). Each folder in `data/` is a church; add more from the app. All options
 and the public upload page are in [docs/running.md](docs/running.md).
 
 On one computer, without a server: download the desktop app for Windows, macOS or Linux from the

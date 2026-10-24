@@ -30,7 +30,7 @@ mkdir -p "$church/Taler/2025/2025-12-21"
 ffmpeg -v error -ss 400 -t 90 -i "$speech" -c:a flac "$church/Taler/2025/2025-12-21/2025-12-21_raw.flac"
 ffmpeg -v error -ss 200 -t 40 -i "$speech" -c:a flac "$data/guest.flac"
 
-./bin/sermon-studio --listen 127.0.0.1:8080 --data-dir "$data/churches" --cache-dir "$data/cache" \
+./bin/sermon-studio --no-login --listen 127.0.0.1:8080 --data-dir "$data/churches" --cache-dir "$data/cache" \
 	--share-listen 127.0.0.1:8081 --share-url http://localhost:8081/ >"$data/server.log" 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null; wait $server 2>/dev/null || true' EXIT

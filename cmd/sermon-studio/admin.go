@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -11,46 +9,31 @@ import (
 	"github.com/gunnaringe/sermon-studio/web"
 )
 
-// runAdmin is `sermon-studio admin`: the site administrator's tool, run
-// where the studio runs. It works on --data-dir while the server runs.
-func runAdmin(args []string) error {
-	usage := errors.New("usage: sermon-studio admin invite --data-dir <dir> --public-url <url> [--role admin|member] [--expires 7d] <church>")
-	if len(args) == 0 || args[0] != "invite" {
-		return usage
-	}
-	fs := flag.NewFlagSet("admin invite", flag.ContinueOnError)
-	dataDir := fs.String("data-dir", "", "the studio's --data-dir")
-	publicURL := fs.String("public-url", "", "the studio's --public-url, for the link")
-	role := fs.String("role", web.RoleMember, "admin or member")
-	expires := fs.String("expires", "7d", "how long the link works: 7d, 48h, 30m")
-	// The church may come before, between or after the flags.
-	var names []string
-	for rest := args[1:]; ; {
-		if err := fs.Parse(rest); err != nil {
-			return err
-		}
-		if fs.NArg() == 0 {
-			break
-		}
-		names, rest = append(names, fs.Arg(0)), fs.Args()[1:]
-	}
-	if len(names) != 1 {
-		return usage
-	}
-	church := names[0]
-	if *dataDir == "" || *publicURL == "" {
-		return usage
-	}
-	valid, err := parseDuration(*expires)
+// adminCmd is `sermon-studio admin`: the site administrator's tools, run
+// where the studio runs. They work on --data-dir while the server runs.
+type adminCmd struct {
+	Invite inviteCmd `cmd:"" help:"Print an invite link to a church (single use)."`
+}
+
+type inviteCmd struct {
+	Church    string `arg:"" help:"The church's id (its folder in --data-dir)."`
+	DataDir   string `required:"" help:"The studio's --data-dir."`
+	PublicURL string `required:"" help:"The studio's --public-url, for the link."`
+	Role      string `enum:"admin,member" default:"member" help:"admin or member."`
+	Expires   string `default:"7d" help:"How long the link works: 7d, 48h, 30m."`
+}
+
+func (c *inviteCmd) Run() error {
+	valid, err := parseDuration(c.Expires)
 	if err != nil {
 		return fmt.Errorf("--expires: %w", err)
 	}
-	token, err := web.CreateInvite(*dataDir, church, *role, valid, "admin cli")
+	token, err := web.CreateInvite(c.DataDir, c.Church, c.Role, valid, "admin cli")
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stdout, "%s/invite.html#%s\n(single use, as %s, until %s)\n", strings.TrimSuffix(*publicURL, "/"), token,
-		*role, time.Now().Add(valid).Format("2006-01-02 15:04"))
+	fmt.Fprintf(os.Stdout, "%s/invite.html#%s\n(single use, as %s, until %s)\n", strings.TrimSuffix(c.PublicURL, "/"), token,
+		c.Role, time.Now().Add(valid).Format("2006-01-02 15:04"))
 	return nil
 }
 

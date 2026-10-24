@@ -4,8 +4,8 @@ Agent notes (`CLAUDE.md` imports this file).
 
 Go web service: cut a church service recording on a waveform, get
 loudness-normalised FLAC/MP3/Opus. `README.md` = what it is, `docs/` = guide, running, outputs, design (was PLAN.md).
-The standard library, `golang.org/x/sys` (for Windows), `coreos/go-oidc` + `golang.org/x/oauth2` (the login); ffmpeg is run as a
-command. Keep dependencies few.
+The standard library, `golang.org/x/sys` (for Windows), `coreos/go-oidc` + `golang.org/x/oauth2` (the login), `alecthomas/kong`
+(the command line); ffmpeg is run as a command. Keep dependencies few.
 
 ## Checks (use these, in this order; output is already short)
 
@@ -40,7 +40,10 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 
 ## Map
 
-- `cmd/sermon-studio/main.go`: flags, startup, shutdown. No logic. `admin.go`: `sermon-studio admin invite` (prints an invite link).
+- `cmd/sermon-studio/main.go`: the command line (kong: `serve`, the default, and `admin`), startup, shutdown. No logic. Every flag
+  is also `SERMON_STUDIO_<FLAG>` (`kong.DefaultEnvars`); an unknown `SERMON_STUDIO_*` is a warning, not an error
+  (`warnUnknownEnv`). The login is required to be chosen: `--oidc-issuer` xor `--no-login`. `admin.go`: `sermon-studio admin
+  invite` (prints an invite link).
 - `cmd/sermon-studio-desktop/`: the desktop app (docs/desktop.md), a wrapper around `web.App`: `main.go`
   starts it; `internal/desktop/` has its folders and `settings.json`, the Host check (`Guard`), the window
   (`OpenWindow`), one copy at a time (`/_desktop/hello` with the token) and stopping when idle (`Presence`:
