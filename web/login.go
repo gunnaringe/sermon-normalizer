@@ -48,6 +48,7 @@ type OIDCOptions struct {
 const (
 	sessionCookie = "studio_session"
 	loginCookie   = "studio_login"
+	logoutCookie  = "studio_logout"
 	sessionFor    = 30 * 24 * time.Hour
 	loginFor      = 10 * time.Minute
 	usersFile     = "users.json"
@@ -73,6 +74,9 @@ type session struct {
 	User    userID    `json:"user"`
 	Created time.Time `json:"created"`
 	Expires time.Time `json:"expires"`
+	// IDToken is the provider's ID token from the login, sent back to it as
+	// id_token_hint when logging out there. Kept here, never in a cookie.
+	IDToken string `json:"idToken,omitempty"`
 }
 
 // auth is the login's state: the provider (found on first use, so the studio
@@ -327,7 +331,7 @@ func (au *auth) handleCallback(w http.ResponseWriter, r *http.Request) {
 		au.users[id.key()] = u
 	}
 	u.Name, u.Email, u.LastSeen = cmpOr(claims.Name, claims.Username), claims.Email, now
-	au.session[hashToken(value)] = &session{User: id, Created: now, Expires: now.Add(sessionFor)}
+	au.session[hashToken(value)] = &session{User: id, Created: now, Expires: now.Add(sessionFor), IDToken: raw}
 	err = au.saveLocked()
 	au.mu.Unlock()
 	if err != nil {
@@ -345,16 +349,74 @@ func cmpOr(a, b string) string {
 	return b
 }
 
-// handleLogout ends the session: POST auth/logout. The provider's own login
-// is left as it is, so the page says so and offers to log in again.
+// handleLogout ends the session: POST auth/logout. The studio's session ends
+// first; then, when the provider has an end_session_endpoint (OpenID Connect
+// RP-Initiated Logout), the browser goes there to end the login at the
+// provider too, which sends it back to auth/logout/callback. Without one, or
+// when the provider cannot be reached, it goes straight to loggedout.html.
 func (au *auth) handleLogout(w http.ResponseWriter, r *http.Request) {
+	var idToken string
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		au.mu.Lock()
-		delete(au.session, hashToken(c.Value))
-		au.saveLocked()
+		if s := au.session[hashToken(c.Value)]; s != nil {
+			idToken = s.IDToken
+			delete(au.session, hashToken(c.Value))
+			au.saveLocked()
+		}
 		au.mu.Unlock()
 	}
 	http.SetCookie(w, au.cookie(sessionCookie, "", -1))
+	state := randomToken()
+	if end := au.endSession(r.Context(), idToken, state); end != "" {
+		http.SetCookie(w, au.cookie(logoutCookie, state, loginFor))
+		http.Redirect(w, r, end, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, au.url("loggedout.html"), http.StatusSeeOther)
+}
+
+// endSession is the provider's address that ends the login there, or "" when
+// there is none: no ID token to send (a session from before they were kept),
+// no end_session_endpoint, or the provider cannot be reached.
+func (au *auth) endSession(ctx context.Context, idToken, state string) string {
+	if idToken == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	p, err := au.provider(ctx)
+	if err != nil {
+		au.log.Printf("login: logging out at the provider: %v", err)
+		return ""
+	}
+	var meta struct {
+		EndSession string `json:"end_session_endpoint"`
+	}
+	if err := p.Claims(&meta); err != nil || meta.EndSession == "" {
+		return ""
+	}
+	u, err := url.Parse(meta.EndSession)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return ""
+	}
+	q := u.Query()
+	q.Set("id_token_hint", idToken)
+	q.Set("client_id", au.opt.ClientID)
+	q.Set("post_logout_redirect_uri", au.url("auth/logout/callback"))
+	q.Set("state", state)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// handleLogoutCallback is where the provider sends the browser after logging
+// out there: GET auth/logout/callback?state=. The studio's session is already
+// gone, so a missing or wrong state is only logged.
+func (au *auth) handleLogoutCallback(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie(logoutCookie)
+	http.SetCookie(w, au.cookie(logoutCookie, "", -1))
+	if err != nil || c.Value == "" || r.URL.Query().Get("state") != c.Value {
+		au.log.Printf("login: the logout came back without its state")
+	}
 	http.Redirect(w, r, au.url("loggedout.html"), http.StatusSeeOther)
 }
 

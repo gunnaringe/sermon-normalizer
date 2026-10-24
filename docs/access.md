@@ -10,8 +10,9 @@ There are two ways to run the studio, and one of them must be chosen: the studio
 ## Its own login (OpenID Connect)
 
 The studio logs users in with any OpenID Connect provider (Pocket ID, Authentik, Keycloak, Google, Entra …).
-Register it there as a client with the callback `<public-url>/auth/callback` (PKCE; a client secret is
-optional), and start it with:
+[Logging in with Pocket ID](login-pocket-id.md) is the recommended setup, step by step, with other providers at
+the end. Register the studio there as a client with the callback `<public-url>/auth/callback` and the logout
+callback `<public-url>/auth/logout/callback` (PKCE; a client secret is optional), and start it with:
 
 ```bash
 sermon-studio --data-dir /data --oidc-issuer https://id.example.org --oidc-client-id <id> \
@@ -39,8 +40,10 @@ sermon-studio --data-dir /data --oidc-issuer https://id.example.org --oidc-clien
   ```
 
 - With the login on, churches are not added in the studio.
-- **Log out** ends the studio's session. The provider's own login is left as it is: on a shared computer, log out
-  there too.
+- **Log out** ends the studio's session, and then the login at the provider too, when the provider supports it
+  (OpenID Connect RP-initiated logout: an `end_session_endpoint`). The browser goes there and comes back to the
+  studio's logged-out page. For that the ID token from the login is kept with the session in `sessions.json`,
+  never in a cookie. A provider without it leaves its own login as it is.
 
 Without `--oidc-issuer` the server has no login of its own: run it on the LAN, or behind a proxy that handles login.
 It uses relative URLs (works under a sub-path), refuses cross-site POSTs, keeps every path
