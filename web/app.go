@@ -43,6 +43,10 @@ type AppConfig struct {
 	// OIDC turns on the studio's own login (login.go): a church is then for
 	// its members (members.go). nil = no access control (see access.go).
 	OIDC *OIDCOptions
+	// ChurchHost gives every church a host of its own, "{church}.example.org"
+	// (hosts.go); the login is then on the public URL's host. "" = the
+	// church is in the address (#/<church>/…), on one host.
+	ChurchHost string
 	// Share turns on shares (codes for the public upload page); nil = off.
 	Share *ShareOptions
 	// ParallelRuns is how many runs (and samples) can work at once, across all churches; 0 = 1. A run uses
@@ -70,6 +74,7 @@ type TenantInfo struct {
 	Name string `json:"name"`
 	Logo string `json:"logo,omitempty"` // the church's own logo (see logo.go): its version; "" = none
 	Role string `json:"role,omitempty"` // the user's: admin or member (in the church list)
+	URL  string `json:"url,omitempty"`  // the church's own address, with church hosts (hosts.go)
 }
 
 type tenant struct {
@@ -107,9 +112,10 @@ type App struct {
 	mu       sync.Mutex
 	tenants  []*tenant
 
-	share   *shareState // nil = shares are off
-	shareMu sync.Mutex  // every church's shares and uploads in progress
-	auth    *auth       // nil = no login of its own
+	share   *shareState  // nil = shares are off
+	shareMu sync.Mutex   // every church's shares and uploads in progress
+	auth    *auth        // nil = no login of its own
+	hosts   *churchHosts // nil = no church hosts
 }
 
 // shareState is what the public upload page keeps in memory.
@@ -138,6 +144,16 @@ func NewApp(cfg AppConfig) (*App, error) {
 		if a.auth, err = newAuth(*cfg.OIDC, cfg.DataDir, cfg.Base.Logger); err != nil {
 			return nil, err
 		}
+	}
+	if cfg.ChurchHost != "" {
+		h, err := parseChurchHost(cfg.ChurchHost)
+		if err == nil {
+			err = checkHosts(h, cfg.OIDC)
+		}
+		if err != nil {
+			return nil, err
+		}
+		a.hosts, a.auth.hosts = h, h
 	}
 	if cfg.Base.Root != "" {
 		if _, err := a.start(RootTenant, "", churchConfig{}); err != nil {
@@ -320,6 +336,15 @@ func (a *App) tenantFor(r *http.Request) (*tenant, bool) {
 	if id == "" {
 		id = r.Header.Get("X-Tenant")
 	}
+	// With church hosts, the church is the host's: a request naming another
+	// is for no church, and so is one on the login host.
+	if a.hosts != nil {
+		host, ok := a.hostChurch(r)
+		if !ok || (id != "" && id != host) {
+			return nil, false
+		}
+		id = host
+	}
 	for _, t := range a.visible(a.userOf(r)) {
 		if id == "" || t.id == id {
 			return t, true
@@ -379,7 +404,7 @@ func (a *App) Handler() http.Handler {
 	}
 	var h http.Handler = mux
 	if a.auth != nil {
-		h = a.auth.require(a.requireAdmin(mux))
+		h = a.auth.require(a.requireAdmin(a.hostGate(mux)))
 	}
 	// Once there is a login cookie, other sites must not be able to
 	// start runs, uploads or imports on the user's behalf.
@@ -400,16 +425,21 @@ func (a *App) handleSession(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleTenants(w http.ResponseWriter, r *http.Request) {
 	u := a.userOf(r)
 	list := []TenantInfo{}
+	def := ""
+	host, _ := a.hostChurch(r)
 	for _, t := range a.visible(u) {
-		i := t.info()
+		i := a.infoOf(t)
 		i.Role = a.roleOf(u, t)
 		list = append(list, i)
+		if def == "" || t.id == host {
+			def = t.id
+		}
 	}
 	if len(list) == 0 {
 		writeError(w, http.StatusForbidden, errNoChurch())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.canAdd(), "shares": a.share != nil,
+	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": def, "canAdd": a.canAdd(), "shares": a.share != nil,
 		"login": a.auth != nil})
 }
 

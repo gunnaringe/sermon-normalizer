@@ -147,7 +147,7 @@ func (a *App) handleInvite(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	already := t.isMember(u.id)
 	a.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"church": t.info(), "role": iv.Role, "member": already})
+	writeJSON(w, http.StatusOK, map[string]any{"church": a.infoOf(t), "role": iv.Role, "member": already})
 }
 
 // handleInviteAccept makes the logged-in user a member: POST api/invite {"token"}.
@@ -188,7 +188,7 @@ func (a *App) handleInviteAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.cfg.Base.Logger.Printf("church %s: %s joined as %s", t.id, a.auth.userName(u.id), iv.Role)
-	writeJSON(w, http.StatusOK, map[string]any{"church": t.info()})
+	writeJSON(w, http.StatusOK, map[string]any{"church": a.infoOf(t)})
 }
 
 // memberID is how the studio names a member: the start of a hash of who
@@ -400,7 +400,7 @@ func (a *App) handleInviteCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"token": token,
+	writeJSON(w, http.StatusCreated, map[string]any{"token": token, "link": a.auth.url("invite.html") + "#" + token,
 		"invite": inviteView{ID: iv.id(), Role: iv.Role, CreatedBy: iv.CreatedBy, Created: iv.Created, Expires: iv.Expires}})
 }
 

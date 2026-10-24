@@ -31,7 +31,7 @@ async function call(method, url, body) {
   return data;
 }
 
-const studio = (church) => './#/' + encodeURIComponent(church.id);
+const studio = (church) => (church.url || './') + '#/' + encodeURIComponent(church.id); // its own address, with church hosts
 
 function show(...children) {
   view.replaceChildren(h('h1', {}, t('Invitation')), ...children);
