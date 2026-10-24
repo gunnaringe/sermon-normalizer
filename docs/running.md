@@ -90,4 +90,4 @@ church and no right to add more sees just its name in the header; otherwise a qu
 Churches: the dropdown in the header switches church. A request names its church with
 `?tenant=<id>` or `X-Tenant`; without one it is the first church the user sees.
 
-Access control, for several users: [access.md](access.md).
+Access control, for several users: [access.md](access.md); the login with Pocket ID, step by step: [login-pocket-id.md](login-pocket-id.md).
