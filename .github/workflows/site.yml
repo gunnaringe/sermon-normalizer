@@ -1,0 +1,25 @@
+# The website (site/, deployed by Cloudflare Workers Builds): every page in every language, links, images,
+# the video (scripts/test.sh site). Only when the site or its test changes; the studio's own checks skip site/.
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'web/e2e/site/**', '.github/workflows/site.yml']
+  pull_request:
+    branches: [main]
+    paths: ['site/**', 'web/e2e/site/**', '.github/workflows/site.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/test.sh site

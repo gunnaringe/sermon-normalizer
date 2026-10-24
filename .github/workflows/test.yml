@@ -4,8 +4,10 @@ name: Test
 on:
   push:
     branches: [main]
+    paths-ignore: ['site/**'] # the website has its own check (site.yml)
   pull_request:
     branches: [main]
+    paths-ignore: ['site/**']
 
 permissions:
   contents: read
