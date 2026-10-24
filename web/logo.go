@@ -120,7 +120,7 @@ func (a *App) handleLogoPut(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, a.infoFor(t, a.userOf(r)))
+	writeJSON(w, http.StatusOK, t.info())
 }
 
 func (a *App) handleLogoDelete(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +130,7 @@ func (a *App) handleLogoDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.removeLogos(t)
-	writeJSON(w, http.StatusOK, a.infoFor(t, a.userOf(r)))
+	writeJSON(w, http.StatusOK, t.info())
 }
 
 func (a *App) removeLogos(t *tenant) {

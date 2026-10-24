@@ -40,14 +40,8 @@ type AppConfig struct {
 	Base Config
 	// DataDir holds a folder per church. "" = no churches can be added.
 	DataDir string
-	// GroupsHeader is the request header in which the login proxy sends the
-	// user's groups. "" = no access control (see access.go).
-	GroupsHeader string
-	// LogoutURL is where the header's Log out button posts to (the login
-	// proxy's logout). "" = no button.
-	LogoutURL string
 	// OIDC turns on the studio's own login (login.go): a church is then for
-	// its members (members.go). nil = no login (or GroupsHeader).
+	// its members (members.go). nil = no access control (see access.go).
 	OIDC *OIDCOptions
 	// Share turns on shares (codes for the public upload page); nil = off.
 	Share *ShareOptions
@@ -72,10 +66,9 @@ type churchConfig struct {
 
 // TenantInfo is a church as listed in the UI.
 type TenantInfo struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Group string `json:"group,omitempty"` // who may use it; only with access control
-	Logo  string `json:"logo,omitempty"`  // the church's own logo (see logo.go): its version; "" = none
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Logo string `json:"logo,omitempty"` // the church's own logo (see logo.go): its version; "" = none
 }
 
 type tenant struct {
@@ -98,15 +91,6 @@ func (t *tenant) info() TenantInfo {
 		}
 	}
 	return TenantInfo{ID: t.id, Name: name, Logo: t.logoVersion()}
-}
-
-// infoFor is info() as shown to a user: administrators also see the group.
-func (a *App) infoFor(t *tenant, u user) TenantInfo {
-	i := t.info()
-	if u.admin && !u.open {
-		i.Group = groupOf(t.id)
-	}
-	return i
 }
 
 // App serves several churches (tenants), each with its own date folders,
@@ -149,9 +133,6 @@ func NewApp(cfg AppConfig) (*App, error) {
 	}
 	fail := func(err error) (*App, error) { a.Close(); return nil, err }
 	if cfg.OIDC != nil {
-		if cfg.GroupsHeader != "" {
-			return nil, errors.New("use the login (OIDC) or the groups header, not both")
-		}
 		var err error
 		if a.auth, err = newAuth(*cfg.OIDC, cfg.DataDir, cfg.Base.Logger); err != nil {
 			return nil, err
@@ -245,9 +226,6 @@ func writeChurch(dir string, cc churchConfig) error {
 
 // start brings up the Server of one church and adds it to the list.
 func (a *App) start(id, dir string, cc churchConfig) (*tenant, error) {
-	if o := a.sameGroup(id); o != "" {
-		return nil, fmt.Errorf("churches %s and %s would have the same group, %s", o, id, groupOf(id))
-	}
 	cfg := a.cfg.Base
 	cfg.limits = a.limits
 	t := &tenant{id: id, dir: dir, cfg: cc}
@@ -334,19 +312,6 @@ func (a *App) Close() {
 	}
 }
 
-// sameGroup returns the church, if any, whose group is the same as id's
-// (a-b and a_b are both sermon_studio_a_b).
-func (a *App) sameGroup(id string) string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, t := range a.tenants {
-		if groupOf(t.id) == groupOf(id) {
-			return t.id
-		}
-	}
-	return ""
-}
-
 // tenantFor picks the church a request is for: the one it names, else the
 // first the user sees. A church the user does not see is "no such church".
 func (a *App) tenantFor(r *http.Request) (*tenant, bool) {
@@ -421,20 +386,20 @@ func (a *App) handleSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"logoutUrl": "auth/logout", "user": a.auth.userName(u.id)})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"logoutUrl": a.cfg.LogoutURL})
+	writeJSON(w, http.StatusOK, map[string]string{})
 }
 
 func (a *App) handleTenants(w http.ResponseWriter, r *http.Request) {
 	u := a.userOf(r)
 	list := []TenantInfo{}
 	for _, t := range a.visible(u) {
-		list = append(list, a.infoFor(t, u))
+		list = append(list, t.info())
 	}
 	if len(list) == 0 {
-		writeError(w, http.StatusForbidden, a.errNoChurch())
+		writeError(w, http.StatusForbidden, errNoChurch())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.cfg.DataDir != "" && u.admin, "shares": a.share != nil})
+	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.canAdd(), "shares": a.share != nil})
 }
 
 var reNotID = regexp.MustCompile(`[^a-z0-9]+`)
@@ -468,10 +433,13 @@ func (a *App) nameTaken(t *tenant, name string) (string, bool) {
 	return "", false
 }
 
+// canAdd reports whether churches are added in the studio: only without the
+// login (with it, `sermon-studio admin` does that), and with a data dir.
+func (a *App) canAdd() bool { return a.auth == nil && a.cfg.DataDir != "" }
+
 func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
-	u := a.userOf(r)
-	if !u.admin {
-		writeError(w, http.StatusForbidden, errors.New("only administrators can add churches"))
+	if a.auth != nil {
+		writeError(w, http.StatusForbidden, errors.New("churches are not added in the studio when it has a login"))
 		return
 	}
 	if a.cfg.DataDir == "" {
@@ -508,10 +476,6 @@ func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, fmt.Errorf("the folder %s already exists", id))
 		return
 	}
-	if o := a.sameGroup(id); o != "" {
-		writeError(w, http.StatusConflict, fmt.Errorf("the church %s already has the group %s: pick another name", o, groupOf(id)))
-		return
-	}
 	cc := churchConfig{Name: name}
 	t, err := a.start(id, dir, cc) // makes the folders
 	if err == nil {
@@ -522,7 +486,7 @@ func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.cfg.Base.Logger.Printf("added church %s (%s)", name, id)
-	writeJSON(w, http.StatusCreated, a.infoFor(t, u))
+	writeJSON(w, http.StatusCreated, t.info())
 }
 
 // handleChurchRename changes the display name of the selected church.
@@ -552,5 +516,5 @@ func (a *App) handleChurchRename(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, a.infoFor(t, a.userOf(r)))
+	writeJSON(w, http.StatusOK, t.info())
 }

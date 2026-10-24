@@ -2,74 +2,44 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
-	"strings"
 )
 
 // Access control. With the login (AppConfig.OIDC, login.go), a church is for
-// its members (members.go). Else, the login proxy (Pocket ID's forward-auth) puts the user's
-// groups in a request header (AppConfig.GroupsHeader), space-separated. A
-// church is for the members of its group, groupOf(id): "sermon_studio_" and
-// the id with underscores for hyphens, like Pocket ID's own group names;
-// members of sermon_studio_admin see every church and can add churches. Without
-// GroupsHeader there is no access control: everyone sees everything.
-const (
-	// GroupPrefix starts the name of every group the app looks at.
-	GroupPrefix = "sermon_studio_"
-	// AdminID is the group name (after the prefix) of the administrators.
-	// No church may have this id, or its members would be administrators.
-	AdminID = "admin"
-)
+// its members (members.go). Without it there is no access control: everyone
+// sees every church and can add churches (the desktop app, a trusted network).
 
 // reservedID reports ids that cannot be churches: "default" is the church
-// of --root, no church may have the administrators' group, and the first
-// words of the page addresses (#/<church>/folder/...; old ones had no church)
-// would be mistaken for a church. Nor can a church have a name Windows keeps for a device (nul).
+// of --root, and the first words of the page addresses (#/<church>/folder/...;
+// old ones had no church) would be mistaken for a church. Nor can a church
+// have a name Windows keeps for a device (nul).
 func reservedID(id string) bool {
-	return id == RootTenant || groupOf(id) == groupOf(AdminID) || reservedPages[id] || windowsDevice(id)
+	return id == RootTenant || reservedPages[id] || windowsDevice(id)
 }
 
 var reservedPages = map[string]bool{"folder": true, "folders": true, "recording": true, "recordings": true, "settings": true, "upload": true, "shares": true}
 
-// groupOf is the group of a church: norkirken-melhus is for
-// sermon_studio_norkirken_melhus.
-func groupOf(id string) string { return GroupPrefix + strings.ReplaceAll(id, "-", "_") }
-
 // user is who a request is from.
 type user struct {
-	open   bool // no access control
-	admin  bool
-	groups map[string]bool
-	id     userID // with the login: who it is
+	open bool   // no access control
+	id   userID // with the login: who it is
 }
 
-// userOf reads the groups the login proxy sent with the request. The proxy
-// must replace the header (Traefik removes the headers listed in
-// authResponseHeaders before copying them from the auth response), so a
-// client cannot send its own.
+// userOf is the user of the request's session; without the login, anyone.
 func (a *App) userOf(r *http.Request) user {
-	if a.auth != nil {
-		id, _ := a.auth.sessionOf(r)
-		return user{id: id}
+	if a.auth == nil {
+		return user{open: true}
 	}
-	if a.cfg.GroupsHeader == "" {
-		return user{open: true, admin: true}
-	}
-	u := user{groups: map[string]bool{}}
-	for _, g := range strings.Fields(r.Header.Get(a.cfg.GroupsHeader)) {
-		u.groups[g] = true
-	}
-	u.admin = u.groups[groupOf(AdminID)]
-	return u
+	id, _ := a.auth.sessionOf(r)
+	return user{id: id}
 }
 
 // sees reports whether the user may use the church; call with a.mu held.
 func (u user) sees(t *tenant) bool {
-	if u.id != (userID{}) {
-		return t.isMember(u.id)
+	if u.open {
+		return true
 	}
-	return u.open || u.admin || u.groups[groupOf(t.id)]
+	return u.id != (userID{}) && t.isMember(u.id)
 }
 
 // visible lists the churches the user sees, in the order of a.tenants.
@@ -86,9 +56,6 @@ func (a *App) visible(u user) []*tenant {
 }
 
 // errNoChurch is what a user without any church is told.
-func (a *App) errNoChurch() error {
-	if a.auth != nil {
-		return errors.New("you are not a member of any church yet: ask the church's admin for an invite link")
-	}
-	return fmt.Errorf("you do not have access to any church: ask an administrator to add you to a %s<church> group", GroupPrefix)
+func errNoChurch() error {
+	return errors.New("you are not a member of any church yet: ask the church's admin for an invite link")
 }

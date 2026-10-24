@@ -59,8 +59,6 @@ church and no right to add more sees just its name in the header; otherwise a qu
 |---|---|---|
 | `--data-dir` | | the folder with a folder per church (see above) |
 | `--root`, `--inbox` | | one church without a church folder, instead of `--data-dir`: its date folders and the inbox where new recordings arrive. Settings are not saved. |
-| `--groups-header` | | request header in which the login proxy sends the user's groups; turns on access control (below) |
-| `--logout-url` | | the login proxy's logout address; shows a Log out button in the header (posts to it) |
 | `--oidc-issuer` | | the OpenID Connect provider; turns on the studio's own login: a church is for its members, who join with an invite link ([access](access.md)) |
 | `--oidc-client-id`, `--oidc-client-secret-file` | | the studio's client at the provider; no secret file = a public client (PKCE) |
 | `--public-url` | | with `--oidc-issuer`: the studio's address as the browser sees it (the callback is `<public-url>/auth/callback`) |
