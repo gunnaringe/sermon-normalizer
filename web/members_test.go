@@ -1,7 +1,10 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -145,4 +148,19 @@ func TestInvitesRevokeAndLeave(t *testing.T) {
 	if w := l.do("GET", "/api/tenants", "", other); w.Code != http.StatusForbidden {
 		t.Errorf("after leaving: %d", w.Code)
 	}
+}
+
+// CreateInvite makes an invite to a church in dataDir, as `sermon-studio admin
+// invite` does through the running studio, and returns its token.
+func CreateInvite(dataDir, church, role string, valid time.Duration, by string) (string, error) {
+	if church == "" || church != filepath.Base(church) || strings.HasPrefix(church, ".") {
+		return "", fmt.Errorf("no church %q", church)
+	}
+	if ids, err := churchFolders(dataDir); err != nil {
+		return "", err
+	} else if !slices.Contains(ids, church) {
+		return "", fmt.Errorf("no church %q in %s", church, dataDir)
+	}
+	token, _, err := addInvite(filepath.Join(dataDir, church), church, role, valid, by)
+	return token, err
 }

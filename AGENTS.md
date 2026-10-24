@@ -42,8 +42,8 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 
 - `cmd/sermon-studio/main.go`: the command line (kong: `serve`, the default, and `admin`), startup, shutdown. No logic. Every flag
   is also `SERMON_STUDIO_<FLAG>` (`kong.DefaultEnvars`); an unknown `SERMON_STUDIO_*` is a warning, not an error
-  (`warnUnknownEnv`). The login is required to be chosen: `--oidc-issuer` xor `--no-login`. `admin.go`: `sermon-studio admin
-  invite` (prints an invite link).
+  (`warnUnknownEnv`). The login is required to be chosen: `--oidc-issuer` xor `--no-login`. `admin.go`: `sermon-studio admin …`
+  (church create/list/rename, members, invite, remove; `--json`), a client of the running studio's admin socket.
 - `cmd/sermon-studio-desktop/`: the desktop app (docs/desktop.md), a wrapper around `web.App`: `main.go`
   starts it; `internal/desktop/` has its folders and `settings.json`, the Host check (`Guard`), the window
   (`OpenWindow`), one copy at a time (`/_desktop/hello` with the token) and stopping when idle (`Presence`:
@@ -70,11 +70,14 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   (`scripts/make-pocket-id-assets.sh`).
 - `web/members.go`: with the login, a church is for its members (`<church>/members.json`: issuer, sub, role admin/member). They
   join by an invite link `invite.html#<church>.<secret>` (`addInvite`: from Settings → Members, `POST api/invites`, or
-  `sermon-studio admin invite`, `CreateInvite`; `<church>/invites.json` keeps hashes, single use, an expiry; revoke by `id`, the
+  `sermon-studio admin invite`; `<church>/invites.json` keeps hashes, single use, an expiry; revoke by `id`, the
   hash's start). `api/invite` (GET what it is for, POST accept) needs a session but no church. Admin-only requests are listed in
   `adminOnly` and stopped by `requireAdmin` before any handler (settings, logo, clips, ended-days, members, invites); a member
   gets 403. `changeMembers` keeps an admin. The church list carries the user's `role`; `util.js` `isAdmin()` hides the admin
   parts of Settings (`members.js` is the Members section) and the editor's Add to the church's clips.
+- `web/admin.go`: the site administrator's API (`AdminHandler`), served by `serve` only on the Unix socket
+  `<data-dir>/.admin.sock` (`web.AdminSocket`, 0600; one that answers = another studio on the data dir, refused). `addChurch`
+  and `renameChurch` are shared with the studio's API; `statusError`/`writeStatusError` carry an error's HTTP status.
 - `web/access.go`: who sees which church: with the login, its members; without, everyone (and only then are churches added in
   the studio, `canAdd`). `default` and the page words are reserved ids. Every church request goes through `App.tenantFor`,
   which only picks churches the user sees.

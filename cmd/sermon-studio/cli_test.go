@@ -11,7 +11,7 @@ import (
 func parse(t *testing.T, args ...string) (*kong.Context, error) {
 	t.Helper()
 	var out bytes.Buffer
-	p, err := newParser(&out, &out, func(int) { t.Fatalf("exit: %s", out.String()) })
+	p, err := newParser(&cli{}, &out, &out, func(int) { t.Fatalf("exit: %s", out.String()) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestSettingsFromEnvironment(t *testing.T) {
 // A variable this version does not know is a warning, with the nearest name.
 func TestUnknownEnvironmentWarns(t *testing.T) {
 	var out bytes.Buffer
-	p, _ := newParser(&out, &out, func(int) {})
+	p, _ := newParser(&cli{}, &out, &out, func(int) {})
 	warnUnknownEnv(p, []string{"SERMON_STUDIO_OIDC_ISUER=x", "SERMON_STUDIO_NEXT_VERSION=1", "SERMON_STUDIO_DATA_DIR=/d", "HOME=/root",
 		"SERMON_STUDIO_SERVICE_HOST=10.0.0.1", "SERMON_STUDIO_PORT=tcp://10.0.0.1:8080", "SERMON_STUDIO_PORT_8080_TCP_ADDR=10.0.0.1"}, &out)
 	got := out.String()
@@ -73,11 +73,11 @@ func TestUnknownEnvironmentWarns(t *testing.T) {
 }
 
 func TestAdminInviteFlags(t *testing.T) {
-	if _, err := parse(t, "admin", "invite", "kirke", "--data-dir", "d", "--public-url", "https://x/", "--role", "owner"); err == nil ||
+	if _, err := parse(t, "admin", "--data-dir", "d", "invite", "kirke", "--role", "owner"); err == nil ||
 		!strings.Contains(err.Error(), "must be one of") {
 		t.Errorf("role owner: %v", err)
 	}
-	ctx, err := parse(t, "admin", "invite", "--data-dir", "d", "--public-url", "https://x/", "kirke")
+	ctx, err := parse(t, "admin", "invite", "--data-dir", "d", "kirke")
 	if err != nil || ctx.Command() != "admin invite <church>" {
 		t.Errorf("%v %v", ctx, err)
 	}
