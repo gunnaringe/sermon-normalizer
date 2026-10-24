@@ -132,78 +132,133 @@ test('the studio in use', async ({ browser }) => {
   await waitEditor(page);
   await pause(800);
 
-  // 2. Mark where the sermon starts and ends.
-  await caption('2. Mark where the sermon starts and ends', 'Type its start and end, or drag its edges');
-  // The waveform and the sermon's row with its times, both in view.
-  const toSermon = () => page.evaluate(() => {
-    const row = document.querySelector('.section');
-    const wave = document.querySelector('#waveform');
-    const top = row ? row.getBoundingClientRect().bottom + scrollY - 660 : wave.getBoundingClientRect().top + scrollY - 70;
-    window.scrollTo({ top, behavior: 'smooth' });
+  // The waveform as the editor measures it (its own timeAt: the wrapper's box, the recording's length), so a
+  // time is a pixel at the zoom and scroll shown. The page is scrolled at once and left to settle first: a box
+  // measured while the page still moves puts the drag somewhere else.
+  const settle = () => page.waitForFunction(() => new Promise((done) => {
+    const y = scrollY;
+    setTimeout(() => done(scrollY === y), 150);
+  }));
+  const scrollTo = async (selector, top) => {
+    await page.evaluate(([sel, at]) => window.scrollTo({ top: document.querySelector(sel).getBoundingClientRect().top + scrollY - at, behavior: 'instant' }), [selector, top]);
+    await settle();
+  };
+  const toRows = async () => {
+    await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.section, .cut')].map((el) => el.getBoundingClientRect().bottom);
+      const bar = document.querySelector('.save-bar').getBoundingClientRect().top;
+      const wave = document.querySelector('#waveform').getBoundingClientRect().top;
+      const by = Math.min(Math.max(...rows) - (bar - 12), wave - 60); // the waveform stays below the caption
+      window.scrollBy({ top: by, behavior: 'smooth' });
+    });
+    await pause(700);
+    await settle();
+  };
+  const scrollSmooth = async (locator) => {
+    await locator.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    await pause(1100);
+    await settle();
+  };
+  const wave = () => page.evaluate(() => {
+    const ws = window.__editor.ws, b = ws.getWrapper().getBoundingClientRect();
+    return { left: b.left, top: b.top, width: b.width, height: b.height, duration: ws.getDuration(), scroll: ws.getScroll() };
   });
-  await toSermon();
-  await pause(1500);
-  // The section the editor starts with (the recording without its silent ends): set to the sermon.
-  if (!(await page.evaluate(() => window.__editor.sections.length))) await page.evaluate(() => window.__editor.addSection(0, 180));
-  const times = page.locator('.section').first().locator('label input');
-  for (const [i, time] of [[0, '0:22'], [1, '2:42']]) {
-    await click(times.nth(i));
-    await page.keyboard.press('ControlOrMeta+a');
-    await page.keyboard.type(time, { delay: 140 });
-    await page.keyboard.press('Enter');
+  // drag moves the pointer across the waveform from one time to another (in seconds), slowly; with shift, it
+  // draws a cut.
+  const drag = async (from, to, shift = false) => {
+    const w = await wave();
+    expect(w.scroll).toBe(0); // not zoomed or moved along: x follows from the box alone
+    const x = (s) => w.left + (s / w.duration) * w.width;
+    const y = w.top + Math.min(w.height, 180) / 2;
+    await page.mouse.move(x(from), y, { steps: 20 });
+    await pause(500);
+    if (shift) await page.keyboard.down('Shift');
+    await page.mouse.down();
+    for (let k = 1; k <= 6; k++) {
+      await page.mouse.move(x(from + ((to - from) * k) / 6), y, { steps: 12 });
+      await pause(120);
+    }
+    await page.mouse.up();
+    if (shift) await page.keyboard.up('Shift');
+    mouse = { x: x(to), y };
+  };
+  // seconds reads a time field ("2:41.97").
+  const seconds = async (field) => (await field.inputValue()).split(':').reduce((a, b) => a * 60 + Number(b), 0);
+
+  // 2. Mark the sermon by dragging across it on the waveform.
+  await caption('2. Mark the sermon', 'Drag across it on the waveform');
+  // The waveform and the rows under it (the sermon's and the cuts' times) in view together, above the save bar.
+  await scrollTo('#minimap', 92);
+  await pause(1200);
+  await toRows();
+  await pause(600);
+  // The editor starts with a guess, the whole recording without its silent ends. A drag that starts on it would
+  // move it, not make a new section, so it goes first.
+  const sectionRow = page.locator('.section').first();
+  if (await page.evaluate(() => window.__editor.sections.length)) {
+    await caption('2. Mark the sermon', 'Remove the guess, then drag across the sermon');
+    await click(sectionRow.getByRole('button', { name: T('Remove'), exact: true }));
+    await expect.poll(() => page.evaluate(() => window.__editor.sections.length)).toBe(0);
+    await settle();
     await pause(900);
   }
+  await drag(22, 162);
+  await expect.poll(() => page.evaluate(() => window.__editor.sections.length)).toBe(1);
   const [made] = await page.evaluate(() => window.__editor.sections);
-  expect(Math.round(made.start)).toBe(22);
-  expect(Math.round(made.end)).toBe(162);
-  await pause(1200);
-  fs.writeFileSync(path.join(OUT, 'video-poster'), String(at()));
-  await pause(1000);
+  expect(Math.abs(made.start - 22)).toBeLessThan(1);
+  expect(Math.abs(made.end - 162)).toBeLessThan(1);
+  // The fields under the waveform say the same.
+  expect(Math.abs((await seconds(page.getByLabel('Section from', { exact: true }))) - 22)).toBeLessThan(1);
+  expect(Math.abs((await seconds(page.getByLabel('Section to', { exact: true }))) - 162)).toBeLessThan(1);
+  await pause(2200);
 
-  // 3. Settings → Processing.
-  await caption('3. Settings → Processing', 'How the sound is made: here, stronger leveling');
-  await click(page.locator('header [data-nav=settings]'));
-  const settings = page.locator('dialog.settings-dialog');
-  const processing = settings.locator('section#processing');
-  await expect(processing.locator('select[name=leveling]')).toBeVisible();
-  await processing.locator('select[name=leveling]').evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  await pause(1300);
-  await choose(processing.locator('select[name=leveling]'), 'strong');
-  await pause(900);
-  await click(processing.locator('button[name=save-processing]'));
-  await expect(processing.getByText('Saved.')).toBeVisible();
-  await pause(1300);
-
-  // 4. Settings → Intro and outro: upload an intro.
-  await caption('4. Settings → Intro and outro', 'Upload a short intro for the church');
-  const clips = settings.locator('section#clips');
-  await clips.locator('button[name=upload-clip]').evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  await pause(1300);
-  const clipChooser = page.waitForEvent('filechooser');
-  await click(clips.locator('button[name=upload-clip]'));
-  await (await clipChooser).setFiles(path.join(DATA, 'Welcome.wav'));
-  await expect(clips.locator('.clip:not(.pending)').filter({ hasText: 'Welcome' })).toBeVisible({ timeout: 60_000 });
+  // 3. A cough inside the sermon: shift-drag over it, then give the cut a label.
+  await caption('3. Cut out a cough', 'Hold shift and drag across it');
   await pause(1500);
-  await click(settings.locator('button.close'));
-  await expect(settings).toHaveCount(0);
-  // The editor takes the church's new processing when it is opened again.
-  await page.reload();
-  await waitEditor(page);
-  await caption('4. Choose it as the sermon\'s intro');
-  const clipStep = page.locator('section[aria-labelledby=step-clips]');
-  await clipStep.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  await pause(1300);
-  const intro = clipStep.locator('select[name=intro]');
-  const welcome = await intro.locator('option', { hasText: 'Welcome' }).first().getAttribute('value');
-  await choose(intro, welcome);
-  await expect(clipStep).toContainText('With the intro and outro:');
+  await drag(126, 130, true); // to the right of the caption, so the label on the waveform is seen
+  await expect.poll(() => page.evaluate(() => window.__editor.cuts.length)).toBe(1);
+  const [cut] = await page.evaluate(() => window.__editor.cuts);
+  expect(Math.abs(cut.start - 126)).toBeLessThan(1);
+  expect(Math.abs(cut.end - 130)).toBeLessThan(1);
+  const [still] = await page.evaluate(() => window.__editor.sections);
+  expect([still.start, still.end]).toEqual([made.start, made.end]); // the section is not moved
+  await toRows();
+  await pause(900);
+  await caption('3. Cut out a cough', 'A label says what it was');
+  await click(page.getByLabel('Cut 1 label', { exact: true }));
+  await page.keyboard.type('cough', { delay: 160 });
+  await expect(page.locator('#waveform')).toContainText('cough'); // on the cut in the waveform too
+  await pause(1500);
+  fs.writeFileSync(path.join(OUT, 'video-poster'), String(at()));
+  await pause(1500);
+
+  // 4. This sermon's own processing, in the editor.
+  await caption('4. Choose how it sounds', 'In the Processing step: stronger leveling');
+  const leveling = page.locator('section[aria-labelledby=step-processing] select[name=leveling]');
+  await scrollSmooth(leveling);
+  await pause(900);
+  await choose(leveling, 'strong');
+  await expect(leveling).toHaveValue('strong');
   await pause(2000);
 
-  // 5. Save: make the FLAC and the MP3.
-  await caption('5. Save: make the FLAC and the MP3');
+  // 5. An intro for this sermon only: a few seconds of tone (run.sh makes it).
+  await caption('5. Add an intro', 'Upload for this sermon only');
+  const clipStep = page.locator('section[aria-labelledby=step-clips]');
+  const intro = clipStep.locator('select[name=intro]');
+  await scrollSmooth(intro);
+  await pause(900);
+  const clipChooser = page.waitForEvent('filechooser');
+  await choose(intro, '__upload');
+  await (await clipChooser).setFiles(path.join(DATA, 'Welcome.wav'));
+  await expect(intro).toHaveValue('own', { timeout: 60_000 });
+  await expect(intro.locator('option:checked')).toHaveText("This sermon's own: Welcome");
+  await expect(clipStep).toContainText('With the intro and outro:');
+  await pause(2500);
+
+  // 6. Save: make the FLAC and the MP3, and watch the run's steps.
+  await caption('6. Save: make the FLAC and the MP3');
   const output = page.locator('section[aria-labelledby=step-output]');
-  await output.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  await pause(1200);
+  await scrollSmooth(output);
   for (const [format, want] of [['flac', true], ['mp3', true], ['opus', false]]) {
     const pick = output.locator(`.pill[data-format=${format}] button.pick`);
     if ((await pick.getAttribute('aria-pressed')) !== String(want)) {
@@ -213,12 +268,16 @@ test('the studio in use', async ({ browser }) => {
   }
   await pause(800);
   await click(page.locator('.save-bar button.primary'));
+  await caption('6. Save: make the FLAC and the MP3', 'The run\'s steps, one after another');
+  const steps = page.locator('ul.steps');
+  await expect(steps).toBeVisible({ timeout: 30_000 });
+  await scrollSmooth(steps);
   await expect(page.getByRole('heading', { name: 'Done', exact: true })).toBeVisible({ timeout: 120_000 });
-  await page.getByRole('heading', { name: 'Done', exact: true }).evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  await pause(2200);
+  await scrollSmooth(steps);
+  await pause(2500);
 
-  // The files, on the recordings page.
-  await caption('6. Download the files', 'With the intro, or the sermon only');
+  // 7. The files, on the recordings page.
+  await caption('7. Download the files', 'With the intro, or the sermon only');
   await click(page.locator('header .brand'));
   const row = page.locator('tr.row', { hasText: '2026-10-18' }).first();
   await expect(row).toBeVisible();
@@ -238,11 +297,27 @@ test('the studio in use', async ({ browser }) => {
       await pause(300);
     }
   }
-  await pause(2500);
+  // The sermon only, without the intro: the same two files.
+  await click(menu.getByRole('button', { name: 'Sermon only', exact: true }));
+  await expect(menu).toContainText('MP3');
+  await pause(2200);
   await caption('');
   await pause(800);
 
   const video = page.video();
   await context.close();
   fs.copyFileSync(await video.path(), path.join(OUT, 'video.webm'));
+
+  // What was saved is what the video shows: the drag, the cough, the processing and the intro, and the files.
+  const dir = path.join(DATA, 'churches/grace-chapel/Taler/2026/2026-10-18');
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'recording.json'), 'utf8')).saved;
+  expect(saved.sections).toHaveLength(1);
+  expect(Math.abs(saved.sections[0].start - 22)).toBeLessThan(1);
+  expect(Math.abs(saved.sections[0].end - 162)).toBeLessThan(1);
+  expect(saved.cuts.map((c) => c.label)).toEqual(['cough']);
+  expect(saved.sound.leveling).toBe('strong');
+  expect(saved.intro).toBe('own');
+  for (const f of ['clips/intro.flac', '2026-10-18.flac', '2026-10-18.mp3', '2026-10-18_sermon.flac', '2026-10-18_sermon.mp3']) {
+    expect(fs.existsSync(path.join(dir, f)), f).toBe(true);
+  }
 });
