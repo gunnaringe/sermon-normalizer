@@ -71,7 +71,7 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
 - `web/members.go`: with the login, a church is for its members (`<church>/members.json`: issuer, sub, role admin/member). They
   join by an invite link `invite.html#<church>.<secret>` (`addInvite`: from Settings → Members, `POST api/invites`, or
   `sermon-studio admin invite`; `<church>/invites.json` keeps hashes, single use, an expiry; revoke by `id`, the
-  hash's start). `api/invite` (GET what it is for, POST accept) needs a session but no church. Admin-only requests are listed in
+  hash's start). `api/invite` (GET what it is for, POST accept) needs a session but no church; without one, `invite.js` offers Log in and, with `--oidc-signup-url` (the 401 carries it as `signup`), Create an account in a new tab (Pocket ID's app sign-in has no Sign Up). Admin-only requests are listed in
   `adminOnly` and stopped by `requireAdmin` before any handler (settings, logo, clips, ended-days, members, invites); a member
   gets 403. `changeMembers` keeps an admin. The church list carries the user's `role`; `util.js` `isAdmin()` hides the admin
   parts of Settings (`members.js` is the Members section) and the editor's Add to the church's clips.
