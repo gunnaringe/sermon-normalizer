@@ -422,7 +422,7 @@ func TestIntegrationProgressEvents(t *testing.T) {
 	if err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(steps) != 4 || !strings.HasPrefix(steps[1], "3. Master") || !strings.HasPrefix(steps[3], "Result") {
+	if len(steps) != 4 || !strings.HasPrefix(steps[1], "2. Master") || !strings.HasPrefix(steps[3], "Result") {
 		t.Errorf("steps: %q", steps)
 	}
 	var reachedEnd bool

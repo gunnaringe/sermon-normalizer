@@ -319,14 +319,22 @@ type Pipeline struct {
 	master  string   // the master of the sermon only
 	full    string   // the master with the intro and outro (p.master without them)
 	cleanup []string // temporary files to remove when the run ends
+	stepN   int      // the number of the last numbered step
 }
 
 func (p *Pipeline) logf(format string, a ...any) { fmt.Fprintf(p.Out, format+"\n", a...) }
+
+// step starts a step of the run. A numbered one gets the next number (1, 2, 3 … in
+// the order they run, with or without an intro); the result is not numbered.
 func (p *Pipeline) step(title string) {
 	p.logf("\n== %s", title)
 	if p.OnStep != nil {
 		p.OnStep(title)
 	}
+}
+func (p *Pipeline) numbered(title string) {
+	p.stepN++
+	p.step(fmt.Sprintf("%d. %s", p.stepN, title))
 }
 func (p *Pipeline) warnf(format string, a ...any) {
 	p.logf("WARNING: "+format, a...)
@@ -380,6 +388,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 			return fmt.Errorf("the %s (%s) is missing", c[0], filepath.Base(c[1]))
 		}
 	}
+	p.stepN = 0
 	if err := p.stepRaw(ctx); err != nil {
 		return err
 	}
@@ -395,10 +404,10 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	return p.report(ctx)
 }
 
-// --- 1. raw: the whole recording, of any of the InputTypes -----------------
+// --- raw: the whole recording, of any of the InputTypes -----------------
 
 func (p *Pipeline) stepRaw(ctx context.Context) error {
-	p.step("1. Raw recording")
+	p.numbered("Raw recording")
 	if err := os.MkdirAll(p.P.Original, 0o755); err != nil {
 		return err
 	}
@@ -554,7 +563,7 @@ func (p *Pipeline) cutTo() string {
 
 func secs(s float64) string { return strconv.FormatFloat(s, 'f', 3, 64) }
 
-// --- 3. master ------------------------------------------------------------
+// --- master ------------------------------------------------------------
 
 // EvenLevels is the dynamic normalization in the master chain: it brings
 // quiet speech and loud music to a similar level without shifting time.
@@ -828,7 +837,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 	}
 	switch {
 	case o.Flac:
-		p.step(fmt.Sprintf("3. Master (%s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
+		p.numbered(fmt.Sprintf("Master (%s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
 		if !p.pending(p.master) {
 			p.logf("Already exists, skipping (Save and generate redoes it).")
 			return nil
@@ -836,13 +845,13 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 	case !needed:
 		return nil // no master wanted, and nothing to make from one
 	case !p.pending(p.master):
-		p.step("3. Master")
+		p.numbered("Master")
 		p.logf("Using the existing %s for MP3/Opus.", filepath.Base(p.master))
 		return nil
 	default:
 		// Not wanted as output, but MP3/Opus are made from it. Kept in the
 		// date folder (it can be large) under a hidden name, removed after the run.
-		p.step(fmt.Sprintf("3. Master (temporary, for MP3/Opus; %s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
+		p.numbered(fmt.Sprintf("Master (temporary, for MP3/Opus; %s, %g LUFS)", p.Opt.Channels(), p.Opt.TargetLUFS))
 		p.master = filepath.Join(p.P.Folder, "."+p.P.Date+".master.flac")
 		p.cleanup = append(p.cleanup, p.master)
 	}
@@ -866,7 +875,7 @@ func (p *Pipeline) stepMaster(ctx context.Context) error {
 	return p.renderMaster(ctx, p.master, length, []string{"-c:a", "flac", "-sample_fmt", "s32"})
 }
 
-// --- 4. intro and outro ---------------------------------------------------
+// --- intro and outro ---------------------------------------------------
 
 // stepClips makes the master with the intro and outro (<date>.flac) from the sermon's.
 func (p *Pipeline) stepClips(ctx context.Context) error {
@@ -878,7 +887,7 @@ func (p *Pipeline) stepClips(ctx context.Context) error {
 	p.full = p.P.Master
 	switch {
 	case o.Flac:
-		p.step("4. Intro and outro")
+		p.numbered("Intro and outro")
 		if !p.pending(p.full) {
 			p.logf("Already exists, skipping (Save and generate redoes it).")
 			return nil
@@ -886,11 +895,11 @@ func (p *Pipeline) stepClips(ctx context.Context) error {
 	case !p.lossyPending(p.versions()[0]):
 		return nil
 	case !p.pending(p.full):
-		p.step("4. Intro and outro")
+		p.numbered("Intro and outro")
 		p.logf("Using the existing %s for MP3/Opus.", filepath.Base(p.full))
 		return nil
 	default:
-		p.step("4. Intro and outro")
+		p.numbered("Intro and outro")
 		p.full = filepath.Join(p.P.Folder, "."+p.P.Date+".full.flac")
 		p.cleanup = append(p.cleanup, p.full)
 	}
@@ -1013,7 +1022,7 @@ func (p *Pipeline) sermonLength(ctx context.Context) (float64, error) {
 	return length + pauseTotal(after), nil
 }
 
-// --- 4. mp3 + opus --------------------------------------------------------
+// --- mp3 + opus --------------------------------------------------------
 
 const lossyPeakCeiling = -1.0 // dBTP
 
@@ -1065,7 +1074,7 @@ func (p *Pipeline) stepLossy(ctx context.Context) error {
 	if len(names) == 0 {
 		return nil
 	}
-	p.step("5. " + strings.Join(names, " and ") + ", " + p.Opt.Channels())
+	p.numbered(strings.Join(names, " and ") + ", " + p.Opt.Channels())
 	ac := "1"
 	if p.Opt.Stereo {
 		ac = "2"

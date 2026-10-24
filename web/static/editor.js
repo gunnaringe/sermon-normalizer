@@ -1890,7 +1890,8 @@ export async function editorView(view, path, config) {
     const title = { queued: t('Waiting for another run to finish…'), running: t('Processing…'), done: t('Done'), failed: t('Failed'), cancelled: t('Cancelled') }[j.state];
     const steps = j.steps.map((s, i) => {
       const last = i === j.steps.length - 1;
-      return h('li', { class: last && running ? 'current' : last && j.state === 'failed' ? 'failed' : '' }, tr(s));
+      const n = s.match(/^(\d+)\. (.*)$/s); // "2. Master (…)": the number stays, the rest is translated
+      return h('li', { class: last && running ? 'current' : last && j.state === 'failed' ? 'failed' : '' }, n ? `${n[1]}. ${tr(n[2])}` : tr(s));
     });
     const log = h('pre', { class: 'log' }, j.log.join('\n'));
     jobPanel.replaceChildren(h('div', { class: 'panel' },
