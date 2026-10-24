@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1254 1254">
+  <title>Sermon Studio</title>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0" stop-color="#0b4d3a"/>
+      <stop offset="1" stop-color="#063326"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffb11a"/>
+      <stop offset="0.4" stop-color="#ff8a12" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#ff7a10" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fade" x1="0" y1="100" x2="0" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.6" stop-color="#fff"/>
+      <stop offset="1" stop-color="#000"/>
+    </linearGradient>
+    <mask id="bars-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="1254" height="1254">
+      <rect width="1254" height="1254" fill="url(#fade)"/>
+    </mask>
+    <linearGradient id="page" x1="300" y1="600" x2="627" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffdf8"/>
+      <stop offset="1" stop-color="#f7e3b8"/>
+    </linearGradient>
+    <linearGradient id="cover" x1="0" y1="880" x2="0" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#19b083"/>
+      <stop offset="1" stop-color="#0b7a58"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+    <g id="half">
+      <path fill="url(#cover)" d="M627 1004H606Q590 1004 580 990L566 968C430 930 240 932 110 948Q78 952 93 925L300 604C460 640 590 760 627 940Z"/>
+      <path fill="none" stroke="#3fd19f" stroke-width="12" stroke-linejoin="round" d="M300 604L93 925Q78 952 110 948C240 932 430 930 566 968"/>
+      <path fill="#06392b" d="M150 902L298 648C450 690 575 790 627 930C540 885 330 880 150 902Z"/>
+      <path fill="#0e7c5a" d="M196 806C400 822 560 872 627 945C540 892 360 866 168 862Z"/>
+      <path fill="#a9e6cd" d="M262 705C430 745 560 830 627 945C560 872 400 822 196 806Z"/>
+      <path fill="url(#page)" d="M313 600C450 620 590 700 627 945C560 830 430 745 262 705Z"/>
+    </g>
+  </defs>
+
+  <rect width="1254" height="1254" rx="250" fill="url(#bg)"/>
+  <rect x="12" y="12" width="1230" height="1230" rx="240" fill="none" stroke="#3fd19f" stroke-opacity="0.35" stroke-width="18"/>
+
+  <!-- soundwave streaks behind -->
+  <g stroke="#12936a" stroke-width="46" stroke-linecap="round" opacity="0.4">
+    <path d="M100 740L500 232"/>
+    <path d="M700 600L1110 250"/>
+  </g>
+
+  <!-- the soundwave: bars fading out behind the book -->
+  <g mask="url(#bars-fade)" stroke-width="46" stroke-linecap="round">
+    <g filter="url(#blur)" opacity="0.9" stroke-width="80">
+      <path stroke="#fdc003" d="M625 143V760"/>
+      <path stroke="#fd9d02" d="M552 239V760M698 230V760"/>
+      <path stroke="#fc7f02" d="M480 315V760M770 305V760"/>
+    </g>
+    <path stroke="#0b6b4f" d="M128 531V629"/>
+    <path stroke="#0d7a59" d="M180 545V637"/>
+    <path stroke="#10956c" d="M233 478V682"/>
+    <path stroke="#15ab7b" d="M290 365V720"/>
+    <path stroke="#b9a62b" d="M352 441V760"/>
+    <path stroke="#fb6724" d="M410 395V760"/>
+    <path stroke="#fc7f02" d="M480 315V760"/>
+    <path stroke="#fd9d02" d="M552 239V760"/>
+    <path stroke="#fdc003" d="M625 143V760"/>
+    <path stroke="#fd9d02" d="M698 230V760"/>
+    <path stroke="#fc7f02" d="M770 305V760"/>
+    <path stroke="#fb6724" d="M840 386V760"/>
+    <path stroke="#b9a62b" d="M902 433V760"/>
+    <path stroke="#15ab7b" d="M963 353V720"/>
+    <path stroke="#10956c" d="M1022 479V677"/>
+    <path stroke="#0d7a59" d="M1078 443V645"/>
+    <path stroke="#095c44" d="M1130 531V617"/>
+  </g>
+
+  <!-- the microphone -->
+  <ellipse cx="627" cy="540" rx="230" ry="300" fill="url(#glow)"/>
+  <g fill="none" stroke="#f7901a" stroke-width="22" stroke-linecap="round">
+    <path d="M525 612V640A102 102 0 0 0 729 640V612"/>
+    <path d="M627 742V900"/>
+  </g>
+  <rect x="567" y="468" width="120" height="222" rx="60" fill="#123a2d" stroke="#ff9a1e" stroke-width="5" stroke-opacity="0.7"/>
+  <g stroke="#fdb52a" stroke-width="15" stroke-linecap="round">
+    <path d="M578 537H600M578 573H600M578 609H600M654 537H676M654 573H676M654 609H676"/>
+  </g>
+
+  <!-- the open book -->
+  <use href="#half" xlink:href="#half"/>
+  <use href="#half" xlink:href="#half" transform="translate(1254 0) scale(-1 1)"/>
+</svg>
