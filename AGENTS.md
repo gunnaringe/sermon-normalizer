@@ -59,11 +59,15 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   = first), shared limits: `--parallel-runs` encodes (runs, samples; 1 by default), one decode. A `Server` is one church.
   `--root`/`--inbox` = one church without a folder (settings not saved).
 - `web/login.go`: the studio's own login (`--oidc-issuer`, `AppConfig.OIDC`): authorization code + PKCE, the ID token checked by
-  go-oidc (+ nonce), then a session of its own (cookie `studio_session`, 30 days; `<data-dir>/sessions.json` keeps only hashes;
+  go-oidc (+ nonce), then a session of its own (cookie `studio_session`, 30 days; `<data-dir>/sessions.json` keeps the cookie's hash and
+  the ID token, for logging out;
   `users.json` = issuer + sub, with name/email for display only, never for access). `require` wraps the whole handler: no session
   = a page goes to `auth/login?next=`, `api/…` answers 401 (`util.js` `toLogin`); only `auth/*` and static files other than
-  `index.html` are public. Logout (`POST auth/logout`) ends the session and shows `loggedout.html`. The provider is found on the
-  first login, so the studio starts while it is down.
+  `index.html` are public. Logout (`POST auth/logout`) ends the session, then, if the provider has an `end_session_endpoint`, sends
+  the browser there (RP-initiated logout, with `id_token_hint` and a `state` in the cookie `studio_logout`), which comes back to
+  `auth/logout/callback`; then, or without one, `loggedout.html`. The provider is found on the first login, so the studio starts
+  while it is down. Pocket ID, the recommended provider: docs/login-pocket-id.md, its styling assets in `docs/pocket-id/`
+  (`scripts/make-pocket-id-assets.sh`).
 - `web/members.go`: with the login, a church is for its members (`<church>/members.json`: issuer, sub, role admin/member). They
   join by an invite link `invite.html#<church>.<secret>` (`addInvite`: from Settings → Members, `POST api/invites`, or
   `sermon-studio admin invite`, `CreateInvite`; `<church>/invites.json` keeps hashes, single use, an expiry; revoke by `id`, the

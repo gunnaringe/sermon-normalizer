@@ -29,6 +29,8 @@ type fakeProvider struct {
 	verifier string               // the code_verifier the token request must match
 	change   func(map[string]any) // tamper with the claims
 	signWith *rsa.PrivateKey      // nil = key
+	logout   bool                 // has an end_session_endpoint
+	idToken  string               // the last ID token it handed out
 }
 
 func newFakeProvider(t *testing.T) *fakeProvider {
@@ -42,10 +44,14 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 	p.srv = httptest.NewServer(mux)
 	t.Cleanup(p.srv.Close)
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		meta := map[string]any{
 			"issuer": p.srv.URL, "authorization_endpoint": p.srv.URL + "/authorize", "token_endpoint": p.srv.URL + "/token",
 			"jwks_uri": p.srv.URL + "/jwks", "id_token_signing_alg_values_supported": []string{"RS256"},
-		})
+		}
+		if p.logout {
+			meta["end_session_endpoint"] = p.srv.URL + "/end-session?lang=en"
+		}
+		json.NewEncoder(w).Encode(meta)
 	})
 	mux.HandleFunc("GET /jwks", func(w http.ResponseWriter, r *http.Request) {
 		b64 := base64.RawURLEncoding.EncodeToString
@@ -66,8 +72,9 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 		if p.change != nil {
 			p.change(claims)
 		}
+		p.idToken = p.sign(t, claims)
 		json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "expires_in": 3600,
-			"id_token": p.sign(t, claims)})
+			"id_token": p.idToken})
 	})
 	return p
 }
@@ -237,6 +244,111 @@ func TestLoginFlow(t *testing.T) {
 	if w := l.do("GET", "/api/session", "", c); w.Code != http.StatusUnauthorized {
 		t.Errorf("after logout: %d", w.Code)
 	}
+}
+
+// sessionGone checks that the session of c is ended: no access with it, and
+// not in sessions.json.
+func (l *loginApp) sessionGone(c *http.Cookie) {
+	l.t.Helper()
+	if w := l.do("GET", "/api/session", "", c); w.Code != http.StatusUnauthorized {
+		l.t.Errorf("after logout: %d", w.Code)
+	}
+	if b, _ := os.ReadFile(filepath.Join(l.data, sessionsFile)); strings.Contains(string(b), hashToken(c.Value)) {
+		l.t.Errorf("sessions.json still has the session: %s", b)
+	}
+}
+
+// Logging out at the provider too (OpenID Connect RP-Initiated Logout): the
+// studio's session ends first, then the browser goes to the provider's
+// end_session_endpoint, which sends it back to auth/logout/callback.
+func TestLogoutAtProvider(t *testing.T) {
+	l := newLoginApp(t)
+	l.prov.logout = true
+	c := l.session()
+	idToken := l.prov.idToken
+	b, _ := os.ReadFile(filepath.Join(l.data, sessionsFile))
+	if !strings.Contains(string(b), idToken) {
+		t.Errorf("sessions.json lacks the ID token")
+	}
+	w := l.do("POST", "/auth/logout", "", c)
+	if w.Code != http.StatusSeeOther || cookieOf(w, sessionCookie).MaxAge >= 0 {
+		t.Fatalf("logout: %d %s", w.Code, w.Header().Get("Location"))
+	}
+	// The session is gone before the browser is sent on.
+	l.sessionGone(c)
+	to, _ := url.Parse(w.Header().Get("Location"))
+	q := to.Query()
+	state := cookieOf(w, logoutCookie)
+	if to.Host != strings.TrimPrefix(l.prov.srv.URL, "http://") || to.Path != "/end-session" || q.Get("lang") != "en" ||
+		q.Get("id_token_hint") != idToken || q.Get("client_id") != "studio" ||
+		q.Get("post_logout_redirect_uri") != "https://studio.example/auth/logout/callback" ||
+		q.Get("state") == "" || state == nil || state.Value != q.Get("state") || !state.HttpOnly || !state.Secure {
+		t.Fatalf("end session URL: %s, state cookie %+v", to, state)
+	}
+
+	// Back from the provider: to loggedout.html, with the state cookie cleared;
+	// a wrong or missing state goes there too (the session is gone already).
+	for name, req := range map[string]struct {
+		state  string
+		cookie *http.Cookie
+	}{
+		"right state": {q.Get("state"), state},
+		"wrong state": {"forged", state},
+		"no cookie":   {q.Get("state"), nil},
+	} {
+		cookies := []*http.Cookie{}
+		if req.cookie != nil {
+			cookies = append(cookies, req.cookie)
+		}
+		w := l.do("GET", "/auth/logout/callback?state="+url.QueryEscape(req.state), "", cookies...)
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "https://studio.example/loggedout.html" ||
+			cookieOf(w, logoutCookie) == nil || cookieOf(w, logoutCookie).MaxAge >= 0 || cookieOf(w, sessionCookie) != nil {
+			t.Errorf("%s: %d %s", name, w.Code, w.Header().Get("Location"))
+		}
+	}
+}
+
+// Without an end_session_endpoint, without a kept ID token (a session from
+// before they were kept), or with the provider down, logging out goes straight
+// to loggedout.html, as before.
+func TestLogoutWithoutProvider(t *testing.T) {
+	check := func(t *testing.T, l *loginApp, h http.Handler, c *http.Cookie) {
+		t.Helper()
+		r := httptest.NewRequest("POST", "https://studio.example/auth/logout", nil)
+		r.AddCookie(c)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "https://studio.example/loggedout.html" || cookieOf(w, logoutCookie) != nil {
+			t.Errorf("logout: %d %s", w.Code, w.Header().Get("Location"))
+		}
+		l.sessionGone(c)
+	}
+	t.Run("no end_session_endpoint", func(t *testing.T) {
+		l := newLoginApp(t)
+		check(t, l, l.h, l.session())
+	})
+	t.Run("no ID token kept", func(t *testing.T) {
+		l := newLoginApp(t)
+		l.prov.logout = true
+		c := l.session()
+		l.app.auth.mu.Lock()
+		l.app.auth.session[hashToken(c.Value)].IDToken = ""
+		l.app.auth.mu.Unlock()
+		check(t, l, l.h, c)
+	})
+	t.Run("provider down", func(t *testing.T) {
+		l := newLoginApp(t)
+		l.prov.logout = true
+		c := l.session()
+		// A restarted studio has not found the provider yet, and cannot now.
+		a2, err := NewApp(l.app.cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(a2.Close)
+		l.prov.srv.Close()
+		check(t, &loginApp{t: t, prov: l.prov, app: a2, h: a2.Handler(), data: l.data}, a2.Handler(), c)
+	})
 }
 
 func httpDo(h http.Handler, method, target string, c *http.Cookie) *httptest.ResponseRecorder {

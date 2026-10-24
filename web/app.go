@@ -340,6 +340,7 @@ func (a *App) Handler() http.Handler {
 		mux.HandleFunc("GET /auth/login", a.auth.handleLogin)
 		mux.HandleFunc("GET /auth/callback", a.auth.handleCallback)
 		mux.HandleFunc("POST /auth/logout", a.auth.handleLogout)
+		mux.HandleFunc("GET /auth/logout/callback", a.auth.handleLogoutCallback)
 		mux.HandleFunc("GET /api/invite", a.handleInvite)
 		mux.HandleFunc("POST /api/invite", a.handleInviteAccept)
 		mux.HandleFunc("GET /api/members", a.handleMembers)
