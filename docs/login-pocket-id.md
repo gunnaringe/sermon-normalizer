@@ -112,13 +112,15 @@ The issuer is Pocket ID's address without a path or a trailing slash, as in its
 `<pocket-id>/.well-known/openid-configuration`.
 
 **The first invite.** With the login on, a church is for its members, so the first admin comes from the command
-line, where the studio runs:
+line, where the studio runs ([access](access.md#the-site-administrator-sermon-studio-admin)):
 
 ```bash
-kubectl exec deploy/sermon-studio -- sermon-studio admin invite <church> --role admin
+kubectl exec deploy/sermon-studio -- sermon-studio admin church create <church> --name "…"   # a new church
+kubectl exec deploy/sermon-studio -- sermon-studio admin invite <church> --role admin         # one that is there
 ```
 
-It prints a single-use link (the data folder and the public URL come from the same `SERMON_STUDIO_*` variables).
+Both print a single-use link (the data folder comes from the same `SERMON_STUDIO_*` variables; the link from the
+running studio).
 Make an account in Pocket ID, open the link, and accept. From then on that admin invites the others in the studio,
 under **Settings → Members**.
 

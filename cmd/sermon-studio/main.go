@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -83,7 +84,8 @@ func (s *serveCmd) Validate() error {
 }
 
 func main() {
-	parser, err := newParser(os.Stdout, os.Stderr, os.Exit)
+	var c cli
+	parser, err := newParser(&c, os.Stdout, os.Stderr, os.Exit)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
@@ -91,14 +93,14 @@ func main() {
 	warnUnknownEnv(parser, os.Environ(), os.Stderr)
 	ctx, err := parser.Parse(os.Args[1:])
 	parser.FatalIfErrorf(err)
-	parser.FatalIfErrorf(ctx.Run())
+	parser.FatalIfErrorf(ctx.Run(&c.Admin)) // the admin commands' Run gets their common flags
 }
 
 // envPrefix starts every environment variable the studio reads.
 const envPrefix = "SERMON_STUDIO"
 
-func newParser(stdout, stderr io.Writer, exit func(int)) (*kong.Kong, error) {
-	return kong.New(&cli{},
+func newParser(c *cli, stdout, stderr io.Writer, exit func(int)) (*kong.Kong, error) {
+	return kong.New(c,
 		kong.Name("sermon-studio"),
 		kong.Description("Cut a church service recording on a waveform, get loudness-normalised FLAC, MP3 and Opus. "+
 			"Every flag can also be set by an environment variable, "+envPrefix+"_<FLAG> (e.g. "+envPrefix+"_DATA_DIR)."),
@@ -230,7 +232,20 @@ func (s *serveCmd) Run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	errc := make(chan error, 2)
+	errc := make(chan error, 3)
+	// The admin socket (sermon-studio admin), in the data dir: also how a second
+	// studio on the same data dir is refused.
+	var as *http.Server
+	if s.DataDir != "" {
+		l, err := listenAdmin(web.AdminSocket(s.DataDir))
+		if err != nil {
+			srv.Close()
+			return err
+		}
+		as = &http.Server{Handler: srv.AdminHandler(), ReadHeaderTimeout: 10 * time.Second}
+		go func() { errc <- as.Serve(l) }()
+		defer os.Remove(web.AdminSocket(s.DataDir))
+	}
 	go func() { errc <- hs.ListenAndServe() }()
 	logger.Printf("sermon-studio %s listening on %s (data dir %q, root %q)", version, s.Listen, s.DataDir, s.Root)
 	// The public share page: upload chunks are small, so it can have timeouts (a download sets its own).
@@ -254,10 +269,30 @@ func (s *serveCmd) Run() error {
 		ss.Shutdown(sctx)
 		cancel()
 	}
+	if as != nil {
+		as.Close()
+	}
 	srv.Close() // ends event streams too, so Shutdown does not wait on them
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return hs.Shutdown(sctx)
+}
+
+// listenAdmin listens on the admin socket, for this user only. A socket left
+// by a studio that is gone is replaced; one that answers is another studio
+// on the same data dir, which is refused.
+func listenAdmin(path string) (net.Listener, error) {
+	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
+		c.Close()
+		return nil, fmt.Errorf("another studio is running on this data dir (%s answers)", path)
+	}
+	os.Remove(path)
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, fmt.Errorf("admin socket: %w", err)
+	}
+	os.Chmod(path, 0o600) // the data dir is the studio's own anyway
+	return l, nil
 }
 
 func defaultCacheDir() string {

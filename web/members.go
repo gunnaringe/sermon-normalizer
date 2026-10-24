@@ -57,22 +57,6 @@ func (t *tenant) isMember(id userID) bool {
 	return slices.ContainsFunc(t.members, func(m member) bool { return m.userID == id })
 }
 
-// CreateInvite makes an invite to a church in dataDir and returns its token
-// (the church's id, a dot, and 256 random bits). It is for `sermon-studio
-// admin`: the server sees it the moment someone opens the link.
-func CreateInvite(dataDir, church, role string, valid time.Duration, by string) (string, error) {
-	if church == "" || church != filepath.Base(church) || strings.HasPrefix(church, ".") {
-		return "", fmt.Errorf("no church %q", church)
-	}
-	if ids, err := churchFolders(dataDir); err != nil {
-		return "", err
-	} else if !slices.Contains(ids, church) {
-		return "", fmt.Errorf("no church %q in %s", church, dataDir)
-	}
-	token, _, err := addInvite(filepath.Join(dataDir, church), church, role, valid, by)
-	return token, err
-}
-
 // addInvite adds an invite to the church in dir and returns its token.
 func addInvite(dir, church, role string, valid time.Duration, by string) (string, invite, error) {
 	if role != RoleAdmin && role != RoleMember {
@@ -267,7 +251,7 @@ func (a *App) changeMembers(t *tenant, change func([]member) ([]member, error)) 
 		return err
 	}
 	if !slices.ContainsFunc(list, func(m member) bool { return m.Role == RoleAdmin }) {
-		return errors.New("a church needs an admin: make someone else an admin first")
+		return failWith(http.StatusConflict, "a church needs an admin: make someone else an admin first")
 	}
 	if err := writeJSONFile(filepath.Join(t.dir, membersFile), list); err != nil {
 		return err
@@ -383,19 +367,14 @@ func (a *App) memberChange(w http.ResponseWriter, t *tenant, id string, change f
 		}
 		return change(list, i), nil
 	})
-	switch {
-	case errors.Is(err, errNoMember):
-		writeError(w, http.StatusNotFound, err)
-	case err != nil && strings.HasPrefix(err.Error(), "a church needs an admin"):
-		writeError(w, http.StatusConflict, err)
-	case err != nil:
-		writeError(w, http.StatusInternalServerError, err)
-	default:
-		writeJSON(w, http.StatusOK, map[string]any{})
+	if err != nil {
+		writeStatusError(w, err)
+		return
 	}
+	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
-var errNoMember = errors.New("no such member")
+var errNoMember = failWith(http.StatusNotFound, "no such member")
 
 // handleInviteCreate makes an invite link: POST api/invites {"role", "days"}.
 // The token is in the answer, and never again.

@@ -453,10 +453,6 @@ func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, errors.New("churches are not added in the studio when it has a login"))
 		return
 	}
-	if a.cfg.DataDir == "" {
-		writeError(w, http.StatusNotFound, errors.New("adding churches needs --data-dir"))
-		return
-	}
 	var q struct {
 		Name string `json:"name"`
 	}
@@ -464,39 +460,11 @@ func (a *App) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	a.createMu.Lock()
-	defer a.createMu.Unlock()
-	name, err := churchName(q.Name)
-	id := tenantID(name)
-	if err == nil && id == "" {
-		err = errors.New("the name needs letters or digits")
-	}
-	if err == nil && reservedID(id) {
-		err = fmt.Errorf("the name %q is reserved: pick another", id)
-	}
+	t, err := a.addChurch("", q.Name)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeStatusError(w, err)
 		return
 	}
-	dir := filepath.Join(a.cfg.DataDir, id)
-	if taken, ok := a.nameTaken(nil, name); ok {
-		writeError(w, http.StatusConflict, fmt.Errorf("there is already a church called %q", taken))
-		return
-	}
-	if _, err := os.Stat(dir); err == nil {
-		writeError(w, http.StatusConflict, fmt.Errorf("the folder %s already exists", id))
-		return
-	}
-	cc := churchConfig{Name: name}
-	t, err := a.start(id, dir, cc) // makes the folders
-	if err == nil {
-		err = writeChurch(dir, cc)
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	a.cfg.Base.Logger.Printf("added church %s (%s)", name, id)
 	writeJSON(w, http.StatusCreated, t.info())
 }
 
@@ -514,17 +482,8 @@ func (a *App) handleChurchRename(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	name, err := churchName(q.Name)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if taken, ok := a.nameTaken(t, name); ok {
-		writeError(w, http.StatusConflict, fmt.Errorf("there is already a church called %q", taken))
-		return
-	}
-	if err := a.update(t, func(c *churchConfig) { c.Name = name }); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+	if err := a.renameChurch(t, q.Name); err != nil {
+		writeStatusError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, t.info())
