@@ -13,9 +13,11 @@ import (
 )
 
 // A church's members are who may use it, with the login (login.go):
-// <church>/members.json. A member joins by an invite link, made with
-// `sermon-studio admin invite` (CreateInvite): <church>/invites.json keeps
-// each invite's hash, role and expiry until it is used.
+// <church>/members.json. An admin also changes the church's settings and who
+// its members are (Settings → Members); a church always keeps one admin. A
+// member joins by an invite link, made there or with `sermon-studio admin
+// invite` (CreateInvite): <church>/invites.json keeps each invite's hash,
+// role and expiry until it is used or revoked.
 
 const (
 	membersFile = "members.json"
@@ -59,13 +61,6 @@ func (t *tenant) isMember(id userID) bool {
 // (the church's id, a dot, and 256 random bits). It is for `sermon-studio
 // admin`: the server sees it the moment someone opens the link.
 func CreateInvite(dataDir, church, role string, valid time.Duration, by string) (string, error) {
-	if role != RoleAdmin && role != RoleMember {
-		return "", fmt.Errorf("the role is %s or %s", RoleAdmin, RoleMember)
-	}
-	if valid <= 0 {
-		return "", errors.New("an invite must be valid for some time")
-	}
-	dir := filepath.Join(dataDir, church)
 	if church == "" || church != filepath.Base(church) || strings.HasPrefix(church, ".") {
 		return "", fmt.Errorf("no church %q", church)
 	}
@@ -74,21 +69,47 @@ func CreateInvite(dataDir, church, role string, valid time.Duration, by string) 
 	} else if !slices.Contains(ids, church) {
 		return "", fmt.Errorf("no church %q in %s", church, dataDir)
 	}
+	token, _, err := addInvite(filepath.Join(dataDir, church), church, role, valid, by)
+	return token, err
+}
+
+// addInvite adds an invite to the church in dir and returns its token.
+func addInvite(dir, church, role string, valid time.Duration, by string) (string, invite, error) {
+	if role != RoleAdmin && role != RoleMember {
+		return "", invite{}, fmt.Errorf("the role is %s or %s", RoleAdmin, RoleMember)
+	}
+	if valid <= 0 {
+		return "", invite{}, errors.New("an invite must be valid for some time")
+	}
 	inviteMu.Lock()
 	defer inviteMu.Unlock()
-	var list []invite
-	if err := readJSONFile(filepath.Join(dir, invitesFile), &list); err != nil {
-		return "", err
+	list, err := readInvites(dir)
+	if err != nil {
+		return "", invite{}, err
 	}
 	now := time.Now().UTC()
-	list = slices.DeleteFunc(list, func(iv invite) bool { return now.After(iv.Expires) })
 	secret := randomToken()
-	list = append(list, invite{Hash: hashToken(secret), Role: role, Created: now, Expires: now.Add(valid), CreatedBy: by})
-	if err := writeJSONFile(filepath.Join(dir, invitesFile), list); err != nil {
-		return "", err
+	iv := invite{Hash: hashToken(secret), Role: role, Created: now, Expires: now.Add(valid), CreatedBy: by}
+	if err := writeJSONFile(filepath.Join(dir, invitesFile), append(list, iv)); err != nil {
+		return "", invite{}, err
 	}
-	return church + "." + secret, nil
+	return church + "." + secret, iv, nil
 }
+
+// readInvites reads a church's invites, without the expired ones; call with
+// inviteMu held.
+func readInvites(dir string) ([]invite, error) {
+	var list []invite
+	if err := readJSONFile(filepath.Join(dir, invitesFile), &list); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	return slices.DeleteFunc(list, func(iv invite) bool { return now.After(iv.Expires) }), nil
+}
+
+// id is how the studio names an invite: the start of its hash, which says
+// nothing of the token.
+func (iv invite) id() string { return iv.Hash[:16] }
 
 // findInvite looks up a token: its church and invite. With take, the invite
 // is used up (removed from invites.json).
@@ -111,13 +132,13 @@ func (a *App) findInvite(token string, take bool) (*tenant, invite, error) {
 	}
 	inviteMu.Lock()
 	defer inviteMu.Unlock()
-	var list []invite
-	if err := readJSONFile(filepath.Join(t.dir, invitesFile), &list); err != nil {
+	list, err := readInvites(t.dir)
+	if err != nil {
 		return nil, invite{}, err
 	}
-	hash, now := hashToken(secret), time.Now()
+	hash := hashToken(secret)
 	for i, iv := range list {
-		if subtle.ConstantTimeCompare([]byte(iv.Hash), []byte(hash)) != 1 || now.After(iv.Expires) {
+		if subtle.ConstantTimeCompare([]byte(iv.Hash), []byte(hash)) != 1 {
 			continue
 		}
 		if take {
@@ -184,4 +205,247 @@ func (a *App) handleInviteAccept(w http.ResponseWriter, r *http.Request) {
 	}
 	a.cfg.Base.Logger.Printf("church %s: %s joined as %s", t.id, a.auth.userName(u.id), iv.Role)
 	writeJSON(w, http.StatusOK, map[string]any{"church": t.info()})
+}
+
+// memberID is how the studio names a member: the start of a hash of who
+// they are.
+func memberID(id userID) string { return hashToken(id.key())[:16] }
+
+// roleOf is the user's role in a church: admin without the login, else their
+// role as a member ("" for none).
+func (a *App) roleOf(u user, t *tenant) string {
+	if u.open {
+		return RoleAdmin
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, m := range t.members {
+		if m.userID == u.id {
+			return m.Role
+		}
+	}
+	return ""
+}
+
+// adminOnly are the requests only a church's admins may make: its settings,
+// and who its members are.
+var adminOnly = func() *http.ServeMux {
+	m := http.NewServeMux()
+	for _, p := range []string{
+		"PUT /api/church", "PUT /api/logo", "DELETE /api/logo", "PUT /api/settings", "PUT /api/processing",
+		"POST /api/clips", "PUT /api/clips/defaults", "PUT /api/clips/{id}", "POST /api/clips/{id}/replace",
+		"POST /api/clips/{id}/delete", "POST /api/sermon/clip/add", "PUT /api/shares/ended-days",
+		"GET /api/members", "PUT /api/members/{id}", "POST /api/members/{id}/remove",
+		"POST /api/invites", "POST /api/invites/{id}/revoke",
+	} {
+		m.HandleFunc(p, func(http.ResponseWriter, *http.Request) {})
+	}
+	return m
+}()
+
+// requireAdmin lets a member's request to change the church's settings or
+// members go no further.
+func (a *App) requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, pattern := adminOnly.Handler(r); pattern != "" {
+			if t, ok := a.tenantFor(r); ok && a.roleOf(a.userOf(r), t) != RoleAdmin {
+				writeError(w, http.StatusForbidden, errors.New("only the church's admins can change this"))
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// changeMembers changes a church's members and saves them; a church always
+// keeps an admin.
+func (a *App) changeMembers(t *tenant, change func([]member) ([]member, error)) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	list, err := change(slices.Clone(t.members))
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(list, func(m member) bool { return m.Role == RoleAdmin }) {
+		return errors.New("a church needs an admin: make someone else an admin first")
+	}
+	if err := writeJSONFile(filepath.Join(t.dir, membersFile), list); err != nil {
+		return err
+	}
+	t.members = list
+	return nil
+}
+
+type memberView struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email,omitempty"`
+	Role      string    `json:"role"`
+	Joined    time.Time `json:"joined"`
+	InvitedBy string    `json:"invitedBy,omitempty"`
+	You       bool      `json:"you,omitempty"`
+}
+
+type inviteView struct {
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	CreatedBy string    `json:"createdBy"`
+	Created   time.Time `json:"created"`
+	Expires   time.Time `json:"expires"`
+}
+
+// handleMembers lists a church's members and open invites: GET api/members.
+func (a *App) handleMembers(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.memberTenant(w, r)
+	if !ok {
+		return
+	}
+	u := a.userOf(r)
+	a.mu.Lock()
+	members := slices.Clone(t.members)
+	a.mu.Unlock()
+	out := []memberView{}
+	for _, m := range members {
+		name, email := a.auth.user(m.userID)
+		out = append(out, memberView{ID: memberID(m.userID), Name: name, Email: email, Role: m.Role, Joined: m.Joined,
+			InvitedBy: m.InvitedBy, You: m.userID == u.id})
+	}
+	inviteMu.Lock()
+	list, err := readInvites(t.dir)
+	inviteMu.Unlock()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	invites := []inviteView{}
+	for _, iv := range list {
+		invites = append(invites, inviteView{ID: iv.id(), Role: iv.Role, CreatedBy: iv.CreatedBy, Created: iv.Created, Expires: iv.Expires})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"members": out, "invites": invites})
+}
+
+// memberTenant is the church of a request about its members (always one with a folder).
+func (a *App) memberTenant(w http.ResponseWriter, r *http.Request) (*tenant, bool) {
+	t, ok := a.tenantFor(r)
+	if !ok || t.dir == "" {
+		writeError(w, http.StatusNotFound, errors.New("no such church"))
+		return nil, false
+	}
+	return t, true
+}
+
+// handleMemberRole changes a member's role: PUT api/members/{id} {"role"}.
+func (a *App) handleMemberRole(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.memberTenant(w, r)
+	if !ok {
+		return
+	}
+	var q struct {
+		Role string `json:"role"`
+	}
+	if err := decodeRequest(r, &q); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if q.Role != RoleAdmin && q.Role != RoleMember {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("the role is %s or %s", RoleAdmin, RoleMember))
+		return
+	}
+	a.memberChange(w, t, r.PathValue("id"), func(list []member, i int) []member {
+		list[i].Role = q.Role
+		return list
+	})
+}
+
+// handleMemberRemove takes a member out of the church: POST api/members/{id}/remove.
+func (a *App) handleMemberRemove(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.memberTenant(w, r)
+	if !ok {
+		return
+	}
+	a.memberChange(w, t, r.PathValue("id"), func(list []member, i int) []member { return slices.Delete(list, i, i+1) })
+}
+
+// handleLeave takes the user out of the church: POST api/members/leave.
+func (a *App) handleLeave(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.memberTenant(w, r)
+	if !ok {
+		return
+	}
+	a.memberChange(w, t, memberID(a.userOf(r).id), func(list []member, i int) []member { return slices.Delete(list, i, i+1) })
+}
+
+func (a *App) memberChange(w http.ResponseWriter, t *tenant, id string, change func([]member, int) []member) {
+	err := a.changeMembers(t, func(list []member) ([]member, error) {
+		i := slices.IndexFunc(list, func(m member) bool { return memberID(m.userID) == id })
+		if i < 0 {
+			return nil, errNoMember
+		}
+		return change(list, i), nil
+	})
+	switch {
+	case errors.Is(err, errNoMember):
+		writeError(w, http.StatusNotFound, err)
+	case err != nil && strings.HasPrefix(err.Error(), "a church needs an admin"):
+		writeError(w, http.StatusConflict, err)
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{})
+	}
+}
+
+var errNoMember = errors.New("no such member")
+
+// handleInviteCreate makes an invite link: POST api/invites {"role", "days"}.
+// The token is in the answer, and never again.
+func (a *App) handleInviteCreate(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.memberTenant(w, r)
+	if !ok {
+		return
+	}
+	var q struct {
+		Role string `json:"role"`
+		Days int    `json:"days"`
+	}
+	if err := decodeRequest(r, &q); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if q.Days < 1 || q.Days > 30 {
+		writeError(w, http.StatusBadRequest, errors.New("an invite lasts from 1 to 30 days"))
+		return
+	}
+	token, iv, err := addInvite(t.dir, t.id, q.Role, time.Duration(q.Days)*24*time.Hour, a.auth.userName(a.userOf(r).id))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"token": token,
+		"invite": inviteView{ID: iv.id(), Role: iv.Role, CreatedBy: iv.CreatedBy, Created: iv.Created, Expires: iv.Expires}})
+}
+
+// handleInviteRevoke ends an invite before it is used: POST api/invites/{id}/revoke.
+func (a *App) handleInviteRevoke(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.memberTenant(w, r)
+	if !ok {
+		return
+	}
+	inviteMu.Lock()
+	defer inviteMu.Unlock()
+	list, err := readInvites(t.dir)
+	if err == nil {
+		n := len(list)
+		list = slices.DeleteFunc(list, func(iv invite) bool { return iv.id() == r.PathValue("id") })
+		if len(list) == n {
+			writeError(w, http.StatusNotFound, errors.New("no such invite: it may have been used, or have expired"))
+			return
+		}
+		err = writeJSONFile(filepath.Join(t.dir, invitesFile), list)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{})
 }

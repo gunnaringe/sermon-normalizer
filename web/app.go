@@ -69,6 +69,7 @@ type TenantInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Logo string `json:"logo,omitempty"` // the church's own logo (see logo.go): its version; "" = none
+	Role string `json:"role,omitempty"` // the user's: admin or member (in the church list)
 }
 
 type tenant struct {
@@ -341,6 +342,12 @@ func (a *App) Handler() http.Handler {
 		mux.HandleFunc("POST /auth/logout", a.auth.handleLogout)
 		mux.HandleFunc("GET /api/invite", a.handleInvite)
 		mux.HandleFunc("POST /api/invite", a.handleInviteAccept)
+		mux.HandleFunc("GET /api/members", a.handleMembers)
+		mux.HandleFunc("PUT /api/members/{id}", a.handleMemberRole)
+		mux.HandleFunc("POST /api/members/{id}/remove", a.handleMemberRemove)
+		mux.HandleFunc("POST /api/members/leave", a.handleLeave)
+		mux.HandleFunc("POST /api/invites", a.handleInviteCreate)
+		mux.HandleFunc("POST /api/invites/{id}/revoke", a.handleInviteRevoke)
 	}
 	mux.HandleFunc("GET /api/tenants", a.handleTenants)
 	mux.HandleFunc("POST /api/tenants", a.handleTenantCreate)
@@ -371,7 +378,7 @@ func (a *App) Handler() http.Handler {
 	}
 	var h http.Handler = mux
 	if a.auth != nil {
-		h = a.auth.require(mux)
+		h = a.auth.require(a.requireAdmin(mux))
 	}
 	// Once there is a login cookie, other sites must not be able to
 	// start runs, uploads or imports on the user's behalf.
@@ -393,13 +400,16 @@ func (a *App) handleTenants(w http.ResponseWriter, r *http.Request) {
 	u := a.userOf(r)
 	list := []TenantInfo{}
 	for _, t := range a.visible(u) {
-		list = append(list, t.info())
+		i := t.info()
+		i.Role = a.roleOf(u, t)
+		list = append(list, i)
 	}
 	if len(list) == 0 {
 		writeError(w, http.StatusForbidden, errNoChurch())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.canAdd(), "shares": a.share != nil})
+	writeJSON(w, http.StatusOK, map[string]any{"tenants": list, "default": list[0].ID, "canAdd": a.canAdd(), "shares": a.share != nil,
+		"login": a.auth != nil})
 }
 
 var reNotID = regexp.MustCompile(`[^a-z0-9]+`)

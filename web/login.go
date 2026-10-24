@@ -187,6 +187,16 @@ func (au *auth) sessionOf(r *http.Request) (userID, bool) {
 	return s.User, true
 }
 
+// user is a user's name (their name, else their id) and email, for showing.
+func (au *auth) user(id userID) (name, email string) {
+	au.mu.Lock()
+	defer au.mu.Unlock()
+	if u := au.users[id.key()]; u != nil {
+		return cmpOr(u.Name, cmpOr(u.Email, id.Subject)), u.Email
+	}
+	return id.Subject, ""
+}
+
 // userName is the name to show for a user: their name, else their email,
 // else their id.
 func (au *auth) userName(id userID) string {
