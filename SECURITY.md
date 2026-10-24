@@ -10,9 +10,8 @@ not as a public issue. You will get an answer within a few days.
 
 - **Login.** With `--oidc-issuer` the studio logs users in itself (OpenID Connect, code flow with PKCE; the ID
   token's signature, issuer, audience, expiry and nonce are checked) and a church is for its members, who join with a
-  single-use invite link. Sessions and invites are random 256-bit values, stored only as hashes. Without it, run the
-  studio on a trusted network, or behind a proxy that handles login: with `--groups-header` it reads the user's
-  groups from a header the proxy sets, so every request must come through that proxy ([access.md](docs/access.md)).
+  single-use invite link. Sessions and invites are random 256-bit values, stored only as hashes. Without it there is no
+  access control: run the studio on a trusted network, or behind a proxy that handles login ([access.md](docs/access.md)).
 - **The public share page is separate on purpose** (`--share-listen`). It serves only itself and
   `api/share/*`; nothing of the studio and nothing to list. The only files it sends are the church's logo
   to a valid code, and the finished files of the one sermon a download share gives, to its code (a counted

@@ -253,8 +253,8 @@ restored, it works again.
 
 ### Where to run it
 
-Run the share page on its own host, **not** behind the login proxy, and keep the studio behind
-it. The page serves only itself and `api/share/*`: nothing of the studio and nothing to list; the only
+Run the share page on its own host, with no login in front of it, and keep the studio behind its
+login ([access](access.md)). The page serves only itself and `api/share/*`: nothing of the studio and nothing to list; the only
 files it sends are the files of a download share, to its code. Every request carries the code; wrong
 codes and requests are limited per address and in all (flags above), and an upload is refused when the
 disk would get within 1 GB of full.

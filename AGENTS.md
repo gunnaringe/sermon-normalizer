@@ -60,13 +60,13 @@ need (`grep -n`, offsets). Playwright screenshots land in `web/e2e/screenshots/`
   `users.json` = issuer + sub, with name/email for display only, never for access). `require` wraps the whole handler: no session
   = a page goes to `auth/login?next=`, `api/…` answers 401 (`util.js` `toLogin`); only `auth/*` and static files other than
   `index.html` are public. Logout (`POST auth/logout`) ends the session and shows `loggedout.html`. The provider is found on the
-  first login, so the studio starts while it is down. Refused together with `--groups-header`.
+  first login, so the studio starts while it is down.
 - `web/members.go`: with the login, a church is for its members (`<church>/members.json`: issuer, sub, role admin/member). They
   join by an invite link `invite.html#<church>.<secret>` (`CreateInvite`, from `sermon-studio admin invite`; `<church>/invites.json`
   keeps hashes, single use, an expiry). `api/invite` (GET what it is for, POST accept) needs a session but no church.
-- `web/access.go`: `--groups-header` access control (until the login replaces it, #78): group `sermon_studio_<church id, - → _>` = that church,
-  `sermon_studio_admin` = all + add churches; `admin`/`default` are reserved ids. Every church request
-  goes through `App.tenantFor`, which only picks churches the user sees.
+- `web/access.go`: who sees which church: with the login, its members; without, everyone (and only then are churches added in
+  the studio, `canAdd`). `default` and the page words are reserved ids. Every church request goes through `App.tenantFor`,
+  which only picks churches the user sees.
 - `web/server.go`: Config, routes, `resolve` (every path parameter: inside the
   root, no `..`, no hidden names, no symlinks out).
 - `web/meta.go`: a church's default tags (title/artist/album templates with

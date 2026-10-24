@@ -403,7 +403,6 @@ func TestLoginSettings(t *testing.T) {
 	base := Config{CacheDir: t.TempDir(), Logger: log.New(testLog{t}, "", 0)}
 	ok := OIDCOptions{Issuer: "https://id.example", ClientID: "studio", PublicURL: "https://studio.example/"}
 	for name, cfg := range map[string]AppConfig{
-		"with groups":   {Base: base, DataDir: data, GroupsHeader: groupsHeader, OIDC: &ok},
 		"no data dir":   {Base: Config{Root: data, CacheDir: base.CacheDir, Logger: base.Logger}, OIDC: &ok},
 		"no public URL": {Base: base, DataDir: data, OIDC: &OIDCOptions{Issuer: ok.Issuer, ClientID: "studio"}},
 		"relative URL":  {Base: base, DataDir: data, OIDC: &OIDCOptions{Issuer: ok.Issuer, ClientID: "studio", PublicURL: "/studio/"}},

@@ -857,9 +857,11 @@ test('addresses: the church comes first; old ones are moved', async ({ page }) =
 });
 
 test('header: log out is an icon and asks first', async ({ page }) => {
+  // With the login (--oidc-issuer), the session says where to log out.
+  await page.route('**/api/session', (r) => r.fulfill({ json: { logoutUrl: 'auth/logout', user: 'Kari Nordmann' } }));
   await page.goto('');
   let posted = false;
-  await page.route('**/logged-out', (r) => { posted = r.request().method() === 'POST'; r.fulfill({ body: 'logged out' }); });
+  await page.route('**/auth/logout', (r) => { posted = r.request().method() === 'POST'; r.fulfill({ body: 'logged out' }); });
   const out = page.locator('#logout button');
   await out.click();
   await expect(out).toHaveText('Log out?');

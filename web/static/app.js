@@ -454,7 +454,6 @@ select.addEventListener('change', async () => {
       const t_ = await api('POST', 'api/tenants', { name });
       churches.tenants.push(t_);
       location.hash = '#/' + t_.id;
-      if (t_.group) alertDialog({ title: t('Church added'), body: t('Give people access by adding them to the group {group} in Pocket ID.', { group: t_.group }) });
     } catch (err) { alertDialog({ body: err.message }); }
   }
   fillPicker();
