@@ -23,7 +23,7 @@ ffmpeg is a separate C program and cannot be built into the Go binary, so the im
 docker build -t sermon-studio .
 docker run --rm -p 8080:8080 -u "$(id -u):$(id -g)" \
   -v /path/to/data:/data -v /path/to/cache:/cache \
-  sermon-studio --data-dir /data --cache-dir /cache
+  sermon-studio --no-login --data-dir /data --cache-dir /cache
 ```
 
 `-u` makes the created files owned by your user, not root.
@@ -32,8 +32,17 @@ The build runs `go vet` and `go test`, and checks that ffmpeg has libopus and li
 # Running
 
 ```bash
-sermon-studio --data-dir /path/to/data --listen :8080
+sermon-studio --data-dir /path/to/data --listen :8080 --no-login                 # no login: a trusted network
+sermon-studio --data-dir /path/to/data --listen :8080 --oidc-issuer https://… …  # the studio's own login
 ```
+
+The login is always chosen: the studio does not start without one of `--oidc-issuer` and `--no-login`
+([access](access.md)). `sermon-studio --help` lists every flag; `sermon-studio serve` is the same as no command.
+
+**Environment variables:** every flag can also be set as `SERMON_STUDIO_<FLAG>`, in capitals with `_` for `-`
+(`SERMON_STUDIO_DATA_DIR=/data`, `SERMON_STUDIO_NO_LOGIN=true`), e.g. from a Kubernetes ConfigMap with `envFrom`. A
+flag wins over its variable. A `SERMON_STUDIO_*` variable this version does not know is logged as a warning (with the
+nearest name it does know) and otherwise ignored, so a setting can be added before the version that reads it.
 
 The data dir has a folder per church (a church is a folder with a `Taler` folder in it):
 
@@ -59,7 +68,8 @@ church and no right to add more sees just its name in the header; otherwise a qu
 |---|---|---|
 | `--data-dir` | | the folder with a folder per church (see above) |
 | `--root`, `--inbox` | | one church without a church folder, instead of `--data-dir`: its date folders and the inbox where new recordings arrive. Settings are not saved. |
-| `--oidc-issuer` | | the OpenID Connect provider; turns on the studio's own login: a church is for its members, who join with an invite link ([access](access.md)) |
+| `--oidc-issuer` | | the OpenID Connect provider: the studio's own login; a church is for its members, who join with an invite link ([access](access.md)). This or `--no-login` is required |
+| `--no-login` | | no login and no access control: anyone who reaches the studio can use every church (the desktop, a trusted network). This or `--oidc-issuer` is required |
 | `--oidc-client-id`, `--oidc-client-secret-file` | | the studio's client at the provider; no secret file = a public client (PKCE) |
 | `--public-url` | | with `--oidc-issuer`: the studio's address as the browser sees it (the callback is `<public-url>/auth/callback`) |
 | `--cookie-domain` | | with `--oidc-issuer`: a parent domain for the session cookie, shared by the studio's hosts |

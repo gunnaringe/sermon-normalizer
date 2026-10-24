@@ -1,9 +1,10 @@
 # Access: which churches a user sees
 
-There are two ways to run the studio:
+There are two ways to run the studio, and one of them must be chosen: the studio does not start without
+`--oidc-issuer` or `--no-login` (and not with both), so a missing or misspelt setting never means open access.
 
 - **With its own login** (`--oidc-issuer`, below): a church is for its members, who join with an invite link.
-- **Without**: no access control. Everyone sees every church and can add churches (the desktop app, a trusted
+- **Without** (`--no-login`): no access control. Everyone sees every church and can add churches (the desktop app, a trusted
   network, or behind a login proxy that lets only the right people through).
 
 ## Its own login (OpenID Connect)
